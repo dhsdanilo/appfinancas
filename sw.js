@@ -1,0 +1,102 @@
+// Service worker: o que faz o app abrir sem internet.
+// design/01-visao.md princípio 7 — a sincronização é conveniência, não dependência.
+
+const CACHE = 'appfinancas-v9';
+
+const CASCA = [
+  './',
+  'index.html',
+  'bancada.html',
+  'extrato.html',
+  'verificacao.html',
+  'manifest.webmanifest',
+  'css/base.css',
+  'css/captura.css',
+  'css/formulario.css',
+  'css/extrato.css',
+  'css/bancada.css',
+  'js/captura.js',
+  'js/extrato.js',
+  'js/bancada.js',
+  'js/main.js',
+  'js/core/lancamentos.js',
+  'js/core/listas.js',
+  'js/app/formulario.js',
+  'js/app/transferencia.js',
+  'js/app/campo-valor.js',
+  'js/app/zona-perigo.js',
+  'js/app/instalar.js',
+  'js/app/dinheiro-html.js',
+  'js/core/db.js',
+  'js/core/dinheiro.js',
+  'js/core/estado.js',
+  'js/core/formato.js',
+  'js/core/id.js',
+  'js/core/log.js',
+  'js/core/redutores.js',
+];
+
+self.addEventListener('install', (e) => {
+  e.waitUntil(
+    caches.open(CACHE).then(async (c) => {
+      // Um arquivo faltando não pode derrubar a instalação inteira: o app
+      // funcionaria do mesmo jeito, só não ficaria offline. addAll é tudo-ou-nada,
+      // então cada item vai por conta própria.
+      await Promise.all(
+        CASCA.map((url) =>
+          fetch(url, { cache: 'no-store' })
+            .then((r) => (r.ok ? c.put(url, r) : undefined))
+            .catch(() => undefined)
+        )
+      );
+      await self.skipWaiting();
+    })
+  );
+});
+
+self.addEventListener('activate', (e) => {
+  e.waitUntil(
+    caches
+      .keys()
+      .then((nomes) => Promise.all(nomes.filter((n) => n !== CACHE).map((n) => caches.delete(n))))
+      .then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', (e) => {
+  const req = e.request;
+  if (req.method !== 'GET') return;
+
+  const url = new URL(req.url);
+  if (url.origin !== location.origin) return; // a API do GitHub nunca é cacheada
+
+  // Rede primeiro, cache como rede de segurança: assim uma versão nova do app
+  // chega sem o usuário ter que limpar nada, e offline continua funcionando.
+  //
+  // `cache: 'no-store'` não é detalhe: sem ele a busca cai no cache HTTP do
+  // navegador e o "rede primeiro" vira "versão velha primeiro" — o app
+  // publicaria uma correção e ninguém a receberia.
+  e.respondWith(
+    fetch(req, { cache: 'no-store' })
+      .then((resposta) => {
+        if (resposta.ok) {
+          const copia = resposta.clone();
+          caches.open(CACHE).then((c) => c.put(req, copia));
+        }
+        return resposta;
+      })
+      .catch(async () => {
+        const guardado = await caches.match(req);
+        if (guardado) return guardado;
+
+        // Só navegação cai de volta no index. Devolver HTML no lugar de um
+        // módulo JS seria pior que falhar: o navegador tentaria executar a
+        // página como código, e o erro resultante não diria nada a ninguém.
+        if (req.mode === 'navigate') {
+          const inicio = await caches.match('index.html');
+          if (inicio) return inicio;
+        }
+        return new Response('', { status: 504, statusText: 'offline e sem cópia local' });
+      })
+  );
+});

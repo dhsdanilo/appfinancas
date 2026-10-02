@@ -1,0 +1,14 @@
+# Fora do repositório público, de propósito.
+#
+# O repositório do código é público porque não há segredo nenhum no código — e
+# porque no plano gratuito do GitHub o Pages só publica de repositório público.
+#
+# Já os documentos de design e as anotações de trabalho descrevem a família que
+# usa o app: nomes, bancos, números. Eles continuam no computador, e podem ir
+# para o repositório privado dos dados quando a sincronização estiver de pé.
+design/
+LEIAME.md
+continuar.md
+
+# Páginas descartáveis de teste de interface.
+_teste-*.html

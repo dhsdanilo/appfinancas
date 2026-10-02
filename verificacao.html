@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Verificação — App Finanças</title>
+<meta name="description" content="Controle financeiro familiar, local e sincronizado.">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#16302b">
+<link rel="stylesheet" href="css/base.css">
+</head>
+<body class="pagina">
+
+<header class="topo">
+  <div class="identidade">
+    <h1>Verificação</h1>
+    <p class="sub">Ferramenta de obra: é o que prova que o alicerce aguenta. Não é o app.</p>
+  </div>
+  <nav class="navegacao" aria-label="Seções do app">
+    <a href="extrato.html">Extrato</a>
+    <a href="bancada.html">Bancada</a>
+    <a href="verificacao.html" aria-current="page">Verificação</a>
+  </nav>
+</header>
+
+<main>
+
+  <section class="cartao">
+    <h2>A fundação</h2>
+    <dl class="fatos" id="fatos">
+      <dt>Formato dos dados</dt><dd id="f-formato">—</dd>
+      <dt>Aparelho</dt><dd id="f-aparelho">—</dd>
+      <dt>Eventos no registro</dt><dd id="f-eventos">—</dd>
+      <dt>Relógio lógico</dt><dd id="f-lc">—</dd>
+      <dt>Banco em uso</dt><dd id="f-banco">—</dd>
+      <dt>Lançamentos</dt><dd id="f-lancamentos">—</dd>
+      <dt>Tipos desconhecidos</dt><dd id="f-desconhecidos">—</dd>
+    </dl>
+    <p class="aviso" id="aviso" hidden></p>
+    <div class="botoes">
+      <button id="b-recalcular">Recalcular do zero</button>
+      <button id="b-zerar" class="perigo">Apagar tudo</button>
+    </div>
+    <div id="estado-atual" class="estado"></div>
+  </section>
+
+  <section class="cartao">
+    <h2>Verificação</h2>
+    <p class="nota">
+      Roda contra um banco separado (<code>appfinancas-teste</code>), que é apagado no fim.
+      Os seus dados não são tocados.
+    </p>
+    <div class="botoes">
+      <button id="b-verificar">Rodar verificação</button>
+    </div>
+    <p id="placar" class="placar"></p>
+    <ol id="resultados" class="resultados"></ol>
+  </section>
+
+  <section class="cartao">
+    <h2>Últimos eventos</h2>
+    <p class="nota">O registro é append-only: editar e apagar também são eventos novos.</p>
+    <ol id="eventos" class="eventos"></ol>
+  </section>
+
+</main>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

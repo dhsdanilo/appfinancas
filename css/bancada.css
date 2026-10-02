@@ -1,0 +1,316 @@
+/* Bancada — a tela de gerenciar. Valores de design/09-identidade.md.
+
+   Ela é trabalho de sentar, e o caminho principal é o PC (04-categorias §7):
+   aqui cabe densidade que a tela de captura não tolera. Mas densidade não é
+   bagunça — três listas, três abas, e uma linha por item. */
+
+/* ── abas ───────────────────────────────────────────────────────────────── */
+
+.abas {
+  display: flex;
+  gap: var(--e1);
+  margin-top: var(--e4);
+  border-bottom: 1px solid var(--borda);
+}
+
+.abas [role="tab"] {
+  min-height: 40px;
+  padding: var(--e2) var(--e4);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--tinta-fraca);
+  font-size: var(--t-apoio);
+}
+.abas [role="tab"]:hover { color: var(--tinta); }
+.abas [role="tab"][aria-selected="true"] {
+  color: var(--tinta);
+  border-bottom-color: var(--acento);
+  font-weight: 600;
+}
+
+.abas .contador {
+  margin-left: var(--e1);
+  padding: 0 6px;
+  border-radius: var(--raio-pilula);
+  background: var(--fundo);
+  color: var(--tinta-fraca);
+  font-size: var(--t-miudo);
+  font-variant-numeric: tabular-nums;
+}
+.abas .contador:empty { display: none; }
+
+.painel { margin-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
+.painel[hidden] { display: none; }
+
+/* ── formulário de criar ────────────────────────────────────────────────── */
+/* Rótulo em cima, sempre visível: placeholder que some quando se digita é a
+   forma mais barata de a pessoa esquecer em qual campo está. */
+
+.formulario {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--e3);
+  padding-bottom: var(--e4);
+  border-bottom: 1px solid var(--borda);
+}
+
+.campo { display: flex; flex-direction: column; gap: var(--e1); flex: 1 1 140px; min-width: 0; }
+.campo.largo { flex: 2 1 220px; }
+.campo.estreito { flex: 0 1 100px; }
+.campo.acao { flex: 0 0 auto; }
+.campo input[type="date"] { max-width: 190px; }
+
+.campo label,
+.campo .rotulo {
+  font-size: var(--t-miudo);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--tinta-fraca);
+}
+
+.campo input[type="text"],
+.campo input[type="number"],
+.campo input[type="date"],
+.campo select {
+  font: inherit;
+  font-size: var(--t-apoio);
+  width: 100%;
+  min-width: 0;
+  flex: none;
+  min-height: var(--alvo);
+  padding: var(--e2) var(--e3);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-controle);
+  background: var(--superficie);
+  color: var(--tinta);
+}
+.campo input::placeholder { color: var(--tinta-fraca); opacity: 0.7; }
+
+/* Os campos do cartão só existem quando o tipo é cartão (D13).
+   `display` de folha de estilo vence o atributo `hidden` do HTML — sem a
+   segunda linha o formulário pede limite pra conta corrente. */
+.so-cartao { display: flex; flex-wrap: wrap; gap: var(--e3); flex: 1 1 100%; }
+.so-cartao[hidden] { display: none; }
+
+.formulario .dica {
+  flex: 1 1 100%;
+  margin: 0;
+  color: var(--tinta-fraca);
+  font-size: var(--t-apoio);
+}
+
+/* ── as listas ──────────────────────────────────────────────────────────── */
+
+/* A LISTA é a grade, não cada linha: coluna só alinha de verdade quando todas
+   as linhas compartilham a mesma grade. Com uma grade por linha, cada uma
+   calculava a própria largura e o cabeçalho nunca batia com os valores. */
+.itens {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(130px, 1.2fr) minmax(0, 1.1fr) auto minmax(80px, auto) auto;
+  align-items: center;
+  column-gap: var(--e3);
+}
+
+/* Categoria e etiqueta: só nome, uso e ações. */
+.itens.simples { grid-template-columns: minmax(130px, 1fr) minmax(80px, auto) auto; }
+
+.item { display: contents; }
+.item > * { padding: var(--e1) 0; border-bottom: 1px solid var(--borda); min-width: 0; }
+.item:last-child > * { border-bottom: 0; }
+.item:hover > * { background: var(--acento-fundo); }
+
+.divisor, .vazio, .proximo { grid-column: 1 / -1; }
+
+/* O nome é um botão porque clicar nele renomeia — renomear é livre e vale no
+   passado inteiro, então não precisa de cerimônia. */
+.item .nome {
+  width: 100%;
+  min-height: 36px;
+  padding: var(--e1) var(--e2);
+  border: 0;
+  border-radius: var(--raio-controle);
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.item .nome:hover { background: var(--acento-fundo); }
+
+.item .meta,
+.item .uso {
+  color: var(--tinta-fraca);
+  font-size: var(--t-apoio);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.item .uso { text-align: right; }
+.item .valor { text-align: right; font-weight: 600; white-space: nowrap; }
+.item .sem-uso { opacity: 0.7; }
+
+/* As ações só aparecem quando a linha é alcançada: vinte linhas com três botões
+   acesos cada é mais ruído do que lista. No toque, onde não existe hover, elas
+   ficam sempre visíveis. */
+.item .acoes-item { display: flex; gap: var(--e1); align-items: center; justify-content: flex-end; }
+.item .acoes-item .pergunta { color: var(--tinta-fraca); font-size: var(--t-apoio); }
+.item .acoes-item button { min-height: 34px; }
+.item .acoes-item button.perigo { border-color: var(--alerta); }
+
+@media (hover: hover) {
+  .item .acoes-item { opacity: 0; transition: opacity 120ms; }
+  .item:hover .acoes-item,
+  .item:focus-within .acoes-item,
+  .item.confirmando .acoes-item { opacity: 1; }
+}
+
+.item.arquivada .nome,
+.item.arquivada .meta,
+.item.arquivada .valor { color: var(--tinta-fraca); }
+
+.divisor {
+  margin-top: var(--e4);
+  padding: var(--e1) var(--e2) !important;
+  border-bottom: 0 !important;
+  font-size: var(--t-miudo);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--tinta-fraca);
+}
+.itens .divisor:first-child { margin-top: var(--e3); }
+
+.vazio { color: var(--tinta-fraca); font-size: var(--t-apoio); padding: var(--e4) 0; }
+
+.em-edicao {
+  font: inherit;
+  font-size: var(--t-apoio);
+  width: 100%;
+  min-height: 36px;
+  padding: var(--e1) var(--e2);
+  border: 1px solid var(--acento);
+  border-radius: var(--raio-controle);
+  background: var(--superficie);
+  color: var(--tinta);
+}
+
+.elo {
+  min-height: 34px;
+  padding: var(--e1) var(--e2);
+  border: 0;
+  background: none;
+  color: var(--tinta-fraca);
+  font-size: var(--t-apoio);
+  text-decoration: underline;
+  text-decoration-color: var(--borda-forte);
+  text-underline-offset: 4px;
+}
+.elo:hover { color: var(--tinta); }
+
+/* No celular a bancada continua cabendo: a lista deixa de ser tabela e cada
+   linha vira bloco. Tabela com rolagem horizontal é o que o design proíbe. */
+@media (max-width: 600px) {
+  .itens { display: block; }
+  .item.colunas { display: none; }
+
+  .item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    row-gap: 2px;
+    column-gap: var(--e3);
+    padding: var(--e2) 0;
+    border-bottom: 1px solid var(--borda);
+  }
+  .item > * { padding: 0; border-bottom: 0; }
+  .item.subtotal > * { border-top: 0; padding: 0; }
+  .item.subtotal { border-top: 1px solid var(--borda); margin-bottom: var(--e4); }
+  .item .nome { grid-column: 1 / -1; }
+  /* No celular sobra altura e falta largura: o detalhe quebra linha em vez de
+     virar reticência. */
+  .item .meta { grid-column: 1; white-space: normal; overflow: visible; }
+  .item .valor { grid-column: 2; text-align: right; }
+  .item .uso { grid-column: 1; text-align: left; }
+  .item .acoes-item { grid-column: 2; }
+  .abas [role="tab"] { padding: var(--e2) var(--e3); }
+}
+
+/* ── blocos, subtotais e cabeçalho de colunas ───────────────────────────── */
+/* Faixa é bloco: cabeçalho em rótulo miúdo, subtotal na última linha separado
+   por um fio, e 24px de respiro entre blocos — maior que os 16px entre itens,
+   que é o que faz o olho entender que são coisas de naturezas diferentes
+   (design/09-identidade.md §7). */
+
+.titulo-bloco {
+  margin: 0 0 var(--e3);
+  font-size: var(--t-miudo);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--tinta-fraca);
+}
+
+.divisor .quantos {
+  margin-left: var(--e2);
+  color: var(--tinta-fraca);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.item.colunas > * { padding-bottom: var(--e2); }
+.item.colunas span {
+  font-size: var(--t-miudo);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--tinta-fraca);
+}
+.item.colunas .nome { padding-left: var(--e2); }
+
+.item.subtotal > * {
+  border-bottom: 0;
+  border-top: 1px solid var(--borda);
+  padding-top: var(--e2);
+  padding-bottom: var(--e6);
+}
+.item.subtotal .nome {
+  font-size: var(--t-miudo);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--tinta-fraca);
+  padding-left: var(--e2);
+}
+.item.subtotal .valor { font-weight: 600; }
+
+/* Vermelho onde ele informa: saldo negativo, conta estourada, dívida
+   (09-identidade §3). Nunca em toda despesa, que apagaria o sinal. */
+.item .valor.negativo .moeda,
+.item .valor.negativo .centavos { color: inherit; opacity: 0.8; }
+.item .valor.negativo { color: var(--alerta); }
+
+/* ── o próximo passo ────────────────────────────────────────────────────── */
+/* Conta e categoria são o mínimo sem o qual não dá pra lançar. Dizer isso uma
+   vez, no lugar certo, é diferente de convidar pra configurar coisa opcional. */
+
+.proximo {
+  margin: var(--e4) 0 0;
+  padding: var(--e2) var(--e3);
+  border-left: 2px solid var(--acento);
+  background: var(--acento-fundo);
+  border-radius: 0 var(--raio-controle) var(--raio-controle) 0;
+  color: var(--tinta-fraca);
+  font-size: var(--t-apoio);
+}
+.proximo[hidden] { display: none; }
+.proximo .elo { color: var(--tinta); }

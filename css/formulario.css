@@ -1,0 +1,247 @@
+/* O formulário de captura — compartilhado entre a tela cheia do celular e o
+   diálogo do PC (js/app/formulario.js). O JS é um só; o estilo também tem de
+   ser, senão as duas formas divergem no terceiro ajuste.
+
+   Valores de design/09-identidade.md. */
+
+/* ── o valor ────────────────────────────────────────────────────────────── */
+
+/* O campo real fica por cima, transparente: ele traz o teclado do aparelho e
+   recebe as teclas; o desenho atrás é o que se lê. Um <input> não consegue dar
+   tamanho menor só aos centavos nem garantir algarismo tabular. */
+.campo-valor {
+  position: relative;
+  flex: none;
+}
+
+.valor {
+  display: block;
+  padding: var(--e6) 0 var(--e3);
+  font-size: var(--t-digitando);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  text-align: center;
+}
+
+/* Especificidade alta de propósito: a regra genérica `input[type="text"]` do
+   base.css precisa perder aqui, senão ela devolve fundo, borda e cor ao campo
+   e o desenho estilizado some atrás de um retângulo branco. */
+input[type="text"].entrada-valor {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  font-family: var(--fonte);
+  font-size: var(--t-digitando);
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+}
+input[type="text"].entrada-valor:focus,
+input[type="text"].entrada-valor:focus-visible { outline: none; }
+/* A seleção também precisa ser invisível, senão aparece o texto cru realçado. */
+input[type="text"].entrada-valor::selection { background: transparent; color: transparent; }
+
+/* O foco se mostra no desenho, não no campo. */
+.campo-valor:focus-within .valor { color: var(--acento); }
+.campo-valor:focus-within .valor.zerado { color: var(--tinta-fraca); }
+.valor .sep { color: var(--tinta-fraca); }
+/* Enquanto está em zero o valor recua, pra não parecer um dado preenchido. */
+.valor.zerado { color: var(--tinta-fraca); }
+
+/* ── contexto: tipo e data ──────────────────────────────────────────────── */
+
+.contexto {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--e3);
+  padding-bottom: var(--e3);
+}
+
+/* Elo: ação discreta, de texto. Automático não quer dizer travado
+   (design/03-alimentacao.md §1) — tudo aqui é editável e nada é obrigatório. */
+.elo {
+  min-height: 34px;
+  padding: var(--e1) var(--e2);
+  border: 0;
+  background: none;
+  color: var(--tinta-fraca);
+  font-size: var(--t-apoio);
+  text-decoration: underline;
+  text-decoration-color: var(--borda-forte);
+  text-underline-offset: 4px;
+}
+.elo:hover { color: var(--tinta); }
+
+/* ── categorias ─────────────────────────────────────────────────────────── */
+
+/* A zona que cede espaço quando a tela é pequena. Rola por dentro, sem levar o
+   teclado junto. */
+/* Altura natural; só encolhe e rola quando a tela aperta. O espaço que sobra
+   vai para antes do rodapé, não para o meio da lista. */
+.categorias {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-auto-rows: min-content;
+  gap: var(--e2);
+  padding-bottom: var(--e1);
+}
+.categorias button {
+  min-height: var(--alvo);
+  font-size: var(--t-apoio);
+  text-align: left;
+  padding: var(--e2) var(--e3);
+}
+.categorias button[aria-pressed="true"] {
+  border-color: var(--acento);
+  background: var(--acento-fundo);
+  font-weight: 600;
+}
+
+.todas {
+  flex: none;
+  align-self: center;
+  margin-top: var(--e2);
+}
+
+/* ── zona do polegar ────────────────────────────────────────────────────── */
+
+.linha-conta {
+  flex: none;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--e2);
+  margin-top: auto;      /* empurra tudo daqui pra baixo */
+  padding: var(--e6) 0 var(--e2);
+}
+
+.acoes {
+  flex: none;
+  display: flex;
+  gap: var(--e2);
+  /* Respeita a barra de gestos do celular. */
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+.acoes button {
+  flex: 1;
+  min-height: 52px;
+}
+
+/* ── data exata (modo correção) ─────────────────────────────────────────── */
+/* Na captura a data é o passo rápido hoje · ontem; na correção é o dia certo,
+   escolhido no calendário do próprio aparelho. */
+
+.data-exata {
+  font: inherit;
+  font-size: var(--t-apoio);
+  min-height: 34px;
+  padding: var(--e1) var(--e2);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-controle);
+  background: var(--superficie);
+  color: var(--tinta);
+}
+
+/* ── zona de perigo ─────────────────────────────────────────────────────── */
+/* Apagar fica longe do botão de salvar, discreto até ser chamado, e a pergunta
+   vem antes — não há "desfazer" depois (design/03-alimentacao.md §3.3). */
+
+.zona-perigo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--e2);
+  margin: var(--e3) 0 0;
+  padding-top: var(--e3);
+  border-top: 1px solid var(--borda);
+  font-size: var(--t-apoio);
+}
+/* `display` de folha de estilo vence o atributo `hidden` do HTML — sem esta
+   linha o "apagar" apareceria na captura, que é justamente onde ele não pode
+   estar (D11). Mesma armadilha da faixa de desfazer, em captura.css. */
+.zona-perigo[hidden] { display: none; }
+.zona-perigo .pergunta { color: var(--tinta-fraca); }
+.zona-perigo button { min-height: 34px; }
+.zona-perigo button.perigo { border-color: var(--alerta); }
+
+/* ── etiquetas (modo correção) ──────────────────────────────────────────── */
+/* A etiqueta é refino, não captura: ela só aparece quando se corrige um
+   lançamento (design/03-alimentacao.md §2). */
+
+.etiquetas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--e2);
+  padding-top: var(--e3);
+}
+.etiquetas[hidden] { display: none; }
+.etiquetas .chips { display: flex; flex-wrap: wrap; gap: var(--e1); }
+.etiquetas .chips button {
+  min-height: 30px;
+  padding: var(--e1) var(--e2);
+  border-radius: var(--raio-pilula);
+  font-size: var(--t-miudo);
+}
+.etiquetas .chips button[aria-pressed="true"] {
+  border-color: var(--acento);
+  background: var(--acento-fundo);
+  font-weight: 600;
+}
+.etiquetas .vazio { color: var(--tinta-fraca); font-size: var(--t-miudo); }
+
+input[type="text"].nova-etiqueta {
+  flex: 1 1 120px;
+  min-width: 110px;
+  min-height: 30px;
+  padding: var(--e1) var(--e2);
+  font-size: var(--t-miudo);
+}
+
+/* ── transferência ──────────────────────────────────────────────────────── */
+
+.contexto-transferencia { justify-content: flex-end; }
+
+.rota {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--e2);
+  padding-top: var(--e3);
+}
+.rota .perna { display: flex; flex-direction: column; gap: var(--e1); min-width: 0; flex: 1; }
+.rota .perna select {
+  font: inherit;
+  font-size: var(--t-apoio);
+  width: 100%;
+  min-height: var(--alvo);
+  padding: var(--e2) var(--e3);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-controle);
+  background: var(--superficie);
+  color: var(--tinta);
+}
+.rota .seta { padding-bottom: var(--e3); color: var(--tinta-fraca); }
+
+.recado {
+  margin: var(--e2) 0 0;
+  color: var(--atencao);
+  font-size: var(--t-apoio);
+}
+.recado[hidden] { display: none; }

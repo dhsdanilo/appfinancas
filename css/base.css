@@ -1,0 +1,314 @@
+/* Fundações visuais. Os valores vêm de design/09-identidade.md — este arquivo é
+   aquele documento virando pixel, e nada aqui deveria existir sem estar lá.
+
+   Tudo vem de dentro do app: nenhuma fonte, ícone ou folha de fora
+   (design/07-seguranca.md §3, zero requisição externa). */
+
+:root {
+  color-scheme: light dark;
+
+  /* ── cor: papel ──────────────────────────────────────────────────────── */
+  --fundo: #f6f4ef;
+  --superficie: #ffffff;
+  --borda: #e4dfd6;
+  --borda-forte: #cdc5b8;
+  --tinta: #1b211d;
+  --tinta-fraca: #6d736e;
+  --acento: #1f5c4d;
+  --acento-fundo: #1f5c4d14;
+  --alerta: #9b2c2c;
+  --alerta-fundo: #9b2c2c14;
+  --positivo: #1f6b3a;
+  --atencao: #8a5a12;
+
+  /* ── tipografia ──────────────────────────────────────────────────────── */
+  --fonte: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
+
+  --t-miudo: 0.75rem;
+  --t-apoio: 0.875rem;
+  --t-corpo: 1rem;
+  --t-secao: 1.125rem;
+  --t-tela: 1.5rem;
+  --t-destaque: 2.5rem;
+  --t-digitando: 3.25rem;
+
+  /* ── espaço: escala de 4 ─────────────────────────────────────────────── */
+  --e1: 4px;
+  --e2: 8px;
+  --e3: 12px;
+  --e4: 16px;
+  --e6: 24px;
+  --e8: 32px;
+  --e12: 48px;
+
+  --alvo: 44px;
+  --leitura: 760px;
+
+  /* ── superfície ──────────────────────────────────────────────────────── */
+  --raio-controle: 8px;
+  --raio-cartao: 12px;
+  --raio-pilula: 999px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fundo: #121613;
+    --superficie: #1a1f1c;
+    --borda: #2b332e;
+    --borda-forte: #3d4842;
+    --tinta: #e8ebe8;
+    --tinta-fraca: #98a09a;
+    --acento: #6fcfae;
+    --acento-fundo: #6fcfae1a;
+    --alerta: #f08c8c;
+    --alerta-fundo: #f08c8c1a;
+    --positivo: #5fc98a;
+    --atencao: #e0b263;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--fundo);
+  color: var(--tinta);
+  font: var(--t-corpo)/1.5 var(--fonte);
+}
+
+/* ── dinheiro ───────────────────────────────────────────────────────────── */
+/* O componente mais importante do app: dinheiro aparece em toda tela.
+   design/09-identidade.md §4 */
+
+.dinheiro {
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: "tnum" 1;
+  white-space: nowrap; /* valor nunca parte no meio da linha */
+}
+
+.dinheiro .moeda {
+  font-size: 0.78em;
+  color: var(--tinta-fraca);
+  margin-right: 0.15em;
+}
+
+.dinheiro .centavos {
+  font-size: 0.7em;
+  color: var(--tinta-fraca);
+  vertical-align: 0.35em;
+}
+
+.dinheiro .til {
+  font-size: 0.85em;
+  color: var(--tinta-fraca);
+  margin-right: 0.05em;
+}
+
+.dinheiro.destaque {
+  font-size: var(--t-destaque);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+/* ── controles ──────────────────────────────────────────────────────────── */
+
+button,
+.botao {
+  font: inherit;
+  font-size: var(--t-apoio);
+  padding: var(--e2) var(--e3);
+  min-height: var(--alvo);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-controle);
+  background: var(--superficie);
+  color: var(--tinta);
+  cursor: pointer;
+  transition: border-color 120ms, background-color 120ms, opacity 120ms;
+}
+button:hover { border-color: var(--borda-forte); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button.perigo { color: var(--alerta); }
+
+button.principal {
+  background: var(--acento);
+  border-color: var(--acento);
+  color: var(--fundo);
+  font-size: var(--t-corpo);
+  font-weight: 600;
+}
+@media (prefers-color-scheme: dark) {
+  button.principal { color: #10211c; }
+}
+
+input[type="text"] {
+  font: inherit;
+  font-size: var(--t-apoio);
+  padding: var(--e2) var(--e3);
+  min-height: var(--alvo);
+  min-width: 200px;
+  flex: 1 1 200px;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-controle);
+  background: var(--superficie);
+  color: var(--tinta);
+}
+
+:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 2px;
+}
+
+/* ── pílulas e chips ────────────────────────────────────────────────────── */
+
+.pilulas {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  background: var(--fundo);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-pilula);
+}
+.pilulas button {
+  min-height: 34px;
+  padding: 0 var(--e3);
+  border: 0;
+  border-radius: var(--raio-pilula);
+  background: transparent;
+  color: var(--tinta-fraca);
+  font-size: var(--t-apoio);
+}
+.pilulas button[aria-pressed="true"] {
+  background: var(--superficie);
+  color: var(--tinta);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px var(--borda);
+}
+
+/* ── rótulo miúdo (cabeçalho de faixa) ──────────────────────────────────── */
+
+.miudo {
+  font-size: var(--t-miudo);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--tinta-fraca);
+}
+
+/* ── estados de linha (design/09 §7) ────────────────────────────────────── */
+
+.previsto { opacity: 0.62; border-left: 2px dashed var(--borda-forte); padding-left: var(--e2); }
+.vencido {
+  background: var(--alerta-fundo);
+  border-left: 3px solid var(--alerta);
+  padding-left: var(--e2);
+}
+
+/* ── movimento: quase nenhum ────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+
+/* ── páginas de documentação/bancada ────────────────────────────────────── */
+
+/* 760px é medida de TEXTO (--leitura). As telas do andar de cima são listas e
+   tabelas de trabalho, e usam a mesma moldura mais larga — trocar de tela não
+   pode mudar o chão debaixo do pé. */
+.pagina { max-width: 1000px; margin: 0 auto; padding: 0 var(--e4) var(--e12); }
+
+/* Onde o conteúdo é texto corrido, a medida de leitura continua valendo. */
+.pagina .nota, .pagina .dica, .pagina .sub { max-width: var(--leitura); }
+
+.topo { padding: var(--e8) 0 var(--e3); }
+.topo h1 { margin: 0; font-size: var(--t-tela); font-weight: 600; letter-spacing: -0.01em; }
+.topo .sub { margin: var(--e1) 0 0; color: var(--tinta-fraca); font-size: var(--t-apoio); }
+
+.cartao {
+  background: var(--superficie);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-cartao);
+  padding: var(--e4);
+  margin: var(--e4) 0;
+}
+.cartao h2 { margin: 0 0 var(--e3); font-size: var(--t-secao); font-weight: 600; }
+
+.nota { margin: 0 0 var(--e3); color: var(--tinta-fraca); font-size: var(--t-apoio); }
+
+.fatos { display: grid; grid-template-columns: auto 1fr; gap: var(--e1) var(--e3); margin: 0; }
+.fatos dt { color: var(--tinta-fraca); font-size: var(--t-apoio); }
+.fatos dd { margin: 0; font-family: var(--mono); font-size: var(--t-apoio); overflow-wrap: anywhere; }
+
+.botoes { display: flex; flex-wrap: wrap; gap: var(--e2); align-items: center; }
+
+.estado { margin-top: var(--e3); }
+.estado:empty { display: none; }
+.estado h3 { margin: var(--e3) 0 var(--e1); font-size: var(--t-miudo); text-transform: uppercase;
+             letter-spacing: 0.06em; color: var(--tinta-fraca); }
+.estado ul { margin: 0; padding-left: 18px; font-size: var(--t-apoio); }
+.estado .vazio { color: var(--tinta-fraca); font-size: var(--t-apoio); }
+.arquivada { color: var(--tinta-fraca); }
+
+.placar { margin: var(--e3) 0 0; font-weight: 600; }
+.placar.ok { color: var(--positivo); }
+.placar.falhou { color: var(--alerta); }
+
+.resultados, .eventos { margin: var(--e2) 0 0; padding-left: 20px; font-size: var(--t-apoio); }
+.resultados li { margin: 3px 0; }
+.resultados .grupo { color: var(--tinta-fraca); }
+.resultados .passou::marker { color: var(--positivo); }
+.resultados .falhou::marker { color: var(--alerta); }
+.resultados .falhou { color: var(--alerta); }
+.resultados pre {
+  margin: var(--e1) 0 var(--e2); padding: var(--e2) var(--e3);
+  background: var(--fundo); border: 1px solid var(--borda); border-radius: var(--raio-controle);
+  font-family: var(--mono); font-size: var(--t-miudo); white-space: pre-wrap; color: var(--tinta);
+}
+
+.eventos { font-family: var(--mono); font-size: var(--t-miudo); }
+.eventos li { margin: 2px 0; overflow-wrap: anywhere; }
+
+.aviso {
+  margin: var(--e3) 0 0; padding: var(--e2) var(--e3);
+  border: 1px solid var(--atencao); border-radius: var(--raio-controle);
+  color: var(--atencao); font-size: var(--t-apoio);
+}
+
+code { font-family: var(--mono); font-size: 0.9em; }
+
+/* ── navegação do andar de cima ─────────────────────────────────────────── */
+/* Um elo de texto no meio da frase não é caminho: as seções ficam no topo, à
+   direita, do mesmo jeito em toda tela. No celular elas descem para a linha de
+   baixo em vez de espremer o título. (O térreo não tem isto — D11.) */
+
+.topo {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--e3) var(--e4);
+}
+.topo .identidade { min-width: 0; }
+
+.navegacao { display: flex; flex-wrap: wrap; gap: var(--e1); padding-top: var(--e1); }
+.navegacao a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: var(--e2) var(--e3);
+  border: 1px solid transparent;
+  border-radius: var(--raio-controle);
+  color: var(--tinta-fraca);
+  font-size: var(--t-apoio);
+  text-decoration: none;
+}
+.navegacao a:hover { color: var(--tinta); border-color: var(--borda); }
+.navegacao a[aria-current="page"] {
+  color: var(--tinta);
+  font-weight: 600;
+  background: var(--acento-fundo);
+  border-color: var(--borda);
+}

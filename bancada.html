@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bancada — App Finanças</title>
+<meta name="description" content="Controle financeiro familiar, local e sincronizado.">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#16302b">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/bancada.css">
+</head>
+<body class="pagina">
+
+<header class="topo">
+  <div class="identidade">
+    <h1>Bancada</h1>
+    <p class="sub">Onde a estrutura do app se constrói.</p>
+  </div>
+  <nav class="navegacao" aria-label="Seções do app">
+    <a href="extrato.html">Extrato</a>
+    <a href="bancada.html" aria-current="page">Bancada</a>
+    <a href="verificacao.html">Verificação</a>
+  </nav>
+</header>
+
+<main>
+
+<p class="aviso" id="aviso" hidden></p>
+
+<!-- Três listas, três abas. Pessoas e aparelho não têm tela: o dono é um campo
+     da conta, e o aparelho se registra sozinho (quem precisa vê-lo é a página
+     de verificação). -->
+<div class="abas" role="tablist" aria-label="Seções da bancada">
+  <button type="button" role="tab" id="aba-contas" data-aba="contas"
+          aria-controls="painel-contas" aria-selected="true">
+    Contas <span class="contador" data-contador="contas"></span>
+  </button>
+  <button type="button" role="tab" id="aba-categorias" data-aba="categorias"
+          aria-controls="painel-categorias" aria-selected="false" tabindex="-1">
+    Categorias <span class="contador" data-contador="categorias"></span>
+  </button>
+  <button type="button" role="tab" id="aba-etiquetas" data-aba="etiquetas"
+          aria-controls="painel-etiquetas" aria-selected="false" tabindex="-1">
+    Etiquetas <span class="contador" data-contador="etiquetas"></span>
+  </button>
+</div>
+
+<!-- ── contas ─────────────────────────────────────────────────────────── -->
+<section class="cartao painel" role="tabpanel" id="painel-contas"
+         aria-labelledby="aba-contas" data-painel="contas">
+
+  <p class="titulo-bloco">nova conta</p>
+
+  <form class="formulario" id="f-conta">
+    <div class="campo largo">
+      <label for="conta-nome">Nome</label>
+      <input type="text" id="conta-nome" name="nome" autocomplete="off"
+             placeholder="Conta do dia a dia">
+    </div>
+    <div class="campo">
+      <label for="conta-tipo">Tipo</label>
+      <select id="conta-tipo" name="tipo">
+        <option value="corrente">conta corrente</option>
+        <option value="cartao">cartão de crédito</option>
+        <option value="especie">dinheiro em espécie</option>
+        <option value="investimento">investimento</option>
+        <option value="divida">dívida</option>
+        <option value="folha">folha</option>
+      </select>
+    </div>
+    <div class="campo">
+      <label for="conta-dono">Dono</label>
+      <input type="text" id="conta-dono" name="dono" autocomplete="off" list="donos"
+             placeholder="de quem é">
+      <datalist id="donos"></datalist>
+    </div>
+    <div class="campo">
+      <label for="conta-saldo">Saldo de hoje</label>
+      <input type="text" id="conta-saldo" name="saldo" inputmode="decimal"
+             autocomplete="off" placeholder="0,00">
+    </div>
+    <div class="campo">
+      <label for="conta-data">Conferido em</label>
+      <input type="date" id="conta-data" name="data">
+    </div>
+
+    <div class="so-cartao" id="campos-cartao" hidden>
+      <div class="campo">
+        <label for="conta-limite">Limite</label>
+        <input type="text" id="conta-limite" name="limite" inputmode="decimal"
+               autocomplete="off" placeholder="0,00">
+      </div>
+      <div class="campo estreito">
+        <label for="conta-fechamento">Fecha dia</label>
+        <input type="number" id="conta-fechamento" name="fechamento" min="1" max="31">
+      </div>
+      <div class="campo estreito">
+        <label for="conta-vencimento">Vence dia</label>
+        <input type="number" id="conta-vencimento" name="vencimento" min="1" max="31">
+      </div>
+    </div>
+
+    <div class="campo acao">
+      <button type="submit" class="principal">Criar conta</button>
+    </div>
+
+    <p class="dica">
+      <strong>O saldo é o de hoje</strong>, não o de quando a conta foi aberta no banco: é o
+      marco zero, e dali pra frente o app cuida sozinho.
+    </p>
+  </form>
+
+  <ul class="itens" id="lista-contas"></ul>
+  <p class="proximo" id="proximo-contas" hidden></p>
+</section>
+
+<!-- ── categorias ─────────────────────────────────────────────────────── -->
+<section class="cartao painel" role="tabpanel" id="painel-categorias"
+         aria-labelledby="aba-categorias" data-painel="categorias" hidden>
+
+  <p class="titulo-bloco">nova categoria</p>
+
+  <form class="formulario" id="f-categoria">
+    <div class="campo largo">
+      <label for="categoria-nome">Nome</label>
+      <input type="text" id="categoria-nome" name="nome" autocomplete="off"
+             placeholder="Supermercado">
+    </div>
+    <div class="campo">
+      <span class="rotulo">Natureza</span>
+      <div class="pilulas" role="group" aria-label="Natureza da categoria">
+        <button type="button" data-natureza="despesa" aria-pressed="true">despesa</button>
+        <button type="button" data-natureza="receita" aria-pressed="false">receita</button>
+      </div>
+      <input type="hidden" name="natureza" value="despesa">
+    </div>
+    <div class="campo acao">
+      <button type="submit" class="principal">Criar categoria</button>
+    </div>
+
+    <p class="dica">
+      A categoria responde <em>o que é</em>. <em>De quem é</em> — carro, casa, cachorro — é
+      etiqueta, porque atravessa categorias. E loja é detalhe, não categoria.
+    </p>
+  </form>
+
+  <ul class="itens simples" id="lista-categorias"></ul>
+  <p class="proximo" id="proximo-categorias" hidden></p>
+</section>
+
+<!-- ── etiquetas ──────────────────────────────────────────────────────── -->
+<section class="cartao painel" role="tabpanel" id="painel-etiquetas"
+         aria-labelledby="aba-etiquetas" data-painel="etiquetas" hidden>
+
+  <p class="titulo-bloco">nova etiqueta</p>
+
+  <form class="formulario" id="f-etiqueta">
+    <div class="campo largo">
+      <label for="etiqueta-nome">Nome</label>
+      <input type="text" id="etiqueta-nome" name="nome" autocomplete="off" placeholder="carro">
+    </div>
+    <div class="campo acao">
+      <button type="submit" class="principal">Criar etiqueta</button>
+    </div>
+
+    <p class="dica">
+      O objeto permanente da vida de vocês, que aparece em várias categorias. A pergunta que
+      resolve a dúvida: <em>isso pode acontecer em mais de uma categoria?</em> Se sim, é
+      etiqueta. Aplicam-se corrigindo um lançamento no extrato.
+    </p>
+  </form>
+
+  <ul class="itens simples" id="lista-etiquetas"></ul>
+</section>
+
+</main>
+
+<script type="module" src="js/bancada.js"></script>
+</body>
+</html>

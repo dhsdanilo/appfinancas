@@ -1,0 +1,122 @@
+/* Extrato. Valores de design/09-identidade.md. */
+
+.saldos { display: grid; gap: var(--e2); }
+.saldo {
+  display: flex; align-items: baseline; gap: var(--e3);
+  padding: var(--e2) 0; border-bottom: 1px solid var(--borda);
+}
+.saldo:last-child { border-bottom: 0; }
+.saldo .miudo { flex: 1; }
+.saldo .dinheiro { font-weight: 600; }
+.saldo .tipo { color: var(--tinta-fraca); font-size: var(--t-miudo); min-width: 84px; text-align: right; }
+
+.lista { list-style: none; margin: 0; padding: 0; }
+.linha {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  align-items: baseline;
+  gap: var(--e3);
+  padding: var(--e2) 0;
+}
+
+.linha .quando { color: var(--tinta-fraca); font-size: var(--t-apoio); font-variant-numeric: tabular-nums; }
+.linha .oque { display: flex; flex-direction: column; min-width: 0; }
+.linha .cat { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.linha .onde { color: var(--tinta-fraca); font-size: var(--t-miudo); }
+.linha .quanto { font-weight: 600; }
+.linha .quanto.entrada { color: var(--positivo); }
+
+.vazio { color: var(--tinta-fraca); font-size: var(--t-apoio); }
+
+/* ── ações do topo ──────────────────────────────────────────────────────── */
+
+.acoes-topo { display: flex; align-items: center; gap: var(--e3); margin-top: var(--e3); }
+.atalho { color: var(--tinta-fraca); font-size: var(--t-apoio); }
+
+kbd {
+  font-family: var(--mono);
+  font-size: 0.8em;
+  padding: 1px 5px;
+  border: 1px solid var(--borda);
+  border-radius: 4px;
+  background: var(--superficie);
+}
+
+/* ── o diálogo de captura ───────────────────────────────────────────────── */
+/* No PC a captura não ocupa uma tela: é um diálogo sobre onde você já estava
+   (design/03-alimentacao.md §1). */
+
+.dialogo-captura {
+  width: min(480px, calc(100vw - 2 * var(--e4)));
+  padding: var(--e4);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-cartao);
+  background: var(--superficie);
+  color: var(--tinta);
+}
+.dialogo-captura::backdrop { background: #0006; }
+
+.cabecalho-dialogo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: var(--e2);
+  border-bottom: 1px solid var(--borda);
+}
+
+/* Dentro do diálogo o valor não precisa ser gigante: a tela não é só dele. */
+.dialogo-captura .captura { padding: 0; max-width: none; height: auto; }
+.dialogo-captura .valor { padding: var(--e4) 0 var(--e3); font-size: var(--t-destaque); }
+.dialogo-captura .entrada-valor { font-size: var(--t-destaque); }
+.dialogo-captura .categorias { overflow: visible; }
+.dialogo-captura .linha-conta { margin-top: 0; padding-top: var(--e4); }
+
+.atalhos {
+  margin: var(--e3) 0 0;
+  color: var(--tinta-fraca);
+  font-size: var(--t-miudo);
+  text-align: center;
+}
+
+/* ── a linha é um botão: é por ela que se corrige (design/03 §9) ─────────── */
+/* O que era <li> virou <button> dentro de <li>, então a moldura da linha passa
+   para o item da lista e o botão precisa perder tudo que base.css dá a botão. */
+
+.lista > li { border-bottom: 1px solid var(--borda); }
+.lista > li:last-child { border-bottom: 0; }
+.lista > li.vazio { border-bottom: 0; }
+
+button.linha {
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: var(--raio-controle);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+button.linha:hover { background: var(--acento-fundo); border-color: transparent; }
+
+/* As decorações de estado (base.css) perderiam para as regras acima, que vêm
+   depois — então voltam aqui, e com especificidade maior. */
+button.linha.previsto { border-left: 2px dashed var(--borda-forte); }
+button.linha.vencido { border-left: 3px solid var(--alerta); background: var(--alerta-fundo); }
+
+/* Transferência não é gasto nem ganho: o valor não leva sinal nem cor de
+   entrada — ela só mexe em saldo (design/03 §3.1). */
+.linha .quanto.neutro { color: var(--tinta-fraca); font-weight: 500; }
+
+.linha .etiqueta {
+  margin-left: var(--e2);
+  padding: 0 var(--e2);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-pilula);
+  color: var(--tinta-fraca);
+  font-size: var(--t-miudo);
+}
+
+/* As ações da tela ficam abaixo do cabeçalho, não dentro dele: o topo é
+   navegação e identidade, e misturar os dois faz o olho procurar duas vezes. */
+.barra-acoes { padding-top: var(--e2); }

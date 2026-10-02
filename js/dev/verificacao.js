@@ -1,0 +1,713 @@
+// Suíte de verificação da fundação.
+//
+// Roda no navegador, contra um banco PRÓPRIO ('appfinancas-teste'), porque
+// apaga tudo que toca. O banco de verdade não é encostado.
+//
+// O teste mais importante daqui é "cache == recálculo do zero": se esses dois
+// resultados divergirem, o estado consolidado está mentindo, e todo o resto do
+// app passa a mentir junto.
+
+import * as dinheiro from '../core/dinheiro.js';
+import * as db from '../core/db.js';
+import * as log from '../core/log.js';
+import * as estado from '../core/estado.js';
+import { promover, ErroDeFormato } from '../core/formato.js';
+import * as lanc from '../core/lancamentos.js';
+import * as listas from '../core/listas.js';
+import { VERSAO_ESTADO } from '../core/redutores.js';
+
+const BANCO_DE_TESTE = 'appfinancas-teste';
+
+// ── mini arcabouço ────────────────────────────────────────────────────────
+
+class Falha extends Error {}
+
+function igual(obtido, esperado, nota = '') {
+  const a = JSON.stringify(obtido);
+  const b = JSON.stringify(esperado);
+  if (a !== b) throw new Falha(`${nota}\n  obtido:   ${a}\n  esperado: ${b}`);
+}
+
+function verdade(valor, nota = '') {
+  if (!valor) throw new Falha(nota || 'esperava verdadeiro');
+}
+
+async function lanca(fn, Tipo, nota = '') {
+  try {
+    await fn();
+  } catch (e) {
+    if (Tipo && !(e instanceof Tipo)) {
+      throw new Falha(`${nota}: lançou ${e.name}, esperava ${Tipo.name}`);
+    }
+    return e;
+  }
+  throw new Falha(nota || 'esperava que lançasse, e não lançou');
+}
+
+// ── casos ─────────────────────────────────────────────────────────────────
+
+const casos = [];
+const caso = (grupo, nome, fn) => casos.push({ grupo, nome, fn });
+
+// dinheiro ─────────────────────────────────────────────────────────────────
+
+caso('dinheiro', 'entrada estilo calculadora', () => {
+  let v = 0;
+  for (const d of '12740') v = dinheiro.acrescentarDigito(v, d);
+  igual(v, 12740, 'digitar 1-2-7-4-0 deve dar R$ 127,40');
+  igual(dinheiro.removerDigito(v), 1274);
+  igual(dinheiro.deDigitos('R$ 1.274,0'), 12740, 'ignora tudo que não é dígito');
+});
+
+caso('dinheiro', 'texto humano para centavos', () => {
+  igual(dinheiro.deTexto('1.234,56'), 123456);
+  igual(dinheiro.deTexto('1234.56'), 123456);
+  igual(dinheiro.deTexto('1234'), 123400, 'sem decimal = reais inteiros');
+  igual(dinheiro.deTexto('12,5'), 1250, 'um decimal vira dois');
+  igual(dinheiro.deTexto('-5,55'), -555);
+  igual(dinheiro.deTexto(''), 0);
+});
+
+caso('dinheiro', 'sempre vírgula, dois dígitos e milhar', () => {
+  igual(dinheiro.formatar(184250), 'R$ 1.842,50');
+  igual(dinheiro.formatar(100), 'R$ 1,00', 'nunca "R$ 1"');
+  igual(dinheiro.formatar(5), 'R$ 0,05');
+  igual(dinheiro.formatar(-3060), '−R$ 30,60', 'negativo com sinal explícito');
+  igual(dinheiro.formatar(100000000), 'R$ 1.000.000,00');
+  igual(dinheiro.formatarEstimado(28700), '~R$ 287,00', 'estimativa leva ~');
+});
+
+caso('dinheiro', 'partes separadas para a tela', () => {
+  igual(dinheiro.partes(184250), {
+    negativo: false, sinal: '', reais: '1.842', centavos: '50',
+  });
+  igual(dinheiro.partes(5).centavos, '05', 'centavos sempre com dois dígitos');
+});
+
+caso('dinheiro', 'rateio nunca perde nem inventa centavo', () => {
+  // O caso clássico: dividir 100 por 3.
+  const r = dinheiro.ratear(100, [1, 1, 1]);
+  igual(dinheiro.somar(r), 100, 'a soma tem de ser exatamente o total');
+  igual(r, [34, 33, 33]);
+
+  // Pesos desiguais, total ímpar, muitos participantes.
+  for (const total of [1, 7, 101, 99999, 1234567]) {
+    for (const pesos of [[1, 2], [3, 3, 3], [1, 1, 1, 1, 1, 1, 1], [8400, 1200, 3200, 4800]]) {
+      const parts = dinheiro.ratear(total, pesos);
+      igual(dinheiro.somar(parts), total, `ratear(${total}, [${pesos}]) deve fechar`);
+      verdade(parts.every((p) => p >= 0), 'nenhuma parte pode ser negativa');
+    }
+  }
+  igual(dinheiro.ratear(500, [0, 0]), [0, 0], 'pesos zerados não explodem');
+});
+
+caso('dinheiro', 'zero não é lançável', () => {
+  verdade(!dinheiro.valorLancavel(0));
+  verdade(!dinheiro.valorLancavel(-100));
+  verdade(!dinheiro.valorLancavel(10.5), 'centavo fracionário não existe');
+  verdade(dinheiro.valorLancavel(1));
+});
+
+// formato ──────────────────────────────────────────────────────────────────
+
+caso('formato', 'evento na versão atual passa intacto', () => {
+  const ev = { id: 'ev_1', v: 1, tipo: 'teste', dados: { a: 1 } };
+  igual(promover(ev, { ate: 1 }), ev);
+});
+
+caso('formato', 'promove em cadeia, 1 → 2 → 3', () => {
+  const tabela = {
+    1: (ev) => ({ ...ev, v: 2, dados: { ...ev.dados, veioDa1: true } }),
+    2: (ev) => ({ ...ev, v: 3, dados: { ...ev.dados, veioDa2: true } }),
+  };
+  const fora = promover({ id: 'ev_1', v: 1, dados: {} }, { migracoes: tabela, ate: 3 });
+  igual(fora.v, 3);
+  igual(fora.dados, { veioDa1: true, veioDa2: true }, 'as duas migrações rodaram, em ordem');
+});
+
+caso('formato', 'evento mais novo que o app é erro claro, não chute', async () => {
+  const e = await lanca(
+    () => promover({ id: 'ev_1', v: 9, dados: {} }, { ate: 1 }),
+    ErroDeFormato,
+    'formato futuro'
+  );
+  verdade(/formato 9/.test(e.message), 'a mensagem tem de dizer qual versão');
+});
+
+caso('formato', 'migração faltando é erro, não silêncio', async () => {
+  await lanca(
+    () => promover({ id: 'ev_1', v: 1, dados: {} }, { migracoes: {}, ate: 2 }),
+    ErroDeFormato,
+    'sem a migração 1→2'
+  );
+});
+
+// log ──────────────────────────────────────────────────────────────────────
+
+caso('log', 'sequência e relógio lógico só crescem', async () => {
+  await limpar();
+  await log.registrarAparelho('PC de teste');
+
+  const a = await log.registrar('pessoa.criada', { id: 'p1', nome: 'Maria' });
+  const b = await log.registrar('pessoa.criada', { id: 'p2', nome: 'João' });
+
+  igual(a.seq, 1);
+  igual(b.seq, 2, 'seq do aparelho incrementa');
+  verdade(b.lc > a.lc, 'relógio lógico cresce');
+  igual(a.ap, 'pc-de-teste', 'id do aparelho vem do nome, em slug');
+  igual(a.v, 1, 'todo evento carrega a versão do formato');
+});
+
+caso('log', 'ordem canônica é (lc, aparelho), não horário', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+
+  // Eventos de outro aparelho, com horário EMBARALHADO de propósito:
+  // relógio de celular erra, e a ordem não pode depender dele.
+  await log.absorver([
+    { id: 'x1', ap: 'celular', seq: 1, lc: 3, t: '2030-01-01T00:00:00Z', v: 1, tipo: 'pessoa.criada', dados: { id: 'p3', nome: 'C' } },
+    { id: 'x2', ap: 'celular', seq: 2, lc: 1, t: '2020-01-01T00:00:00Z', v: 1, tipo: 'pessoa.criada', dados: { id: 'p1', nome: 'A' } },
+    { id: 'x3', ap: 'celular', seq: 3, lc: 2, t: '2025-01-01T00:00:00Z', v: 1, tipo: 'pessoa.criada', dados: { id: 'p2', nome: 'B' } },
+  ]);
+
+  const lidos = await log.ler();
+  igual(lidos.map((e) => e.lc), [1, 2, 3], 'ordena por relógio lógico');
+  igual(lidos.map((e) => e.dados.nome), ['A', 'B', 'C']);
+});
+
+caso('log', 'absorver o mesmo evento duas vezes não muda nada', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const lote = [
+    { id: 'y1', ap: 'outro', seq: 1, lc: 1, t: '2026-01-01T00:00:00Z', v: 1, tipo: 'pessoa.criada', dados: { id: 'p1', nome: 'A' } },
+  ];
+
+  const primeira = await log.absorver(lote);
+  const segunda = await log.absorver(lote);
+
+  igual(primeira.novos, 1);
+  igual(segunda.novos, 0, 'idempotente: sincronizar de novo é inofensivo');
+  igual(await log.contar(), 1);
+});
+
+caso('log', 'relógio local sobe ao receber de fora', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await log.absorver([
+    { id: 'z1', ap: 'outro', seq: 1, lc: 500, t: '2026-01-01T00:00:00Z', v: 1, tipo: 'pessoa.criada', dados: { id: 'p1', nome: 'A' } },
+  ]);
+  const meu = await log.registrar('pessoa.criada', { id: 'p2', nome: 'B' });
+  verdade(meu.lc > 500, `lc local devia passar de 500, veio ${meu.lc}`);
+});
+
+caso('log', 'escritas simultâneas não colidem', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+
+  // Dois toques rápidos no botão de lançar, ou um lançamento enquanto a
+  // sincronização absorve: sem fila, estes disputariam o mesmo seq e o mesmo lc.
+  const quantos = 20;
+  const eventos = await Promise.all(
+    Array.from({ length: quantos }, (_, i) =>
+      log.registrar('conta.criada', { id: `c${i}`, nome: `Conta ${i}`, tipo: 'corrente' })
+    )
+  );
+
+  igual(eventos.length, quantos);
+  igual(await log.contar(), quantos, 'nenhum evento se perdeu');
+
+  const seqs = eventos.map((e) => e.seq).sort((a, b) => a - b);
+  igual(seqs, Array.from({ length: quantos }, (_, i) => i + 1), 'seq de 1 a 20, sem repetir');
+
+  const lcs = new Set(eventos.map((e) => e.lc));
+  igual(lcs.size, quantos, 'cada evento com relógio lógico próprio');
+
+  const e = await estado.calcular();
+  igual(Object.keys(e.contas).length, quantos, 'e todas as contas existem no estado');
+});
+
+// estado ───────────────────────────────────────────────────────────────────
+
+caso('estado', 'eventos viram estado', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+
+  await estado.aplicarEvento('pessoa.criada', { id: 'p1', nome: 'Maria' });
+  await estado.aplicarEvento('conta.criada', {
+    id: 'c1', nome: 'Banco', tipo: 'corrente', titular: 'p1',
+    saldoInicial: 491050, dataInicial: '2026-10-01',
+  });
+  await estado.aplicarEvento('conta.alterada', { id: 'c1', nome: 'Banco da Maria' });
+
+  const e = await estado.calcular();
+  igual(e.pessoas.p1.nome, 'Maria');
+  igual(e.contas.c1.nome, 'Banco da Maria', 'a edição posterior venceu');
+  igual(e.contas.c1.saldoInicial, 491050);
+  igual(e.contas.c1.arquivada, false);
+});
+
+caso('estado', 'remoção é evento, não ausência de dado', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', { id: 'c1', nome: 'Carteira', tipo: 'especie' });
+  await estado.aplicarEvento('conta.removida', { id: 'c1' });
+
+  const e = await estado.calcular();
+  igual(e.contas.c1, undefined, 'a conta saiu do estado');
+  igual(await log.contar(), 2, 'mas os dois eventos continuam no registro');
+
+  const refeito = await estado.recalcular();
+  igual(refeito.contas.c1, undefined, 'e ela não ressuscita no recálculo');
+});
+
+caso('estado', '★ cache e recálculo do zero dão o MESMO resultado', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+
+  await estado.aplicarEvento('pessoa.criada', { id: 'p1', nome: 'Maria' });
+  await estado.aplicarEvento('pessoa.criada', { id: 'p2', nome: 'João' });
+  await estado.aplicarEvento('conta.criada', { id: 'c1', nome: 'Banco', tipo: 'corrente', titular: 'p1' });
+  await estado.aplicarEvento('conta.criada', { id: 'c2', nome: 'Tesouro', tipo: 'investimento', titular: 'p1', risco: 'baixo' });
+  await estado.aplicarEvento('conta.criada', { id: 'c3', nome: 'Carteira', tipo: 'especie', titular: 'p2' });
+  await estado.aplicarEvento('conta.arquivada', { id: 'c3', arquivada: true });
+  await estado.aplicarEvento('conta.alterada', { id: 'c2', liquidez: 1 });
+
+  const comCache = limpo(await estado.calcular());
+  const doZero = limpo(await estado.recalcular());
+
+  igual(comCache, doZero, 'se estes dois divergirem, o cache está mentindo');
+});
+
+caso('estado', 'cache é descartável: apagar e refazer não perde nada', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', { id: 'c1', nome: 'Outro banco', tipo: 'corrente' });
+
+  const antes = limpo(await estado.calcular());
+  await db.limparConsolidado();
+  estado.invalidarMemoria();
+  const depois = limpo(await estado.calcular());
+
+  igual(depois, antes);
+});
+
+caso('estado', 'sobrevive a fechar e reabrir', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', { id: 'c1', nome: 'Caixa', tipo: 'corrente', saldoInicial: 100000 });
+  const antes = limpo(await estado.calcular());
+
+  // Simula o app fechando: tudo que estava em memória vai embora, e a próxima
+  // leitura tem de sair exclusivamente do IndexedDB.
+  estado.invalidarMemoria();
+  db.usarBanco(BANCO_DE_TESTE);
+
+  const depois = limpo(await estado.calcular());
+  igual(depois, antes, 'o estado tem de vir inteiro do disco');
+  igual(depois.contas.c1.saldoInicial, 100000);
+});
+
+caso('estado', 'evento atrasado da sincronização força recálculo', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+
+  // Primeiro, o relógio local sobe por causa de um evento vindo de fora (lc 5).
+  await estado.absorverEventos([
+    { id: 'remoto5', ap: 'celular', seq: 1, lc: 5, t: '2026-01-01T00:00:00Z', v: 1,
+      tipo: 'conta.criada', dados: { id: 'c5', nome: 'Veio de fora', tipo: 'corrente' } },
+  ]);
+  // Agora um evento local, que nasce depois (lc 6).
+  await estado.aplicarEvento('conta.criada', { id: 'c1', nome: 'Primeira', tipo: 'corrente' });
+  const consolidado = await estado.calcular();
+  verdade(consolidado.ateLc >= 6, `ateLc devia ser 6 ou mais, veio ${consolidado.ateLc}`);
+
+  // Só então chega o atrasado, com lc 3 — menor que o já consolidado. É o caso
+  // dos dois aparelhos offline no mesmo dia: a ordem muda, o cache não serve.
+  const r = await estado.absorverEventos([
+    { id: 'atrasado', ap: 'celular', seq: 2, lc: 3, t: '2026-01-01T00:00:00Z', v: 1,
+      tipo: 'conta.criada', dados: { id: 'c0', nome: 'Chegou atrasada', tipo: 'especie' } },
+  ]);
+
+  verdade(r.recalculado, 'devia ter recalculado do zero');
+  igual(r.estado.contas.c0.nome, 'Chegou atrasada');
+  igual(r.estado.contas.c1.nome, 'Primeira', 'e o que já existia continua lá');
+
+  // E a ordem final tem de ser por lc: 3, 5, 6.
+  const ordem = (await log.ler()).map((e) => e.lc);
+  igual(ordem, [3, 5, 6], 'o atrasado entrou no lugar certo da fila');
+});
+
+caso('estado', 'tipo de evento desconhecido é contado, não derruba o app', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await log.absorver([
+    { id: 'w1', ap: 'futuro', seq: 1, lc: 1, t: '2026-01-01T00:00:00Z', v: 1,
+      tipo: 'coisa.que.ainda.nao.existe', dados: {} },
+  ]);
+
+  const e = await estado.calcular();
+  igual(e.desconhecidos['coisa.que.ainda.nao.existe'], 1, 'fica visível em vez de sumir');
+});
+
+// lançamento ───────────────────────────────────────────────────────────────
+
+caso('lançamento', 'o estado vem da confirmação e da data, nunca de um campo', () => {
+  const dia = '2027-03-15';
+  const em = (confirmado, dataCaixa) => lanc.estadoDoLancamento({ confirmado, dataCaixa }, dia);
+
+  igual(em(true, '2027-03-15'), 'realizado');
+  igual(em(true, '2027-01-02'), 'realizado', 'confirmado é realizado em qualquer data');
+  igual(em(false, '2027-04-10'), 'previsto', 'data futura e não confirmado');
+  igual(em(false, '2027-03-10'), 'vencido', 'passou da data e ninguém confirmou');
+  igual(em(false, '2027-03-15'), 'vencido', 'vence hoje e não foi confirmado');
+});
+
+caso('lançamento', 'confirmado nasce da origem e da data', () => {
+  const dia = '2027-03-15';
+  verdade(lanc.nasceConfirmado({ manual: true, dataCaixa: '2027-03-15' }, dia), 'manual hoje');
+  verdade(lanc.nasceConfirmado({ manual: true, dataCaixa: '2027-03-14' }, dia), 'manual ontem');
+  verdade(!lanc.nasceConfirmado({ manual: true, dataCaixa: '2027-03-20' }, dia),
+    'manual com data futura é compromisso, não gasto');
+  verdade(!lanc.nasceConfirmado({ manual: false, dataCaixa: '2027-03-01' }, dia),
+    'recorrência nasce não confirmada mesmo com data passada');
+});
+
+caso('lançamento', 'saldo real conta só o que se moveu', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', {
+    id: 'c1', nome: 'Banco', tipo: 'corrente', saldoInicial: 100000,
+  });
+  const comum = { tipo: 'despesa', contaId: 'c1', dataCompetencia: '2027-03-10', dataCaixa: '2027-03-10' };
+
+  await estado.aplicarEvento('lancamento.registrado', { id: 'l1', ...comum, valor: 25000, confirmado: true });
+  await estado.aplicarEvento('lancamento.registrado', { id: 'l2', ...comum, valor: 90000, confirmado: false });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'l3', tipo: 'receita', contaId: 'c1', valor: 5000,
+    dataCompetencia: '2027-03-11', dataCaixa: '2027-03-11', confirmado: true,
+  });
+
+  const e = await estado.calcular();
+  igual(lanc.saldoReal(e, 'c1'), 80000,
+    '100.000 − 25.000 + 5.000. O previsto de 90.000 NÃO entra: o saldo real é o que bate com o banco');
+});
+
+caso('lançamento', 'remover é marcar, e o saldo volta', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', { id: 'c1', nome: 'Banco', tipo: 'corrente', saldoInicial: 100000 });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'l1', tipo: 'despesa', contaId: 'c1', valor: 25000,
+    dataCompetencia: '2027-03-10', dataCaixa: '2027-03-10', confirmado: true,
+  });
+  await estado.aplicarEvento('lancamento.removido', { id: 'l1' });
+
+  const e = await estado.calcular();
+  igual(lanc.saldoReal(e, 'c1'), 100000, 'o saldo voltou');
+  igual(lanc.visiveis(e).length, 0, 'sumiu da lista');
+  verdade(e.lancamentos.l1.removido, 'mas continua no estado, marcado — senão a sincronização o ressuscita');
+});
+
+caso('lançamento', 'corrigir grava só o que mudou', () => {
+  const l = {
+    id: 'l1', tipo: 'despesa', valor: 12740, categoriaId: 'k1', contaId: 'c1',
+    dataCompetencia: '2027-03-10', dataCaixa: '2027-03-10', dataVencimento: '2027-03-10',
+    confirmado: true,
+  };
+  const pedido = { valor: 13000, tipo: 'despesa', categoriaId: 'k1', contaId: 'c2', dataCaixa: '2027-03-10' };
+
+  igual(lanc.correcao(l, pedido, '2027-03-20'), { valor: 13000, contaId: 'c2' },
+    'o evento diz "mudou o valor e a conta", não "regravou o lançamento"');
+
+  igual(lanc.correcao(l, { valor: 12740, contaId: 'c1' }, '2027-03-20'), {},
+    'abriu, olhou e fechou: não existe evento "salvou igual"');
+});
+
+caso('lançamento', 'corrigir a data move as três quando elas são a mesma', () => {
+  const comum = {
+    valor: 1000, confirmado: true,
+    dataCompetencia: '2027-03-10', dataCaixa: '2027-03-10', dataVencimento: '2027-03-10',
+  };
+  igual(lanc.correcao(comum, { dataCaixa: '2027-03-08' }, '2027-03-20'), {
+    dataCaixa: '2027-03-08', dataCompetencia: '2027-03-08', dataVencimento: '2027-03-08',
+  }, 'no lançamento comum as três datas são a mesma coisa');
+
+  // Compra de cartão: competência e vencimento vêm do ciclo, não do dedo.
+  const cartao = {
+    valor: 1000, confirmado: true,
+    dataCompetencia: '2027-03-10', dataCaixa: '2027-04-10', dataVencimento: '2027-04-10',
+  };
+  igual(lanc.correcao(cartao, { dataCaixa: '2027-04-12' }, '2027-05-01'), {
+    dataCaixa: '2027-04-12', dataVencimento: '2027-04-12',
+  }, 'a competência da compra fica onde estava');
+});
+
+caso('lançamento', 'data no futuro devolve o lançamento a previsto, e o contrário não vale', () => {
+  const dia = '2027-03-20';
+  const realizado = { valor: 1000, confirmado: true, dataCompetencia: '2027-03-10', dataCaixa: '2027-03-10', dataVencimento: '2027-03-10' };
+  const m = lanc.correcao(realizado, { dataCaixa: '2027-04-02' }, dia);
+  igual(m.confirmado, false, 'data no futuro é compromisso, não gasto (D2)');
+
+  const vencido = { valor: 1000, confirmado: false, dataCompetencia: '2027-03-10', dataCaixa: '2027-03-10', dataVencimento: '2027-03-10' };
+  igual(lanc.correcao(vencido, { valor: 1200, dataCaixa: '2027-03-11' }, dia),
+    { valor: 1200, dataCaixa: '2027-03-11', dataCompetencia: '2027-03-11', dataVencimento: '2027-03-11' },
+    'corrigir um vencido NÃO o promove a realizado: confirmar é ação própria, e o saldo não muda sozinho');
+});
+
+caso('estado', 'editar é evento novo: o passado continua lá', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', { id: 'c1', nome: 'Banco', tipo: 'corrente', saldoInicial: 100000 });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'l1', tipo: 'despesa', contaId: 'c1', valor: 25000,
+    dataCompetencia: '2027-03-10', dataCaixa: '2027-03-10', confirmado: true,
+  });
+  await estado.aplicarEvento('lancamento.alterado', { id: 'l1', valor: 13000 });
+
+  const e = await estado.calcular();
+  igual(e.lancamentos.l1.valor, 13000, 'a correção venceu');
+  igual(lanc.saldoReal(e, 'c1'), 87000, 'e o saldo seguiu a correção');
+
+  const eventos = await log.ler();
+  const registro = eventos.find((ev) => ev.tipo === 'lancamento.registrado');
+  igual(registro.dados.valor, 25000,
+    'o evento original continua dizendo 25.000 — nada reescreve o passado');
+
+  const refeito = await estado.recalcular();
+  igual(refeito.lancamentos.l1.valor, 13000, 'e o recálculo do zero chega no mesmo lugar');
+});
+
+caso('lançamento', 'transferência é uma linha e mexe nas duas contas', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', { id: 'c1', nome: 'Banco', tipo: 'corrente', saldoInicial: 100000 });
+  await estado.aplicarEvento('conta.criada', { id: 'c2', nome: 'Reserva', tipo: 'investimento', saldoInicial: 0 });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'l1', tipo: 'transferencia', valor: 50000, contaId: 'c1', contaDestinoId: 'c2',
+    categoriaId: null, dataCompetencia: '2027-03-10', dataCaixa: '2027-03-10', confirmado: true,
+  });
+
+  const e = await estado.calcular();
+  igual(lanc.saldoReal(e, 'c1'), 50000, 'saiu da origem');
+  igual(lanc.saldoReal(e, 'c2'), 50000, 'entrou no destino');
+  igual(lanc.visiveis(e).length, 1,
+    'UMA linha, nunca uma despesa numa conta mais uma receita na outra — duas dobrariam o gasto do mês');
+  igual(e.lancamentos.l1.categoriaId, null, 'sem categoria: o dinheiro não saiu da vida, trocou de bolso');
+});
+
+caso('lançamento', 'corrigir etiqueta é lista, e a ordem não é informação', () => {
+  const l = {
+    valor: 1000, confirmado: true, etiquetas: ['t1', 't2'],
+    dataCompetencia: '2027-03-10', dataCaixa: '2027-03-10', dataVencimento: '2027-03-10',
+  };
+  igual(lanc.correcao(l, { etiquetas: ['t2', 't1'] }, '2027-03-20'), {},
+    'as mesmas etiquetas em outra ordem não são uma mudança');
+  igual(lanc.correcao(l, { etiquetas: ['t1'] }, '2027-03-20'), { etiquetas: ['t1'] });
+  igual(lanc.correcao(l, { etiquetas: [] }, '2027-03-20'), { etiquetas: [] }, 'tirar todas também é mudança');
+});
+
+caso('lançamento', 'as três datas existem mesmo quando são iguais', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'l1', tipo: 'despesa', contaId: 'c1', valor: 1000, dataCompetencia: '2027-03-10',
+  });
+  const l = (await estado.calcular()).lancamentos.l1;
+  igual([l.dataCompetencia, l.dataCaixa, l.dataVencimento],
+    ['2027-03-10', '2027-03-10', '2027-03-10'],
+    'as três sempre preenchidas: é o que faz a visão dupla do cartão não ter caso especial');
+});
+
+caso('lançamento', 'categoria com grupo mostra o caminho', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('categoria.criada', { id: 'g1', nome: 'Alimentação', pai: null });
+  await estado.aplicarEvento('categoria.criada', { id: 'k1', nome: 'Supermercado', pai: 'g1' });
+  await estado.aplicarEvento('categoria.criada', { id: 'k2', nome: 'Sem grupo ainda', pai: null });
+
+  const e = await estado.calcular();
+  igual(lanc.nomeDaCategoria(e, 'k1'), 'Alimentação · Supermercado');
+  igual(lanc.nomeDaCategoria(e, 'k2'), 'Sem grupo ainda');
+});
+
+caso('estado', 'apagar um grupo não deixa as filhas penduradas', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('categoria.criada', { id: 'g1', nome: 'Alimentação', pai: null });
+  await estado.aplicarEvento('categoria.criada', { id: 'k1', nome: 'Supermercado', pai: 'g1' });
+  await estado.aplicarEvento('categoria.removida', { id: 'g1' });
+
+  const e = await estado.calcular();
+  igual(e.categorias.g1, undefined);
+  igual(e.categorias.k1.pai, null, 'a filha volta a ser categoria solta, não aponta pro vazio');
+  igual(lanc.nomeDaCategoria(e, 'k1'), 'Supermercado');
+});
+
+caso('listas', 'o uso de cada item fica à vista', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', { id: 'c1', nome: 'Banco', tipo: 'corrente' });
+  await estado.aplicarEvento('categoria.criada', { id: 'k1', nome: 'Supermercado', pai: null });
+  await estado.aplicarEvento('etiqueta.criada', { id: 't1', nome: 'carro' });
+  const comum = { tipo: 'despesa', contaId: 'c1', categoriaId: 'k1', dataCompetencia: '2027-03-10', dataCaixa: '2027-03-10' };
+
+  await estado.aplicarEvento('lancamento.registrado', { id: 'l1', ...comum, valor: 1000, etiquetas: ['t1'] });
+  await estado.aplicarEvento('lancamento.registrado', { id: 'l2', ...comum, valor: 2000 });
+  await estado.aplicarEvento('lancamento.registrado', { id: 'l3', ...comum, valor: 3000 });
+  await estado.aplicarEvento('lancamento.removido', { id: 'l3' });
+
+  const u = listas.usos(await estado.calcular());
+  igual(u.categorias.get('k1'), 2, 'o que foi apagado não conta no uso');
+  igual(u.contas.get('c1'), 2);
+  igual(u.etiquetas.get('t1'), 1);
+});
+
+caso('listas', 'o dono da conta vira pessoa, e "Maria" não é outro que "maria"', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('pessoa.criada', { id: 'p1', nome: 'Maria' });
+
+  const e = await estado.calcular();
+  igual(listas.acharPorNome(e.pessoas, 'maria')?.id, 'p1', 'caixa diferente é a mesma pessoa');
+  igual(listas.acharPorNome(e.pessoas, '  Maria  ')?.id, 'p1', 'espaço nas pontas não cria outra');
+  igual(listas.acharPorNome(e.pessoas, 'Bruna'), null);
+  igual(listas.acharPorNome(e.pessoas, '   '), null, 'nome vazio não acha ninguém');
+});
+
+caso('listas', 'item com histórico não se apaga — arquiva', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('categoria.criada', { id: 'k1', nome: 'Usada', pai: null });
+  await estado.aplicarEvento('categoria.criada', { id: 'k2', nome: 'Nunca usada', pai: null });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'l1', tipo: 'despesa', contaId: 'c1', categoriaId: 'k1', valor: 1000, dataCompetencia: '2027-03-10',
+  });
+
+  const e = await estado.calcular();
+  igual(listas.podeRemover(e, 'categorias', 'k1'), { pode: false, motivo: 'tem histórico', usos: 1 },
+    'apagar deixaria lançamento órfão');
+  igual(listas.podeRemover(e, 'categorias', 'k2'), { pode: true, usos: 0 },
+    'o que nunca foi usado sai sem cerimônia');
+});
+
+caso('listas', 'conta com saldo não se arquiva antes de resolver o saldo', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', { id: 'c1', nome: 'Banco', tipo: 'corrente', saldoInicial: 50000 });
+  await estado.aplicarEvento('conta.criada', { id: 'c2', nome: 'Vazia', tipo: 'corrente', saldoInicial: 0 });
+
+  const e = await estado.calcular();
+  igual(listas.podeArquivarConta(e, 'c1').pode, false, 'conta guardada com dinheiro dentro faz o total mentir');
+  igual(listas.podeArquivarConta(e, 'c1').saldo, 50000);
+  igual(listas.podeArquivarConta(e, 'c2').pode, true);
+
+  // Mas ela sai inteira enquanto ninguém a usou: nada fica órfão, e quem errou
+  // o cadastro na primeira semana não fica num beco sem saída.
+  igual(listas.podeRemover(e, 'contas', 'c1').pode, true);
+});
+
+caso('estado', 'etiqueta é lista própria, com a mesma manutenção das outras', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('etiqueta.criada', { id: 't1', nome: 'caro' });
+  await estado.aplicarEvento('etiqueta.alterada', { id: 't1', nome: 'carro' });
+  await estado.aplicarEvento('etiqueta.criada', { id: 't2', nome: 'casa' });
+  await estado.aplicarEvento('etiqueta.arquivada', { id: 't2' });
+
+  const e = await estado.calcular();
+  igual(e.etiquetas.t1.nome, 'carro', 'renomear vale no passado inteiro: o lançamento aponta pro id');
+  verdade(e.etiquetas.t2.arquivada, 'arquivada sai das telas de lançamento e segue nos relatórios');
+});
+
+caso('estado', 'corrigir o saldo inicial move o saldo dali pra frente', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', { id: 'c1', nome: 'Banco', tipo: 'corrente', saldoInicial: 100000 });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'l1', tipo: 'despesa', contaId: 'c1', valor: 25000,
+    dataCompetencia: '2027-03-10', dataCaixa: '2027-03-10', confirmado: true,
+  });
+  igual(lanc.saldoReal(await estado.calcular(), 'c1'), 75000);
+
+  await estado.aplicarEvento('conta.saldoInicialCorrigido', { id: 'c1', saldoInicial: 120000 });
+  igual(lanc.saldoReal(await estado.calcular(), 'c1'), 95000, 'o marco zero mudou, e todo o resto junto');
+
+  // E não é a mesma porta do renomear: alterar a conta não mexe no marco zero.
+  await estado.aplicarEvento('conta.alterada', { id: 'c1', nome: 'Banco da Maria', saldoInicial: 1 });
+  const e = await estado.calcular();
+  igual(e.contas.c1.nome, 'Banco da Maria');
+  igual(e.contas.c1.saldoInicial, 120000, 'saldo histórico só muda por evento deliberado');
+});
+
+caso('estado', 'cache de forma antiga é descartado, não usado torto', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('categoria.criada', { id: 'k1', nome: 'Supermercado', pai: null });
+
+  // Simula um cache gravado por uma versão anterior do app: forma antiga, sem
+  // os campos que os redutores de hoje produzem. Aceitá-lo faria o app quebrar
+  // num campo inexistente — foi exatamente o que aconteceu na vida real.
+  const atual = await estado.calcular();
+  await db.gravarMeta('consolidado', {
+    formato: 1,
+    formatoEstado: VERSAO_ESTADO - 1,
+    ateLc: atual.ateLc,
+    aplicados: atual.aplicados,
+    estado: { pessoas: {}, contas: {}, desconhecidos: {} }, // sem categorias nem lançamentos
+  });
+  estado.invalidarMemoria();
+
+  const e = await estado.calcular();
+  igual(e.categorias.k1?.nome, 'Supermercado', 'recalculou do zero em vez de usar a forma velha');
+  verdade(e.lancamentos !== undefined, 'e o estado veio completo');
+});
+
+// ── apoio ─────────────────────────────────────────────────────────────────
+
+async function limpar() {
+  db.usarBanco(BANCO_DE_TESTE);
+  await db.apagarTudo();
+  estado.invalidarMemoria();
+}
+
+/** Tira do estado o que muda a cada execução, pra poder comparar. */
+function limpo(e) {
+  const { aplicados, ...resto } = e;
+  void aplicados;
+  return resto;
+}
+
+// ── execução ──────────────────────────────────────────────────────────────
+
+export async function rodar({ aoAndar } = {}) {
+  const bancoReal = db.bancoEmUso();
+  const resultados = [];
+
+  for (const c of casos) {
+    const inicio = performance.now();
+    try {
+      await c.fn();
+      resultados.push({ ...c, passou: true, ms: performance.now() - inicio });
+    } catch (e) {
+      resultados.push({
+        ...c, passou: false, ms: performance.now() - inicio,
+        erro: e instanceof Falha ? e.message : `${e.name}: ${e.message}`,
+      });
+    }
+    if (aoAndar) aoAndar(resultados[resultados.length - 1], resultados.length, casos.length);
+  }
+
+  // Deixa o banco de teste fora do caminho e devolve o app ao banco de verdade.
+  db.usarBanco(BANCO_DE_TESTE);
+  await db.apagarTudo();
+  db.usarBanco(bancoReal);
+  estado.invalidarMemoria();
+
+  return {
+    resultados,
+    total: resultados.length,
+    passaram: resultados.filter((r) => r.passou).length,
+  };
+}
+
+export const quantidadeDeCasos = casos.length;

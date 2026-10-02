@@ -1,0 +1,80 @@
+/* A tela de captura — o térreo (design/03-alimentacao.md §1, D11).
+   Valores de design/09-identidade.md. */
+
+.terreo {
+  height: 100svh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.previa {
+  margin: 0;
+  padding: var(--e2) var(--e4);
+  background: var(--atencao);
+  color: var(--fundo);
+  font-size: var(--t-miudo);
+  text-align: center;
+}
+.previa a { color: inherit; }
+
+/* Três zonas: o valor em cima, as categorias rolando no meio, e o teclado com o
+   botão de lançar fixos embaixo. A ação principal nunca exige rolagem — é a
+   regra da zona do polegar (design/09-identidade.md §5), e sem isto o "Lançar"
+   cai fora da tela num celular comum. */
+.captura {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 440px;
+  margin: 0 auto;
+  padding: 0 var(--e4) var(--e4);
+}
+
+/* ── PC ─────────────────────────────────────────────────────────────────── */
+/* Celular e PC usam o MESMO mecanismo de entrada: o teclado do aparelho. Aqui
+   só muda a respiração, porque sobra tela. */
+
+@media (min-width: 720px) and (pointer: fine) {
+  .terreo { height: auto; min-height: 100svh; overflow: visible; }
+  .captura { max-width: 520px; }
+  .categorias { overflow: visible; }
+  .valor { padding-top: var(--e12); }
+  .rodape { margin-top: var(--e8); }
+}
+
+/* ── desfazer ───────────────────────────────────────────────────────────── */
+/* Quem lança uma compra lança três, e quem lança três erra uma. O desfazer
+   aparece junto do botão, não no topo — é onde o dedo acabou de estar. */
+
+.desfazer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--e2);
+  margin: 0 0 var(--e3);
+  padding: var(--e2) var(--e3);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-controle);
+  background: var(--superficie);
+  font-size: var(--t-apoio);
+}
+.desfazer[hidden] { display: none; }
+.desfazer button {
+  min-height: 32px;
+  padding: 0 var(--e2);
+  border: 0;
+  background: none;
+  color: var(--acento);
+  font-weight: 600;
+}
+
+.categorias .vazio {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--tinta-fraca);
+  font-size: var(--t-apoio);
+}
