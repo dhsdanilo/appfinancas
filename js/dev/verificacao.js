@@ -14,6 +14,8 @@ import * as estado from '../core/estado.js';
 import { promover, ErroDeFormato } from '../core/formato.js';
 import * as lanc from '../core/lancamentos.js';
 import * as listas from '../core/listas.js';
+import * as cripto from '../core/cripto.js';
+import * as sincronia from '../core/sincronia.js';
 import { VERSAO_ESTADO } from '../core/redutores.js';
 
 const BANCO_DE_TESTE = 'appfinancas-teste';
@@ -224,6 +226,190 @@ caso('log', 'escritas simultâneas não colidem', async () => {
 
   const e = await estado.calcular();
   igual(Object.keys(e.contas).length, quantos, 'e todas as contas existem no estado');
+});
+
+// criptografia ─────────────────────────────────────────────────────────────
+
+caso('cripto', 'o que sobe volta igual, e a frase errada não abre', async () => {
+  const sal = cripto.novoSal();
+  const chave = await cripto.derivarChave('a frase da casa', sal);
+
+  const linha = JSON.stringify({ tipo: 'lancamento.registrado', valor: 12740, nome: 'Feira · açaí' });
+  const cifrada = await cripto.cifrar(chave, linha);
+
+  verdade(!cifrada.includes('12740'), 'o valor não pode aparecer no que sobe');
+  verdade(!cifrada.includes('lancamento'), 'nem o tipo do evento');
+  igual(await cripto.decifrar(chave, cifrada), linha, 'e volta byte a byte, com acento e tudo');
+
+  const outra = await cripto.derivarChave('a frase errada', sal);
+  await lanca(() => cripto.decifrar(outra, cifrada), null,
+    'frase errada tem de FALHAR, nunca devolver lixo em silêncio');
+});
+
+caso('cripto', 'o selo detecta a frase errada antes de qualquer dado', async () => {
+  const sal = cripto.novoSal();
+  const certa = await cripto.derivarChave('frase certa', sal);
+  const errada = await cripto.derivarChave('frase errada', sal);
+  const selo = await cripto.criarSelo(certa);
+
+  verdade(await cripto.seloConfere(certa, selo), 'a frase certa abre o selo');
+  verdade(!(await cripto.seloConfere(errada, selo)),
+    'a errada não abre — e o app avisa antes de tentar ler o histórico');
+});
+
+caso('cripto', 'cada linha tem nonce próprio: o mesmo texto nunca sobe igual', async () => {
+  const chave = await cripto.derivarChave('frase', cripto.novoSal());
+  const a = await cripto.cifrar(chave, 'mesma linha');
+  const b = await cripto.cifrar(chave, 'mesma linha');
+
+  verdade(a !== b, 'duas cifras iguais entregariam que o lançamento se repetiu');
+  igual(await cripto.decifrar(chave, a), 'mesma linha');
+  igual(await cripto.decifrar(chave, b), 'mesma linha');
+});
+
+caso('cripto', 'o mesmo sal e a mesma frase dão a mesma chave em qualquer aparelho', async () => {
+  const sal = cripto.novoSal();
+  const noPc = await cripto.derivarChave('frase da casa', sal);
+  const noCelular = await cripto.derivarChave('frase da casa', sal);
+
+  const cifradaNoPc = await cripto.cifrar(noPc, 'lançado no PC');
+  igual(await cripto.decifrar(noCelular, cifradaNoPc), 'lançado no PC',
+    'sem isto, um aparelho não leria o que o outro escreveu');
+});
+
+// sincronização ────────────────────────────────────────────────────────────
+//
+// O repositório é falso, de memória: o que se testa aqui é o ciclo, não a rede.
+// Mesmo assim ele cobra o sha como o GitHub cobra, para o envio não passar por
+// cima do que já está lá.
+
+function repositorioFalso({ privado = true } = {}) {
+  const arquivos = new Map();
+  let n = 0;
+  return {
+    repo: 'teste/dados',
+    arquivos,
+    async informacoes() {
+      return { privado, ramo: 'main' };
+    },
+    async listar(pasta) {
+      return [...arquivos.entries()]
+        .filter(([caminho]) => caminho.startsWith(pasta + '/'))
+        .map(([caminho, v]) => ({ nome: caminho.slice(pasta.length + 1), caminho, sha: v.sha }));
+    },
+    async ler(caminho) {
+      const a = arquivos.get(caminho);
+      return a ? { texto: a.texto, sha: a.sha } : null;
+    },
+    async gravar(caminho, texto, { sha = null }) {
+      const atual = arquivos.get(caminho);
+      if (atual && atual.sha !== sha) throw new Falha('gravou sem o sha certo: passaria por cima');
+      n += 1;
+      arquivos.set(caminho, { texto, sha: 'sha' + n });
+      return { sha: 'sha' + n };
+    },
+  };
+}
+
+const ACESSO = { repo: 'teste/dados', token: 'token-de-teste', frase: 'a frase da casa' };
+
+async function lancarAlgo() {
+  await estado.aplicarEvento('conta.criada', { id: 'c1', nome: 'Banco', tipo: 'corrente', saldoInicial: 100000 });
+  await estado.aplicarEvento('categoria.criada', { id: 'k1', nome: 'Supermercado', pai: null });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'l1', tipo: 'despesa', valor: 12740, contaId: 'c1', categoriaId: 'k1',
+    dataCompetencia: '2027-03-10', dataCaixa: '2027-03-10', confirmado: true,
+  });
+}
+
+caso('sincronia', '★ o que o PC lança chega no celular, e o que sobe é ilegível', async () => {
+  const nuvem = repositorioFalso();
+
+  // ── o PC
+  await limpar();
+  await log.registrarAparelho('pc');
+  await lancarAlgo();
+  const pareado = await sincronia.parear({ ...ACESSO, aparelho: 'pc' }, { cliente: nuvem });
+  verdade(pareado.primeiro, 'o primeiro aparelho cria o sal e o selo');
+  const ida = await sincronia.sincronizar({ cliente: nuvem });
+  igual(ida.enviados, 3, 'os três eventos do PC subiram');
+
+  const subiu = nuvem.arquivos.get('log/pc.ndjson').texto;
+  verdade(!subiu.includes('Supermercado'), 'o nome da categoria não pode estar legível lá');
+  verdade(!subiu.includes('12740'), 'nem o valor');
+  verdade(!subiu.includes('lancamento.registrado'), 'nem o tipo do evento');
+
+  // ── o celular, que nunca viu nada disto
+  await limpar();
+  await sincronia.parear({ ...ACESSO, aparelho: 'celular' }, { cliente: nuvem });
+  const volta = await sincronia.sincronizar({ cliente: nuvem });
+  igual(volta.recebidos, 3, 'o celular absorveu os três');
+
+  const e = await estado.calcular();
+  igual(e.contas.c1.nome, 'Banco');
+  igual(lanc.saldoReal(e, 'c1'), 87260, 'e o saldo bate com o do PC: 100.000 − 12.740');
+});
+
+caso('sincronia', 'sincronizar de novo não duplica nada', async () => {
+  const nuvem = repositorioFalso();
+  await limpar();
+  await log.registrarAparelho('pc');
+  await lancarAlgo();
+  await sincronia.parear({ ...ACESSO, aparelho: 'pc' }, { cliente: nuvem });
+
+  await sincronia.sincronizar({ cliente: nuvem });
+  const segunda = await sincronia.sincronizar({ cliente: nuvem });
+  igual(segunda.enviados, 0, 'o que já subiu não sobe de novo');
+
+  const QUEBRA = String.fromCharCode(10);
+  const linhas = nuvem.arquivos.get('log/pc.ndjson').texto.trim().split(QUEBRA);
+  igual(linhas.length, 3, 'e o arquivo continua com três linhas');
+});
+
+caso('sincronia', '★ repositório PÚBLICO: nada sobe, e o aviso é grave', async () => {
+  const nuvem = repositorioFalso({ privado: false });
+  await limpar();
+  await log.registrarAparelho('pc');
+  await lancarAlgo();
+
+  const erro = await lanca(
+    () => sincronia.parear({ ...ACESSO, aparelho: 'pc' }, { cliente: nuvem }),
+    sincronia.ErroDeSincronia,
+    'parear com repositório público tem de falhar'
+  );
+  verdade(erro.grave, 'e falhar como alerta GRAVE — é o pior cenário do projeto');
+  igual(nuvem.arquivos.size, 0, 'nenhum byte foi enviado');
+});
+
+caso('sincronia', 'frase errada não pareia, e não encosta no que está lá', async () => {
+  const nuvem = repositorioFalso();
+  await limpar();
+  await log.registrarAparelho('pc');
+  await lancarAlgo();
+  await sincronia.parear({ ...ACESSO, aparelho: 'pc' }, { cliente: nuvem });
+  await sincronia.sincronizar({ cliente: nuvem });
+  const antes = nuvem.arquivos.get('log/pc.ndjson').texto;
+
+  await limpar();
+  await lanca(
+    () => sincronia.parear({ ...ACESSO, frase: 'frase errada', aparelho: 'celular' }, { cliente: nuvem }),
+    sincronia.ErroDeSincronia,
+    'frase que não bate com o selo tem de ser recusada'
+  );
+  igual(nuvem.arquivos.get('log/pc.ndjson').texto, antes, 'e o arquivo do outro aparelho fica intacto');
+});
+
+caso('sincronia', 'esquecer o aparelho apaga o token e a chave', async () => {
+  const nuvem = repositorioFalso();
+  await limpar();
+  await log.registrarAparelho('pc');
+  await sincronia.parear({ ...ACESSO, aparelho: 'pc' }, { cliente: nuvem });
+  verdade(await sincronia.configuracao(), 'pareado');
+
+  await sincronia.esquecerAparelho();
+  igual(await sincronia.configuracao(), null, 'nada de token guardado');
+  await lanca(() => sincronia.sincronizar({ cliente: nuvem }), sincronia.ErroDeSincronia,
+    'e sincronizar passa a pedir pareamento de novo');
 });
 
 // estado ───────────────────────────────────────────────────────────────────

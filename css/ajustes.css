@@ -1,0 +1,78 @@
+/* Ajustes — pareamento e sincronização. Valores de design/09-identidade.md.
+   Os campos e listas vêm da bancada; aqui só o que é desta tela. */
+
+.estado-sincronia {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--e2) var(--e4);
+  margin: 0 0 var(--e4);
+  padding-bottom: var(--e4);
+  border-bottom: 1px solid var(--borda);
+}
+.estado-sincronia dt {
+  color: var(--tinta-fraca);
+  font-size: var(--t-miudo);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  align-self: center;
+}
+.estado-sincronia dd { margin: 0; font-size: var(--t-apoio); }
+
+/* Privado não é enfeite: é a proteção principal dos dados sincronizados, e o
+   app só chega aqui depois de conferir (07-seguranca §4.2). */
+.selo-privado {
+  margin-left: var(--e2);
+  padding: 1px var(--e2);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-pilula);
+  color: var(--tinta-fraca);
+  font-size: var(--t-miudo);
+}
+
+.botoes { display: flex; align-items: center; gap: var(--e3); flex-wrap: wrap; }
+
+/* O recado da sincronização tem três tons, e o grave é outra categoria:
+   repositório público não some sozinho nem se resolve depois. */
+.aviso.ok { border-color: var(--borda-forte); color: var(--tinta); }
+.aviso.erro { border-color: var(--atencao); color: var(--atencao); }
+.aviso.grave {
+  border: 2px solid var(--alerta);
+  background: var(--alerta-fundo);
+  color: var(--alerta);
+  font-weight: 600;
+}
+
+.zona-perigo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--e2);
+  margin: var(--e4) 0 0;
+  padding-top: var(--e3);
+  border-top: 1px solid var(--borda);
+  font-size: var(--t-apoio);
+}
+.zona-perigo .pergunta { color: var(--tinta-fraca); }
+.zona-perigo button { min-height: 34px; }
+.zona-perigo button.perigo { border-color: var(--alerta); }
+
+/* As instruções ficam recolhidas: quem já pareou não precisa vê-las de novo. */
+.instrucoes {
+  margin-top: var(--e4);
+  padding-top: var(--e3);
+  border-top: 1px solid var(--borda);
+  font-size: var(--t-apoio);
+  color: var(--tinta-fraca);
+}
+.instrucoes summary {
+  cursor: pointer;
+  color: var(--tinta);
+  font-size: var(--t-apoio);
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+}
+.instrucoes ol { margin: var(--e2) 0 0; padding-left: 20px; }
+.instrucoes li { margin: var(--e2) 0; }
+.instrucoes p { margin: var(--e2) 0; max-width: var(--leitura); }

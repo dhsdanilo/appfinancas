@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ajustes — App Finanças</title>
+<meta name="description" content="Controle financeiro familiar, local e sincronizado.">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#16302b">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/bancada.css">
+<link rel="stylesheet" href="css/ajustes.css">
+</head>
+<body class="pagina">
+
+<header class="topo">
+  <div class="identidade">
+    <h1>Ajustes</h1>
+    <p class="sub">A sincronização entre os aparelhos de casa.</p>
+  </div>
+  <nav class="navegacao" aria-label="Seções do app">
+    <a href="extrato.html">Extrato</a>
+    <a href="bancada.html">Bancada</a>
+    <a href="ajustes.html" aria-current="page">Ajustes</a>
+    <a href="verificacao.html">Verificação</a>
+  </nav>
+</header>
+
+<main>
+
+<p class="aviso" id="aviso" hidden></p>
+
+<!-- Pareado: o estado, o botão e a saída. -->
+<section class="cartao" id="painel-pareado" hidden>
+  <h2>Sincronização</h2>
+
+  <dl class="estado-sincronia" id="estado-sincronia"></dl>
+
+  <div class="botoes">
+    <button type="button" class="principal" id="b-sincronizar">Sincronizar agora</button>
+    <span class="miudo" id="progresso"></span>
+  </div>
+
+  <p class="zona-perigo" id="zona-esquecer"></p>
+</section>
+
+<!-- Não pareado: o pareamento, que é de uma vez por aparelho. -->
+<section class="cartao" id="painel-parear">
+  <h2>Parear este aparelho</h2>
+
+  <p class="nota">
+    Os lançamentos vão para um repositório <strong>privado</strong> seu no GitHub, e sobem
+    <strong>cifrados</strong>: mesmo que alguém alcance o repositório, não há o que ler lá.
+    Isto é de uma vez só por aparelho.
+  </p>
+
+  <form class="formulario" id="f-parear">
+    <div class="campo largo">
+      <label for="p-repo">Repositório dos dados</label>
+      <input type="text" id="p-repo" name="repo" autocomplete="off" spellcheck="false"
+             placeholder="pessoa/repositorio">
+    </div>
+
+    <div class="campo largo">
+      <label for="p-token">Token</label>
+      <input type="password" id="p-token" name="token" autocomplete="off" spellcheck="false"
+             placeholder="github_pat_…">
+    </div>
+
+    <div class="campo largo">
+      <label for="p-frase">Frase secreta da família</label>
+      <input type="password" id="p-frase" name="frase" autocomplete="off" spellcheck="false"
+             placeholder="a mesma em todos os aparelhos">
+    </div>
+
+    <div class="campo">
+      <label for="p-aparelho">Nome deste aparelho</label>
+      <input type="text" id="p-aparelho" name="aparelho" autocomplete="off"
+             placeholder="PC, Celular…">
+    </div>
+
+    <div class="campo acao">
+      <button type="submit" class="principal">Parear</button>
+    </div>
+  </form>
+
+  <details class="instrucoes">
+    <summary>Como criar o token</summary>
+    <ol>
+      <li>
+        Em <a href="https://github.com/settings/personal-access-tokens/new" target="_blank"
+        rel="noopener">github.com/settings/personal-access-tokens/new</a>, crie um token
+        <strong>fine-grained</strong>.
+      </li>
+      <li><strong>Repository access:</strong> <em>Only select repositories</em> → o repositório dos dados, e só ele.</li>
+      <li><strong>Permissions → Repository permissions → Contents:</strong> <em>Read and write</em>.</li>
+      <li><strong>Expiration:</strong> um ano. Token eterno é token esquecido.</li>
+      <li>Copie o token e cole aqui. Ele fica só neste aparelho — nunca entra num lançamento, nunca sobe pro repositório.</li>
+    </ol>
+  </details>
+
+  <details class="instrucoes">
+    <summary>Sobre a frase secreta</summary>
+    <p>
+      É ela que cifra os seus lançamentos antes de subirem. Precisa ser <strong>a mesma nos
+      dois aparelhos</strong> — o app confere, e recusa a errada antes de tocar em qualquer dado.
+    </p>
+    <p>
+      <strong>Se você perdê-la, a cópia do GitHub vira ilegível</strong>, e nem eu nem o GitHub
+      podem recuperar — é exatamente a propriedade que se quis comprar. O histórico continua
+      inteiro dentro de cada aparelho. Guarde-a no gerenciador de senhas, ou no papel que você
+      guarda bem.
+    </p>
+    <p>Frase, não PIN: quatro dígitos viram chave fraca.</p>
+  </details>
+</section>
+
+</main>
+
+<script type="module" src="js/ajustes.js"></script>
+</body>
+</html>
