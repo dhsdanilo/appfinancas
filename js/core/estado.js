@@ -13,6 +13,27 @@ import { estadoVazio, aplicar, VERSAO_ESTADO } from './redutores.js';
 
 let emMemoria = null;
 
+// Quem quiser saber que o estado mudou se inscreve aqui. É o que permite a
+// sincronização acontecer sozinha a cada alteração sem o núcleo saber que a
+// sincronização existe — ele avisa, e quem se importa reage.
+const ouvintes = new Set();
+
+export function aoAplicar(fn) {
+  ouvintes.add(fn);
+  return () => ouvintes.delete(fn);
+}
+
+function avisar(motivo) {
+  for (const fn of ouvintes) {
+    try {
+      fn(motivo);
+    } catch (e) {
+      // Ouvinte quebrado não pode derrubar uma gravação de dinheiro.
+      console.warn('ouvinte de estado falhou', e);
+    }
+  }
+}
+
 /**
  * Estado atual. Usa o cache quando ele serve, e continua a conta só com os
  * eventos novos.
@@ -100,6 +121,7 @@ export async function aplicarEvento(tipo, dados) {
   estado.ateLc = Math.max(estado.ateLc, evento.lc);
   emMemoria = estado;
   await consolidar(estado);
+  avisar('local');
   return { evento, estado };
 }
 
@@ -112,8 +134,12 @@ export async function absorverEventos(eventos) {
   const { novos, foraDeOrdem } = await log.absorver(eventos);
   if (novos === 0) return { novos, recalculado: false, estado: await calcular() };
   if (foraDeOrdem) {
-    return { novos, recalculado: true, estado: await recalcular() };
+    const estado = await recalcular();
+    avisar('recebido');
+    return { novos, recalculado: true, estado };
   }
   emMemoria = null;
-  return { novos, recalculado: false, estado: await calcular() };
+  const estado = await calcular();
+  avisar('recebido');
+  return { novos, recalculado: false, estado };
 }

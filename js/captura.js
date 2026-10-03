@@ -4,6 +4,7 @@
 
 import { criarFormulario } from './app/formulario.js';
 import { instalarServiceWorker } from './app/instalar.js';
+import { iniciarSincronia } from './app/sincronia-viva.js';
 
 const formulario = await criarFormulario({
   raiz: document.getElementById('formulario'),
@@ -13,3 +14,7 @@ const formulario = await criarFormulario({
 formulario.focar();
 
 instalarServiceWorker();
+
+// O térreo sincroniza em silêncio: o que se lança na fila do mercado sobe
+// sozinho, e nenhuma falha de rede aparece numa tela que só serve pra lançar.
+await iniciarSincronia();

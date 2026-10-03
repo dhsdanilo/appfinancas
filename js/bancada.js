@@ -21,6 +21,7 @@ import { hoje, saldoReal } from './core/lancamentos.js';
 import { usos, podeRemover, podeArquivarConta, acharPorNome } from './core/listas.js';
 import { dinheiroHTML } from './app/dinheiro-html.js';
 import { instalarServiceWorker } from './app/instalar.js';
+import { iniciarSincronia } from './app/sincronia-viva.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -603,3 +604,4 @@ await garantirAparelho();
 await recarregar();
 
 instalarServiceWorker();
+await iniciarSincronia({ raiz: $('nuvem') });

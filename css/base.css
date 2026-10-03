@@ -312,3 +312,38 @@ code { font-family: var(--mono); font-size: 0.9em; }
   background: var(--acento-fundo);
   border-color: var(--borda);
 }
+
+/* ── o carimbo da sincronização ─────────────────────────────────────────── */
+/* Fica no topo de toda tela do andar de cima: a última vez que os aparelhos se
+   falaram, e um botão pra forçar agora. Divergência silenciosa entre aparelhos
+   é o pior cenário da sincronização, e a única defesa é ela nunca ser silenciosa
+   (design/06-sincronizacao.md §9). */
+
+.nuvem {
+  display: flex;
+  align-items: center;
+  gap: var(--e2);
+  padding-top: var(--e1);
+}
+.nuvem[hidden] { display: none; }
+
+.carimbo { color: var(--tinta-fraca); font-size: var(--t-miudo); }
+.carimbo.erro { color: var(--atencao); }
+.carimbo.grave { color: var(--alerta); font-weight: 600; }
+
+.bt-nuvem {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  min-height: 40px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--raio-controle);
+  background: none;
+  color: var(--tinta-fraca);
+}
+.bt-nuvem:hover { color: var(--tinta); border-color: var(--borda); }
+.bt-nuvem svg { width: 20px; height: 20px; }
+.bt-nuvem.girando { color: var(--acento); }
+.bt-nuvem:disabled { opacity: 0.6; cursor: progress; }

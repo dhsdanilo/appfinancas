@@ -8,6 +8,7 @@ import * as db from './core/db.js';
 import * as log from './core/log.js';
 import * as sincronia from './core/sincronia.js';
 import { instalarServiceWorker } from './app/instalar.js';
+import { iniciarSincronia, agora as sincronizarAgora } from './app/sincronia-viva.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -163,3 +164,4 @@ function escapar(s) {
 
 await recarregar();
 instalarServiceWorker();
+await iniciarSincronia({ raiz: $('nuvem') });

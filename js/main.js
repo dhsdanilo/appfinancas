@@ -10,6 +10,7 @@ import * as estado from './core/estado.js';
 import { VERSAO_ATUAL, ErroDeFormato } from './core/formato.js';
 import { formatar } from './core/dinheiro.js';
 import { instalarServiceWorker } from './app/instalar.js';
+import { iniciarSincronia } from './app/sincronia-viva.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -178,3 +179,4 @@ try {
 }
 
 instalarServiceWorker();
+await iniciarSincronia({ raiz: $('nuvem') });

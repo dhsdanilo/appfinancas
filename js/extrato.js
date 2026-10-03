@@ -6,6 +6,7 @@ import { dinheiroHTML } from './app/dinheiro-html.js';
 import { criarFormulario } from './app/formulario.js';
 import { criarTransferencia } from './app/transferencia.js';
 import { instalarServiceWorker } from './app/instalar.js';
+import { iniciarSincronia } from './app/sincronia-viva.js';
 import {
   visiveis, porDataDecrescente, estadoDoLancamento, saldoReal, nomeDaCategoria,
 } from './core/lancamentos.js';
@@ -155,3 +156,7 @@ document.addEventListener('keydown', (e) => {
 
 await pintar();
 instalarServiceWorker();
+
+// Sincroniza ao abrir e a cada alteração, em segundo plano (design/06 §3).
+await iniciarSincronia({ raiz: $('nuvem') });
+estado.aoAplicar(() => pintar());

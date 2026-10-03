@@ -446,6 +446,22 @@ caso('estado', 'remoção é evento, não ausência de dado', async () => {
   igual(refeito.contas.c1, undefined, 'e ela não ressuscita no recálculo');
 });
 
+caso('estado', 'toda gravação avisa quem está ouvindo', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+
+  const motivos = [];
+  const parar = estado.aoAplicar((motivo) => motivos.push(motivo));
+
+  await estado.aplicarEvento('categoria.criada', { id: 'k1', nome: 'Supermercado', pai: null });
+  await estado.aplicarEvento('categoria.alterada', { id: 'k1', nome: 'Mercado' });
+  igual(motivos, ['local', 'local'], 'é por este aviso que a sincronização acontece sozinha');
+
+  parar();
+  await estado.aplicarEvento('categoria.arquivada', { id: 'k1' });
+  igual(motivos.length, 2, 'e quem sai de cena para de ser avisado');
+});
+
 caso('estado', '★ cache e recálculo do zero dão o MESMO resultado', async () => {
   await limpar();
   await log.registrarAparelho('meu-pc');
