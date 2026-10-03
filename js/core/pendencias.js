@@ -19,6 +19,7 @@ export const DIAS_SEM_CONFERIR = 31;
  *   'ocorrencia' → { ocorrencia }     — recorrência sem lançamento no mês
  *   'fatura'     → { cartao, fatura } — fatura fechada, vencida e não paga
  *   'conferir'   → { conta, desde }   — conta de caixa sem conferir há um mês
+ *   'holerite'   → { conta, mes }     — o holerite de uma folha que não foi lançado
  * Da mais antiga para a mais nova: o que está atrasado há mais tempo primeiro.
  */
 export function pendencias(estado, dia = hoje()) {
@@ -29,11 +30,23 @@ export function pendencias(estado, dia = hoje()) {
     itens.push({ tipo: 'vencido', chave: `l:${l.id}`, data: l.dataCaixa, lancamento: l });
   }
 
+  const holerites = new Map();
   for (const o of ocorrenciasVencidas(estado, dia)) {
+    // As linhas da folha não entram uma a uma: são UM holerite, que se lança
+    // de uma vez (design/10 §2). Seis pendências por mês seriam ruído.
+    if (estado.contas[o.contaId]?.tipo === 'folha') {
+      const mes = o.dataCompetencia.slice(0, 7);
+      const chave = `h:${o.contaId}:${mes}`;
+      if (!holerites.has(chave)) {
+        holerites.set(chave, { tipo: 'holerite', chave, data: o.dataCompetencia, conta: estado.contas[o.contaId], mes });
+      }
+      continue;
+    }
     // No cartão a compra é realizada na hora (D4): a ocorrência de cartão que
     // passou do dia é só um lançamento esquecido, e entra igual.
     itens.push({ tipo: 'ocorrencia', chave: o.id, data: o.dataCompetencia, ocorrencia: o });
   }
+  itens.push(...holerites.values());
 
   for (const c of Object.values(estado.contas)) {
     if (c.tipo !== 'cartao') continue;

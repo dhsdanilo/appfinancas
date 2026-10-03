@@ -25,7 +25,7 @@ export const AREAS_PADRAO = ['caixa', 'cartoes'];
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 8;
+export const VERSAO_ESTADO = 9;
 
 export function estadoVazio() {
   return {
@@ -85,6 +85,8 @@ export const redutores = {
       // A conta que paga a fatura: é o que faz a fatura pesar no saldo
       // previsto dela (03-alimentacao §6.2).
       pagaCom: d.pagaCom ?? null,
+      // Só em folha: para onde vai o líquido do holerite (design/10 §2).
+      liquidoPara: d.liquidoPara ?? null,
       // Só em investimento (D16)
       risco: d.risco ?? null,
       liquidez: d.liquidez ?? null,
@@ -102,6 +104,7 @@ export const redutores = {
       'diaFechamento',
       'diaVencimento',
       'pagaCom',
+      'liquidoPara',
       'risco',
       'liquidez',
     ]) {

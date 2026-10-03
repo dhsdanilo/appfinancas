@@ -8,7 +8,7 @@ import { novoId } from '../core/id.js';
 import { deTexto, formatar } from '../core/dinheiro.js';
 import { correcao, nomeDaCategoria } from '../core/lancamentos.js';
 import { pendencias } from '../core/pendencias.js';
-import { diaCurto, hoje } from '../core/datas.js';
+import { diaCurto, hoje, nomeDoMes } from '../core/datas.js';
 import { dinheiroHTML } from './dinheiro-html.js';
 
 const VISIVEIS = 5;
@@ -19,7 +19,7 @@ const VISIVEIS = 5;
  * @param {Function} o.abrirPagamento   (cartaoId, centavos) → abre o pagar fatura
  * @param {Function} o.abrirConferencia (contaId) → abre a conferência
  */
-export function criarFila({ raiz, abrirPagamento, abrirConferencia }) {
+export function criarFila({ raiz, abrirPagamento, abrirConferencia, abrirHolerite }) {
   let app = null;
   let itens = [];
   let todas = false;
@@ -55,6 +55,9 @@ export function criarFila({ raiz, abrirPagamento, abrirConferencia }) {
     if (i.tipo === 'conferir') {
       return `${escapar(i.conta.nome)} · <span class="quando">sem conferir desde ${diaCurto(i.data)}</span>`;
     }
+    if (i.tipo === 'holerite') {
+      return `Holerite de ${escapar(nomeDoMes(i.mes).split(' ')[0])} · ${escapar(i.conta.nome)} · <span class="quando">desde ${diaCurto(i.data)}</span>`;
+    }
     const l = i.tipo === 'vencido' ? i.lancamento : i.ocorrencia;
     const conta = app.contas[l.contaId]?.nome ?? '';
     const nome =
@@ -71,6 +74,7 @@ export function criarFila({ raiz, abrirPagamento, abrirConferencia }) {
   function botoesDe(i) {
     if (i.tipo === 'fatura') return '<button type="button" class="principal" data-fila="pagar">Pagar</button>';
     if (i.tipo === 'conferir') return '<button type="button" data-fila="conferir">Conferir</button>';
+    if (i.tipo === 'holerite') return '<button type="button" class="principal" data-fila="holerite">Lançar</button>';
     const l = i.tipo === 'vencido' ? i.lancamento : i.ocorrencia;
     const estimado = i.tipo === 'ocorrencia' ? i.ocorrencia.estimado : l.origemValor?.startsWith('estimado');
     // O ~ é obrigatório no valor estimado, até no botão (08-telas §3.1).
@@ -137,6 +141,8 @@ export function criarFila({ raiz, abrirPagamento, abrirConferencia }) {
         return abrirPagamento(i.cartao.id, i.fatura.aPagar);
       case 'conferir':
         return abrirConferencia(i.conta.id);
+      case 'holerite':
+        return abrirHolerite(i.conta.id, i.mes);
       case 'outro':
       case 'reagendar':
         aberto = { chave: i.chave, modo: acao === 'outro' ? 'valor' : 'data' };

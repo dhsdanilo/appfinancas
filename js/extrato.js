@@ -13,6 +13,8 @@ import { criarTransferencia } from './app/transferencia.js';
 import { criarFila } from './app/fila.js';
 import { criarDevolucao } from './app/devolucao.js';
 import { criarConferencia } from './app/conferencia.js';
+import { criarHolerite } from './app/holerite.js';
+import { linhasDoHolerite, lancadosNoMes } from './core/holerite.js';
 import { instalarServiceWorker } from './app/instalar.js';
 import { iniciarSincronia } from './app/sincronia-viva.js';
 import {
@@ -286,6 +288,22 @@ function blocoDeCartao(c) {
   </div>`;
 }
 
+/**
+ * O holerite do mês que está na tela (design/10 §2): lançar, se falta; dizer
+ * que está lançado, se não falta nada.
+ */
+function peDaFolha(c) {
+  const mes = vista.mes;
+  const faltam = linhasDoHolerite(app, c.id, mes).length;
+  const lancados = lancadosNoMes(app, c.id, mes).length;
+  const nome = nomeDoMes(mes).split(' ')[0];
+  const feito = !faltam && lancados;
+  return `<div class="pe-bloco">
+    <span class="fino">${feito ? `holerite de ${escapar(nome)} lançado` : faltam ? `${faltam} linha${faltam > 1 ? 's' : ''} prevista${faltam > 1 ? 's' : ''}` : 'sem linhas previstas'}</span>
+    <button type="button" class="${feito ? 'elo' : 'principal'}" data-holerite="${escapar(c.id)}">${feito ? 'linha a mais' : `Lançar holerite de ${escapar(nome)}`}</button>
+  </div>`;
+}
+
 /** Investimentos, dívidas e folha: o saldo, e na folha o aviso do zero (D25). */
 function pintarResumoDeSaldos(aba, contas) {
   const blocos = contas.map((c) => {
@@ -298,6 +316,7 @@ function pintarResumoDeSaldos(aba, contas) {
       <p class="nome-bloco">${escapar(c.nome)}</p>
       <dl>${linhaDeResumo(aba.id === 'dividas' ? 'saldo devedor' : 'saldo', dinheiroHTML(saldo), saldo < 0 ? 'negativo' : '')}</dl>
       ${aviso}
+      ${aba.id === 'folha' ? peDaFolha(c) : ''}
     </div>`;
   });
   if (contas.length > 1 && aba.id !== 'folha') {
@@ -525,7 +544,10 @@ function linhaHTML(l, ids, saldoApos = null) {
     oque = `Fatura ${destino?.nome ?? ''}`;
     onde = `${conta?.nome ?? '—'} · fecha ${diaCurto(l.fatura.fechamento)}`;
   } else if (transferencia) {
-    oque = nomeDoTom;
+    // O líquido do holerite é uma linha limpa na corrente, com nome próprio (D25).
+    oque = l.tipo === 'transferencia' && conta?.tipo === 'folha' && destino?.tipo !== 'divida' && destino?.tipo !== 'investimento'
+      ? 'Líquido da folha'
+      : nomeDoTom;
     onde = `${conta?.nome ?? '—'} → ${destino?.nome ?? '—'}`;
   } else if (ajuste) {
     oque = 'Ajuste de caixa';
@@ -636,10 +658,17 @@ const transferencia = await criarTransferencia({
   aoMudarTitulo: (titulo) => { $('titulo-transferencia').textContent = titulo; },
 });
 
+const holerite = criarHolerite({
+  janela: $('dialogo-holerite'),
+  raiz: $('formulario-holerite'),
+  aoSalvar: pintar,
+});
+
 const fila = criarFila({
   raiz: $('pendencias'),
   abrirPagamento: (cartaoId, centavos) => pagarFatura(cartaoId, centavos),
   abrirConferencia: (contaId) => conferencia.abrir(contaId),
+  abrirHolerite: (folhaId, mes) => holerite.abrir(folhaId, mes),
 });
 
 async function pagarFatura(cartaoId, centavos) {
@@ -656,6 +685,12 @@ document.addEventListener('click', async (e) => {
   const pagar = e.target.closest('[data-pagar]');
   if (pagar) {
     await pagarFatura(pagar.dataset.pagar, Number(pagar.dataset.valor) || 0);
+    return;
+  }
+
+  const doHolerite = e.target.closest('[data-holerite]');
+  if (doHolerite) {
+    await holerite.abrir(doHolerite.dataset.holerite, vista.mes);
     return;
   }
 

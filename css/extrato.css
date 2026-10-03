@@ -421,3 +421,73 @@ button.linha.vencido { border-left: 3px solid var(--alerta); background: var(--a
 .resultado-conferencia .bateu { margin: 0; color: var(--positivo); font-weight: 600; }
 .resultado-conferencia .nao-bateu { margin: 0 0 var(--e2); color: var(--alerta); font-weight: 600; }
 .resultado-conferencia ul { margin: var(--e1) 0 var(--e2); padding-left: var(--e4); font-size: var(--t-apoio); }
+
+/* ── o holerite (design/10 §2) ──────────────────────────────────────────── */
+
+.dialogo-holerite { width: min(560px, calc(100vw - 2 * var(--e4))); }
+.linhas-holerite { list-style: none; margin: 0; padding: 0; }
+.linha-holerite {
+  display: grid;
+  grid-template-columns: 22px 1fr 120px auto;
+  align-items: center;
+  gap: var(--e2);
+  padding: var(--e1) 0;
+  border-bottom: 1px solid var(--borda);
+}
+.linha-holerite .marca { display: inline-flex; justify-content: center; border-radius: var(--raio-controle); font-size: var(--t-apoio); }
+.linha-holerite.despesa .marca { color: var(--alerta); }
+.linha-holerite.receita .marca { color: var(--positivo); }
+.linha-holerite.transferencia .marca { color: var(--transferencia); }
+.linha-holerite input {
+  font: inherit;
+  min-height: 36px;
+  min-width: 0;
+  width: 100%;
+  padding: 0 var(--e2);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-controle);
+  background: var(--superficie);
+  color: var(--tinta);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.linha-holerite.fora .nome-linha,
+.linha-holerite.fora input { opacity: 0.45; text-decoration: line-through; }
+.linha-holerite .selo {
+  margin-left: var(--e1);
+  padding: 0 var(--e1);
+  border-radius: var(--raio-controle);
+  background: var(--fundo);
+  color: var(--tinta-fraca);
+  font-size: var(--t-miudo);
+}
+.linha-nova { display: grid; grid-template-columns: 1fr 100px auto auto; gap: var(--e2); }
+.linha-nova select,
+.linha-nova input,
+.liquido-holerite select {
+  font: inherit;
+  font-size: var(--t-apoio);
+  min-height: 36px;
+  min-width: 0;
+  padding: 0 var(--e2);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-controle);
+  background: var(--superficie);
+  color: var(--tinta);
+}
+.liquido-holerite {
+  display: flex;
+  align-items: center;
+  gap: var(--e2);
+  padding: var(--e3);
+  border-radius: var(--raio-controle);
+  background: var(--fundo);
+}
+.liquido-holerite strong { margin-left: auto; font-size: var(--t-secao); font-variant-numeric: tabular-nums; }
+.liquido-holerite strong.negativo { color: var(--alerta); }
+
+@media (max-width: 600px) {
+  .linha-holerite { grid-template-columns: 22px 1fr 96px; }
+  .linha-holerite [data-fora] { grid-column: 2 / -1; justify-self: end; }
+  .linha-nova { grid-template-columns: 1fr 1fr; }
+}

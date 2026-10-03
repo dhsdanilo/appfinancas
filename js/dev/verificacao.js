@@ -22,6 +22,7 @@ import * as previsto from '../core/previsto.js';
 import * as datas from '../core/datas.js';
 import * as pendencias from '../core/pendencias.js';
 import { categoriaNaArea, areasParaConta } from '../app/areas.js';
+import * as holerite from '../core/holerite.js';
 
 const BANCO_DE_TESTE = 'appfinancas-teste';
 
@@ -1341,6 +1342,44 @@ caso('categoria', 'a categoria aparece só nas áreas dela (D26)', async () => {
 
   await estado.aplicarEvento('categoria.alterada', { id: 'mer', areas: ['caixa'] });
   igual((await estado.calcular()).categorias.mer.areas, ['caixa'], 'e muda quando se muda');
+});
+
+
+caso('folha', 'o holerite traz as linhas do mês, e o líquido zera a folha', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const ev = (t, d) => estado.aplicarEvento(t, d);
+  await ev('conta.criada', { id: 'cc', nome: 'Corrente', tipo: 'corrente' });
+  await ev('conta.criada', { id: 'emp', nome: 'Consignado', tipo: 'divida' });
+  await ev('conta.criada', { id: 'fo', nome: 'Folha', tipo: 'folha', liquidoPara: 'cc' });
+  await ev('categoria.criada', { id: 'sal', nome: 'Salário base', natureza: 'receita', areas: ['folha'] });
+  await ev('categoria.criada', { id: 'ir', nome: 'IR', natureza: 'despesa', areas: ['folha'], obrigatoria: true });
+  await ev('categoria.criada', { id: 'sau', nome: 'Saúde', natureza: 'despesa', areas: ['caixa', 'folha'] });
+  const serie = (id, d) => ev('recorrencia.criada', { id, contaId: 'fo', tipoValor: 'fixa', dia: 1, inicio: '2027-01-01', ...d });
+  await serie('r-con', { tipo: 'transferencia', contaDestinoId: 'emp', valor: 60000 });
+  await serie('r-sau', { tipo: 'despesa', categoriaId: 'sau', valor: 40000 });
+  await serie('r-ir', { tipo: 'despesa', categoriaId: 'ir', valor: 100000 });
+  await serie('r-sal', { tipo: 'receita', categoriaId: 'sal', valor: 820000 });
+
+  let e = await estado.calcular();
+  const linhas = holerite.linhasDoHolerite(e, 'fo', '2027-03', '2027-03-05');
+  igual(linhas.map((l) => l.recorrenciaId), ['r-sal', 'r-ir', 'r-sau', 'r-con'],
+    'a ordem do papel: entra, obrigatório, o resto, outras contas');
+  igual(holerite.liquido(linhas), 620000, '8.200 − 1.000 − 400 − 600');
+
+  for (const l of linhas) {
+    await ev('lancamento.registrado', { ...l, id: 'l-' + l.recorrenciaId, confirmado: true, projetado: undefined });
+  }
+  await ev('lancamento.registrado', {
+    id: 'liq', tipo: 'transferencia', valor: 620000, contaId: 'fo', contaDestinoId: 'cc',
+    dataCompetencia: '2027-03-01', dataCaixa: '2027-03-01', confirmado: true,
+  });
+  e = await estado.calcular();
+  igual(lanc.saldoReal(e, 'fo'), 0, 'a folha zera: é a conferência (D25)');
+  igual(lanc.saldoReal(e, 'cc'), 620000, 'na corrente, uma linha só: o líquido');
+  igual(holerite.linhasDoHolerite(e, 'fo', '2027-03', '2027-03-05'), [], 'nada mais a lançar em março');
+  igual(holerite.rendaDisponivel(e, lanc.visiveis(e)), 720000,
+    'renda disponível desconta só o obrigatório: o plano de saúde é gasto, não imposto');
 });
 
 // ── apoio ─────────────────────────────────────────────────────────────────
