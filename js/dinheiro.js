@@ -20,6 +20,7 @@ import { criarHolerite } from './app/holerite.js';
 import { linhasDoHolerite, lancadosNoMes } from './core/holerite.js';
 import { situacao, saldoDevedor, jurosDaParcela, cronograma, simularAmortizacao } from './core/divida.js';
 import { fotografar, amortizar, pularParcela } from './app/contrato.js';
+import { lancarOcorrencia } from './app/ocorrencia.js';
 import { aoLancar } from './app/pagina.js';
 import { enderecoDa } from './app/rotas.js';
 import { BARRA, PRINCIPAL, DIALOGOS } from './app/marcacao-dinheiro.js';
@@ -1136,7 +1137,13 @@ function linhaHTML(l, ids, saldoApos = null) {
       : `data-lanc="${escapar(l.id)}"`;
   const acao = l.fatura ? 'Pagar' : l.automatico ? 'Corrigir' : l.projetado ? 'Lançar' : 'Corrigir';
 
-  return `<li><button type="button" class="linha ${tom} ${est === 'realizado' ? '' : est} ${saldoApos ? 'com-saldo' : ''}"
+  // A conta fixa (ou estimada) que já chegou: um toque lança como veio, sem
+  // abrir o formulário — ele fica para quando algo mudou (pedido dele).
+  const rapido = l.projetado && l.recorrenciaId && !l.automatico && l.dataCompetencia <= hoje()
+    ? `<button type="button" class="lancar-rapido" data-lancar-previsto="${escapar(l.id)}" title="Lançar como previsto" aria-label="Lançar ${escapar(oque)} como previsto">✓</button>`
+    : '';
+
+  return `<li class="${rapido ? 'com-rapido' : ''}"><button type="button" class="linha ${tom} ${est === 'realizado' ? '' : est} ${saldoApos ? 'com-saldo' : ''}"
       ${alvo} aria-label="${acao} ${escapar(nomeDoTom.toLowerCase())} de ${escapar(diaCurto(dia))}">
     <span class="marca" title="${nomeDoTom}" aria-hidden="true">${marca}</span>
     <span class="quando">${escapar(diaCurto(dia))}</span>
@@ -1146,7 +1153,7 @@ function linhaHTML(l, ids, saldoApos = null) {
     </span>
     <span class="quanto ${tom}">${dinheiroHTML(l.valor, { sinal, estimado: Boolean(l.estimado) })}</span>
     ${saldoApos ? saldo : ''}
-  </button></li>`;
+  </button>${rapido}</li>`;
 }
 
 /**
@@ -1299,6 +1306,14 @@ document.addEventListener('click', async (e) => {
       detalhesAbertos.add(id);
     }
     pintar();
+    return;
+  }
+  const rapido = e.target.closest('[data-lancar-previsto]');
+  if (rapido) {
+    const o = previstosNaTela.get(rapido.dataset.lancarPrevisto);
+    if (!o) return;
+    rapido.disabled = true;
+    await lancarOcorrencia(o);
     return;
   }
   const cron = e.target.closest('[data-cronograma]');

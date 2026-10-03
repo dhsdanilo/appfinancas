@@ -3,13 +3,12 @@
 // (08-telas §6). Resolver cada item é um toque (03 §5).
 
 import * as estado from '../core/estado.js';
-import * as log from '../core/log.js';
-import { novoId } from '../core/id.js';
 import { deTexto, formatar } from '../core/dinheiro.js';
 import { correcao, nomeDaCategoria } from '../core/lancamentos.js';
 import { pendencias } from '../core/pendencias.js';
 import { diaCurto, hoje, nomeDoMes } from '../core/datas.js';
 import { dinheiroHTML } from './dinheiro-html.js';
+import { lancarOcorrencia } from './ocorrencia.js';
 
 const VISIVEIS = 5;
 
@@ -104,28 +103,6 @@ export function criarFila({ raiz, abrirPagamento, abrirConferencia, abrirHolerit
   // ── resolver ────────────────────────────────────────────────────────────
 
   /** Lança a ocorrência de uma série: confirmada, ou agendada noutra data. */
-  async function lancarOcorrencia(o, { valor = o.valor, confirmado = true, dataCaixa = o.dataCompetencia } = {}) {
-    const ap = await log.aparelho();
-    await estado.aplicarEvento('lancamento.registrado', {
-      id: novoId('lan'),
-      tipo: o.tipo,
-      valor,
-      contaId: o.contaId,
-      contaDestinoId: o.contaDestinoId,
-      categoriaId: o.categoriaId,
-      detalheId: o.detalheId,
-      recorrenciaId: o.recorrenciaId,
-      dataCompetencia: o.dataCompetencia,
-      dataCaixa,
-      confirmado,
-      // O estimado e o realizado ficam os dois: sem isso a R18 é impossível
-      // de reconstruir depois (03 §5).
-      origemValor: valor === o.valor ? o.origemValor ?? 'digitado' : 'digitado',
-      valorEstimadoOriginal: o.estimado ? o.valor : null,
-      lancadoPor: ap?.id ?? null,
-    });
-  }
-
   async function confirmarVencido(l, valor = l.valor) {
     const mudancas = { id: l.id, confirmado: true };
     if (valor !== l.valor) {

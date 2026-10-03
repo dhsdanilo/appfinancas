@@ -703,3 +703,19 @@ body[data-pagina="dividas"] .bloco { min-width: 0; }
 /* Renda: bruto, líquido e saldo atual lado a lado, na largura toda — o mesmo
    desenho da faixa das dívidas (pedido dele, 03/10/2026). */
 .numeros-renda { display: flex; flex-wrap: wrap; gap: var(--e3) var(--e6); }
+
+/* O ✓ da linha prevista: lança como veio, num toque (pedido dele, 03/10/2026). */
+.lista > li.com-rapido { display: flex; align-items: center; gap: var(--e2); }
+.lista > li.com-rapido > .linha { flex: 1; min-width: 0; }
+.lancar-rapido {
+  flex: none;
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border: 1px solid var(--borda-forte);
+  border-radius: var(--raio-controle);
+  background: var(--superficie);
+  color: var(--positivo);
+  font-size: var(--t-corpo);
+}
+.lancar-rapido:hover { background: var(--acento-fundo); }
