@@ -14,13 +14,18 @@
   --borda-forte: #cdc5b8;
   --tinta: #1b211d;
   --tinta-fraca: #6d736e;
-  --acento: #1f5c4d;
-  --acento-fundo: #1f5c4d14;
+  /* O destaque do app é NEUTRO: tinta sobre papel. Verde de destaque se
+     confundia com a área "em caixa", e cor no app tem só dois sentidos — o
+     tipo do lançamento e a área da conta (09-identidade §3). */
+  --acento: #1b211d;
+  --acento-fundo: #1b211d0f;
   --alerta: #9b2c2c;
   --alerta-fundo: #9b2c2c14;
   --positivo: #1f6b3a;
   --positivo-fundo: #1f6b3a14;
-  --atencao: #8a5a12;
+  /* Aviso fala vermelho: o amarelo antigo se confundia com o mostarda dos
+     cartões, e o mostarda agora é só deles (09-identidade §3). */
+  --atencao: #9b2c2c;
   /* Transferência não é gasto nem ganho: precisa de cor própria, fora do eixo
      vermelho/verde, senão vira uma das duas coisas que ela não é. */
   --transferencia: #3f5d8a;
@@ -72,13 +77,13 @@
     --borda-forte: #3d4842;
     --tinta: #e8ebe8;
     --tinta-fraca: #98a09a;
-    --acento: #6fcfae;
-    --acento-fundo: #6fcfae1a;
+    --acento: #e8ebe8;
+    --acento-fundo: #e8ebe814;
     --alerta: #f08c8c;
     --alerta-fundo: #f08c8c1a;
     --positivo: #5fc98a;
     --positivo-fundo: #5fc98a1a;
-    --atencao: #e0b263;
+    --atencao: #f08c8c;
     --transferencia: #8fb3e0;
     --transferencia-fundo: #8fb3e01a;
     --area-caixa: #5dcaa5;
@@ -95,6 +100,9 @@
 [data-area="investimentos"] { --area: var(--area-investimentos); }
 [data-area="dividas"] { --area: var(--area-dividas); }
 [data-area="folha"] { --area: var(--area-folha); }
+/* A transferência não é de área nenhuma: é dinheiro trocando de bolso, e leva
+   a cor do próprio tipo. */
+[data-area="transferencia"] { --area: var(--transferencia); }
 [data-area] { --area-fundo: color-mix(in srgb, var(--area) 14%, transparent); }
 
 * { box-sizing: border-box; }
@@ -170,15 +178,14 @@ button:hover { border-color: var(--borda-forte); }
 button:disabled { opacity: 0.45; cursor: not-allowed; }
 button.perigo { color: var(--alerta); }
 
+/* Dentro de uma área, o botão principal veste a cor dela — e por isso ele
+   abre naquela área (08-telas §4.1). Fora de área, é o destaque neutro. */
 button.principal {
-  background: var(--acento);
-  border-color: var(--acento);
+  background: var(--area, var(--acento));
+  border-color: var(--area, var(--acento));
   color: var(--fundo);
   font-size: var(--t-corpo);
   font-weight: 600;
-}
-@media (prefers-color-scheme: dark) {
-  button.principal { color: #10211c; }
 }
 
 input[type="text"] {
@@ -452,3 +459,7 @@ code { font-family: var(--mono); font-size: 0.9em; }
   color: var(--positivo);
   box-shadow: inset 0 0 0 1.5px var(--positivo);
 }
+
+/* A janela veste a área da conta que está nela: lançar no cartão é uma janela
+   mostarda, e transferir é uma janela azul (09-identidade §3). */
+dialog[data-area] { border-top: 4px solid var(--area); }

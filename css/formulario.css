@@ -53,7 +53,7 @@ input[type="text"].entrada-valor:focus-visible { outline: none; }
 input[type="text"].entrada-valor::selection { background: transparent; color: transparent; }
 
 /* O foco se mostra no desenho, não no campo. */
-.campo-valor:focus-within .valor { color: var(--acento); }
+.campo-valor:focus-within .valor { color: var(--area, var(--acento)); }
 .campo-valor:focus-within .valor.zerado { color: var(--tinta-fraca); }
 .valor .sep { color: var(--tinta-fraca); }
 /* Enquanto está em zero o valor recua, pra não parecer um dado preenchido. */

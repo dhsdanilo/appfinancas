@@ -120,7 +120,7 @@
       <button type="submit" class="principal">Criar conta</button>
     </div>
 
-    <p class="dica">
+    <p class="dica" id="dica-conta">
       <strong>O saldo é o de hoje</strong>, não o de quando a conta foi aberta no banco: é o
       marco zero, e dali pra frente o app cuida sozinho.
     </p>
@@ -193,7 +193,7 @@
 
 <!-- O ciclo de um cartão que já existe: os dias, o limite e a conta que paga.
      Mudar os dias move só as faturas que ainda não fecharam (design/03 §6.2). -->
-<dialog id="dialogo-ciclo" class="dialogo-ciclo" aria-labelledby="titulo-ciclo">
+<dialog id="dialogo-ciclo" class="dialogo-ciclo" data-area="cartoes" aria-labelledby="titulo-ciclo">
   <form class="formulario" id="f-ciclo" method="dialog">
     <p class="titulo-bloco" id="titulo-ciclo">cartão</p>
     <div class="campo estreito">

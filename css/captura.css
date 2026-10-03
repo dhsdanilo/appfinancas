@@ -11,12 +11,15 @@
 .previa {
   margin: 0;
   padding: var(--e2) var(--e4);
-  background: var(--atencao);
-  color: var(--fundo);
+  border-bottom: 1px solid var(--borda);
+  color: var(--tinta-fraca);
   font-size: var(--t-miudo);
   text-align: center;
 }
 .previa a { color: inherit; }
+
+/* No celular a tela inteira é a captura: a faixa da área fica no topo dela. */
+.terreo .captura[data-area] { border-top: 4px solid var(--area); }
 
 /* Três zonas: o valor em cima, as categorias rolando no meio, e o teclado com o
    botão de lançar fixos embaixo. A ação principal nunca exige rolagem — é a

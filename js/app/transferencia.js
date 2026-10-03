@@ -66,6 +66,10 @@ const MARCACAO = `
  */
 export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitulo }) {
   raiz.innerHTML = MARCACAO;
+  // Transferência não é de área: leva a cor do próprio tipo, ela e a janela.
+  raiz.dataset.area = 'transferencia';
+  const janela = raiz.closest('dialog');
+  if (janela) janela.dataset.area = 'transferencia';
   const el = (papel) => raiz.querySelector(`[data-papel="${papel}"]`);
 
   let app = null;

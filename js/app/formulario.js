@@ -215,9 +215,19 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
     pintarArea();
   }
 
-  /** A conta escolhida veste a cor da área dela (09-identidade §3). */
+  /**
+   * A conta escolhida veste a cor da área dela, e o formulário inteiro junto
+   * — valor e botão de salvar (09-identidade §3).
+   */
   function pintarArea() {
-    el('escolha-conta').dataset.area = areaDaConta(app.contas[contaId]);
+    const area = areaDaConta(app.contas[contaId]);
+    el('escolha-conta').dataset.area = area;
+    // A janela em volta (o diálogo do PC) veste a mesma área.
+    for (const alvo of [raiz, raiz.closest('dialog')]) {
+      if (!alvo) continue;
+      if (area) alvo.dataset.area = area;
+      else delete alvo.dataset.area;
+    }
   }
 
   /**
@@ -877,6 +887,16 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
       valor.definir(l.valor);
       el('desfazer').hidden = true;
       el('nova-etiqueta').value = '';
+      await recarregar();
+    },
+
+    /**
+     * Abre na conta da área em que a pessoa está: o botão que veste a cor do
+     * cartão tem que lançar no cartão (08-telas §4.1).
+     */
+    async usarConta(id) {
+      if (!id) return;
+      contaId = id;
       await recarregar();
     },
 

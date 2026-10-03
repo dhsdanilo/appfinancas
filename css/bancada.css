@@ -36,6 +36,7 @@
 }
 
 .campo input[type="text"],
+.campo input[type="password"],
 .campo input[type="number"],
 .campo input[type="date"],
 .campo select {
@@ -294,3 +295,6 @@
 
 /* O bloco de contas leva a cor da área, a mesma do extrato. */
 .divisor[data-area] { color: var(--area); }
+
+/* O "criar conta" veste a cor do tipo escolhido: cartão de crédito, mostarda. */
+#f-conta [type="submit"] { transition: background-color 120ms, border-color 120ms; }

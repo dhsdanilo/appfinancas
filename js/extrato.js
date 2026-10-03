@@ -97,8 +97,10 @@ async function pintar() {
   const contas = contasDaAba(aba);
   if (vista.conta !== 'todas' && !contas.some((c) => c.id === vista.conta)) vista.conta = 'todas';
 
-  // A tela inteira veste a cor da área (09-identidade §3).
+  // A tela inteira veste a cor da área (09-identidade §3) — inclusive o
+  // "novo lançamento", que por isso abre nela.
   $('painel').dataset.area = aba.id;
+  $('barra-acoes').dataset.area = aba.id;
   pintarAbas(abas);
   pintarSubabas(contas);
   pintarPeriodo();
@@ -638,11 +640,26 @@ $('b-transferir').addEventListener('click', abrirTransferencia);
 $('b-fechar-edicao').addEventListener('click', () => dialogoEdicao.close());
 $('b-fechar-transferencia').addEventListener('click', () => dialogoTransferencia.close());
 
-function abrir() {
+async function abrir() {
   formulario.limpar();
-  formulario.recarregar();
+  await formulario.usarConta(contaDaVista());
   dialogo.showModal();
   formulario.focar();
+}
+
+/**
+ * A conta em que o "novo lançamento" abre: a da sub-aba, se houver uma em
+ * foco; em "Todas", a mais usada da área. Trocar continua livre na captura.
+ */
+function contaDaVista() {
+  if (!app) return null;
+  if (vista.conta !== 'todas' && app.contas[vista.conta]) return vista.conta;
+  const aba = ABAS.find((a) => a.id === vista.aba);
+  const contas = aba ? contasDaAba(aba).filter((c) => !c.arquivada) : [];
+  if (!contas.length) return null;
+  const usos = new Map();
+  for (const l of visiveis(app)) usos.set(l.contaId, (usos.get(l.contaId) ?? 0) + 1);
+  return [...contas].sort((a, b) => (usos.get(b.id) ?? 0) - (usos.get(a.id) ?? 0))[0].id;
 }
 
 $('b-novo').addEventListener('click', abrir);

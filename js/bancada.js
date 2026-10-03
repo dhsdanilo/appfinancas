@@ -22,7 +22,7 @@ import { usos, podeRemover, podeArquivarConta, acharPorNome } from './core/lista
 import { dinheiroHTML } from './app/dinheiro-html.js';
 import { instalarServiceWorker } from './app/instalar.js';
 import { iniciarSincronia } from './app/sincronia-viva.js';
-import { AREAS } from './app/areas.js';
+import { AREAS, areaDaConta } from './app/areas.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -559,9 +559,16 @@ async function criar(e, especie, montar) {
 }
 
 function mostrarCamposDeCartao() {
-  const cartao = $('f-conta').elements.tipo.value === 'cartao';
+  const tipo = $('f-conta').elements.tipo.value;
+  const cartao = tipo === 'cartao';
+  // O "criar conta" veste a cor da área do tipo escolhido (09-identidade §3).
+  $('f-conta').dataset.area = areaDaConta({ tipo });
   $('campos-cartao').hidden = !cartao;
   $('rotulo-saldo').textContent = cartao ? 'Já na fatura aberta' : 'Saldo de hoje';
+  // A dica fala do campo que está na tela: no cartão, não existe "saldo".
+  $('dica-conta').innerHTML = cartao
+    ? '<strong>O valor é o que já está na fatura aberta hoje</strong>: as compras de antes de o cartão entrar no app. Dali pra frente, cada compra lançada cai na fatura certa sozinha.'
+    : DICA_DO_SALDO;
 }
 
 /** Quem pode pagar a fatura: as contas de caixa — corrente e espécie. */
@@ -578,6 +585,8 @@ function pintarPagadoras() {
     select.value = antes;
   }
 }
+
+const DICA_DO_SALDO = $('dica-conta').innerHTML;
 
 // ── o ciclo de um cartão que já existe ────────────────────────────────────
 
@@ -682,6 +691,7 @@ async function garantirAparelho() {
 
 mostrarAba(location.hash.slice(1) || 'contas');
 $('f-conta').elements.data.value = hoje();
+mostrarCamposDeCartao();
 await garantirAparelho();
 await recarregar();
 
