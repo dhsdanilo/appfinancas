@@ -662,19 +662,14 @@ function linhaHTML(l, ids, saldoApos = null) {
 
 /**
  * A transferência se apresenta pelo nome da outra conta, nunca por categoria —
- * ela não é gasto nem ganho (03 §3.1). Quem recebe vê de onde veio ("Veio de
- * Salário Professor"); quem manda vê para onde foi ("Foi para Consignado"). A
- * parcela de um contrato diz qual é. Entre duas contas do mesmo foco, os dois
- * nomes.
+ * ela não é gasto nem ganho (03 §3.1). Só o nome: a direção já está na marca
+ * → e no sinal do valor. Quem recebe o salário vê "Salário Professor"; quem
+ * paga a parcela vê "Consignado · parcela 17/72". Entre duas contas do mesmo
+ * foco, "Transferência", com os dois nomes embaixo.
  */
 function nomeDaTransferencia(l, direcaoNoFoco, conta, destino) {
-  const deOnde = conta?.nome ?? '—';
-  const praOnde = destino?.nome ?? '—';
-  if (l.tipo === 'pagamento_fatura') {
-    return direcaoNoFoco === 'entra' ? `Pagamento · veio de ${deOnde}` : `Fatura ${praOnde}`;
-  }
-  if (direcaoNoFoco === 'entra') return `Veio de ${deOnde}${numeroDaParcela(l, destino)}`;
-  if (direcaoNoFoco === 'sai') return `Foi para ${praOnde}${numeroDaParcela(l, destino)}`;
+  if (direcaoNoFoco === 'entra') return `${conta?.nome ?? '—'}${numeroDaParcela(l, destino)}`;
+  if (direcaoNoFoco === 'sai') return `${destino?.nome ?? '—'}${numeroDaParcela(l, destino)}`;
   return 'Transferência';
 }
 
