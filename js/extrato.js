@@ -610,10 +610,7 @@ function linhaHTML(l, ids, saldoApos = null) {
     oque = `Fatura ${destino?.nome ?? ''}`;
     onde = `${conta?.nome ?? '—'} · fecha ${diaCurto(l.fatura.fechamento)}`;
   } else if (transferencia) {
-    // O líquido do holerite é uma linha limpa na corrente, com nome próprio (D25).
-    oque = l.tipo === 'transferencia' && conta?.tipo === 'folha' && destino?.tipo !== 'divida' && destino?.tipo !== 'investimento'
-      ? 'Líquido da folha'
-      : nomeDoTom;
+    oque = nomeDaTransferencia(l, d, conta, destino);
     onde = `${conta?.nome ?? '—'} → ${destino?.nome ?? '—'}`;
   } else if (ajuste) {
     oque = 'Ajuste de caixa';
@@ -661,6 +658,33 @@ function linhaHTML(l, ids, saldoApos = null) {
     <span class="quanto ${tom}">${dinheiroHTML(l.valor, { sinal, estimado: Boolean(l.estimado) })}</span>
     ${saldoApos ? saldo : ''}
   </button></li>`;
+}
+
+/**
+ * A transferência se apresenta pelo nome da outra conta, nunca por categoria —
+ * ela não é gasto nem ganho (03 §3.1). Quem recebe vê de onde veio ("Veio de
+ * Salário Professor"); quem manda vê para onde foi ("Foi para Consignado"). A
+ * parcela de um contrato diz qual é. Entre duas contas do mesmo foco, os dois
+ * nomes.
+ */
+function nomeDaTransferencia(l, direcaoNoFoco, conta, destino) {
+  const deOnde = conta?.nome ?? '—';
+  const praOnde = destino?.nome ?? '—';
+  if (l.tipo === 'pagamento_fatura') {
+    return direcaoNoFoco === 'entra' ? `Pagamento · veio de ${deOnde}` : `Fatura ${praOnde}`;
+  }
+  if (direcaoNoFoco === 'entra') return `Veio de ${deOnde}${numeroDaParcela(l, destino)}`;
+  if (direcaoNoFoco === 'sai') return `Foi para ${praOnde}${numeroDaParcela(l, destino)}`;
+  return 'Transferência';
+}
+
+/** " · parcela 17/72", quando a transferência é parcela de um contrato. */
+function numeroDaParcela(l, destino) {
+  const c = destino?.contrato;
+  if (!c?.parcelas || !c.primeira) return '';
+  const mes = l.dataCompetencia.slice(0, 7);
+  const k = Array.from({ length: c.parcelas }, (_, i) => somarMeses(c.primeira, i).slice(0, 7)).indexOf(mes);
+  return k >= 0 ? ` · parcela ${k + 1}/${c.parcelas}` : '';
 }
 
 // ── os diálogos ───────────────────────────────────────────────────────────
