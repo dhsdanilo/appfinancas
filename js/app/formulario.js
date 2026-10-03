@@ -441,7 +441,17 @@ export async function criarFormulario({
     return ano === hoje().slice(0, 4) ? `${d}/${mes}` : `${d}/${mes}/${ano}`;
   }
 
-  const pisoDaConta = () => app.contas[contaId]?.dataInicial ?? null;
+  /**
+   * O dia antes do qual não se lança nesta conta. No cartão não há: o "já na
+   * fatura aberta" do cadastro cobre só a fatura que estava aberta, e as
+   * compras da fatura anterior — fechada, ainda por pagar — precisam entrar
+   * pela data delas (pedido dele, 03/10/2026).
+   */
+  const pisoDaConta = () => {
+    const conta = app.contas[contaId];
+    if (!conta || conta.tipo === 'cartao') return null;
+    return conta.dataInicial ?? null;
+  };
 
   function irPara(novoDia) {
     const piso = pisoDaConta();
