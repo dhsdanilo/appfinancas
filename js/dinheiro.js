@@ -490,11 +490,19 @@ function blocoDeCartao(c) {
 function peDaFolha(c) {
   const mes = vista.mes;
   const faltam = linhasDoHolerite(app, c.id, mes).filter((l) => !l.automatico).length;
-  const lancados = lancadosNoMes(app, c.id, mes).length;
+  // A parcela do consignado cai sozinha na folha: ela não é o holerite. Só o
+  // que foi lançado à mão conta, e "lançado" exige a folha fechada em zero.
+  const lancados = lancadosNoMes(app, c.id, mes).filter((l) => !l.automatico).length;
   const nome = nomeDoMes(mes).split(' ')[0];
-  const feito = !faltam && lancados;
+  const aberta = saldoReal(app, c.id) !== 0;
+  const feito = !faltam && lancados && !aberta;
+  const situacaoDaFolha = feito
+    ? `holerite de ${escapar(nome)} lançado`
+    : faltam
+      ? `${faltam} linha${faltam > 1 ? 's' : ''} prevista${faltam > 1 ? 's' : ''}`
+      : aberta ? 'a folha não fechou' : 'sem linhas previstas';
   return `<div class="pe-bloco">
-    <span class="fino">${feito ? `holerite de ${escapar(nome)} lançado` : faltam ? `${faltam} linha${faltam > 1 ? 's' : ''} prevista${faltam > 1 ? 's' : ''}` : 'sem linhas previstas'}</span>
+    <span class="fino">${situacaoDaFolha}</span>
     <button type="button" class="${feito ? 'elo' : 'principal'}" data-holerite="${escapar(c.id)}">${feito ? 'linha a mais' : `Lançar holerite de ${escapar(nome)}`}</button>
   </div>`;
 }
