@@ -250,10 +250,16 @@ export function saldoPrevisto(estado, contaId, dia = hoje()) {
 
   // Agendados e vencidos: o que foi lançado e ainda não saiu.
   let aSair = 0;
+  // De onde vem o "a sair", separado: a soma sozinha não é crível (08-telas
+  // §6) — o recorrente do cartão não aparece na lista da conta.
+  const partes = { agendados: 0, recorrentes: 0, cartoes: new Map() };
   for (const l of visiveis(estado, dia)) {
     if (l.confirmado || l.contaId !== contaId || l.dataCaixa > ate) continue;
     const saida = sinalDeSaida(l);
-    if (saida > 0) aSair += saida;
+    if (saida > 0) {
+      aSair += saida;
+      partes.agendados += saida;
+    }
   }
 
   // Recorrentes: as da própria conta e as dos cartões que ela paga.
@@ -267,6 +273,8 @@ export function saldoPrevisto(estado, contaId, dia = hoje()) {
     const saida = sinalDeSaida(o);
     if (saida <= 0) continue;
     aSair += saida;
+    if (o.contaId === contaId) partes.recorrentes += saida;
+    else partes.cartoes.set(o.contaId, (partes.cartoes.get(o.contaId) ?? 0) + saida);
     if (o.estimado) estimado = true;
   }
 
@@ -275,6 +283,7 @@ export function saldoPrevisto(estado, contaId, dia = hoje()) {
     real,
     faturas: faturasDaConta,
     aSair,
+    partes,
     ate,
     estimado,
     previsto: real - totalFaturas - aSair,

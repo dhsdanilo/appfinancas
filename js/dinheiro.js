@@ -434,6 +434,14 @@ function pintarResumoDeCaixa(contas) {
       faturas: [{ cartao: { nome: 'faturas' }, valor: previstos.reduce((t, x) => t + x.p.faturas.reduce((u, f) => u + f.valor, 0), 0) }]
         .filter((f) => f.valor > 0),
       aSair: previstos.reduce((t, x) => t + x.p.aSair, 0),
+      partes: {
+        recorrentes: previstos.reduce((t, x) => t + x.p.partes.recorrentes, 0),
+        agendados: previstos.reduce((t, x) => t + x.p.partes.agendados, 0),
+        cartoes: previstos.reduce((m, x) => {
+          for (const [id, v] of x.p.partes.cartoes) m.set(id, (m.get(id) ?? 0) + v);
+          return m;
+        }, new Map()),
+      },
       ate: previstos[0].p.ate,
       estimado: previstos.some((x) => x.p.estimado),
       previsto: previstos.reduce((t, x) => t + x.p.previsto, 0),
@@ -450,7 +458,19 @@ function blocoDeCaixa(nome, p, total = false, conta = null) {
       linhaDeResumo(total ? f.cartao.nome : `fatura ${f.cartao.nome}`, dinheiroHTML(-f.valor), 'abate')
     ),
   ];
-  if (p.aSair > 0) {
+  // O "a sair" aberto pela origem: assim o número bate com o que se vê.
+  const partes = p.partes;
+  if (partes) {
+    if (partes.recorrentes > 0) {
+      linhas.push(linhaDeResumo(`recorrentes até ${diaCurto(p.ate)}`, dinheiroHTML(-partes.recorrentes, { estimado: p.estimado }), 'abate'));
+    }
+    for (const [cartaoId, valor] of partes.cartoes) {
+      linhas.push(linhaDeResumo(`recorrentes no ${app.contas[cartaoId]?.nome ?? 'cartão'}`, dinheiroHTML(-valor, { estimado: p.estimado }), 'abate'));
+    }
+    if (partes.agendados > 0) {
+      linhas.push(linhaDeResumo('agendados e vencidos', dinheiroHTML(-partes.agendados), 'abate'));
+    }
+  } else if (p.aSair > 0) {
     linhas.push(
       linhaDeResumo(`recorrentes e agendados até ${diaCurto(p.ate)}`, dinheiroHTML(-p.aSair, { estimado: p.estimado }), 'abate')
     );
