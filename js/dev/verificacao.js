@@ -1623,6 +1623,17 @@ caso('dívida', 'consignado: a parcela já vem pronta no holerite, e conta no l�
   igual(linhas.map((l) => [l.recorrenciaId, Boolean(l.automatico)]), [['r-sal', false], [null, true]],
     'o salário a lançar, e a parcela que cai sozinha');
   igual(holerite.liquido(linhas), 440000, '5.000 − 600 do consignado');
+
+  // Lançado o mês: a renda líquida desconta o consignado, e o líquido que
+  // vai para a corrente não desconta — ele é a própria renda líquida.
+  await ev('categoria.criada', { id: 'ir', nome: 'IR', natureza: 'despesa', areas: ['folha'], obrigatoria: true });
+  await ev('lancamento.registrado', { id: 's', tipo: 'receita', valor: 500000, contaId: 'fo', categoriaId: 'sal', recorrenciaId: 'r-sal', dataCompetencia: '2027-03-05', confirmado: true });
+  await ev('lancamento.registrado', { id: 'i', tipo: 'despesa', valor: 50000, contaId: 'fo', categoriaId: 'ir', dataCompetencia: '2027-03-05', confirmado: true });
+  await ev('lancamento.registrado', { id: 'q', tipo: 'transferencia', valor: 390000, contaId: 'fo', contaDestinoId: 'cc', dataCompetencia: '2027-03-05', confirmado: true });
+  const depois = await estado.calcular();
+  const doMes = lanc.visiveis(depois, '2027-03-31').filter((l) => l.dataCompetencia.slice(0, 7) === '2027-03');
+  igual(holerite.rendaDaFolha(depois, doMes, new Set(['fo'])), { bruta: 500000, liquida: 390000 },
+    'bruta 5.000; líquida 5.000 − 500 de IR − 600 do consignado');
 });
 
 caso('dívida', 'a série que a primeira versão criava não projeta mais nem repete o mês já lançado', async () => {

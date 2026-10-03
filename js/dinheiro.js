@@ -23,7 +23,7 @@ import { fotografar, amortizar, pularParcela } from './app/contrato.js';
 import { aoLancar } from './app/pagina.js';
 import { enderecoDa } from './app/rotas.js';
 import { BARRA, PRINCIPAL, DIALOGOS } from './app/marcacao-dinheiro.js';
-import { rendaDisponivel } from './core/holerite.js';
+import { rendaDaFolha } from './core/holerite.js';
 import {
   visiveis, porDataDecrescente, estadoDoLancamento, saldoReal, nomeDaCategoria,
   sinalDeSaida, ehTransferencia, dataVista, estornado,
@@ -250,7 +250,8 @@ function cartaoDoInicio(area, contas) {
     const doMes = visiveis(app).filter(
       (l) => contas.some((c) => c.id === l.contaId) && l.dataCompetencia.slice(0, 7) === mes
     );
-    linhas.push(linhaDeResumo(`renda disponível de ${nomeDoMes(mes).split(' ')[0]}`, dinheiroHTML(rendaDisponivel(app, doMes))));
+    const { liquida } = rendaDaFolha(app, doMes, new Set(contas.map((c) => c.id)));
+    linhas.push(linhaDeResumo(`renda líquida de ${nomeDoMes(mes).split(' ')[0]}`, dinheiroHTML(liquida)));
     const faltam = contas.filter((c) => linhasDoHolerite(app, c.id, mes).some((l) => !l.automatico)).length;
     if (faltam) linhas.push(linhaDeResumo('holerites a lançar', String(faltam), 'abate'));
   }
@@ -824,7 +825,7 @@ function pintarResumoDeSaldos(aba, contas) {
         : '';
     return `<div class="bloco">
       <p class="nome-bloco">${escapar(c.nome)}</p>
-      <dl>${aba.id === 'folha' ? linhasDeRenda([c]) : ''}${linhaDeResumo(aba.id === 'folha' ? 'na folha agora' : 'saldo', dinheiroHTML(saldo), saldo < 0 ? 'negativo' : '')}</dl>
+      <dl>${aba.id === 'folha' ? linhasDeRenda([c]) : ''}${aba.id === 'folha' && saldo === 0 ? '' : linhaDeResumo(aba.id === 'folha' ? 'na folha sem fechar' : 'saldo', dinheiroHTML(saldo), saldo < 0 ? 'negativo' : '')}</dl>
       ${aviso}
       ${aba.id === 'folha' ? peDaFolha(c) : ''}
     </div>`;
@@ -840,14 +841,13 @@ function blocoDeTotal(aba, contas) {
   </div>`;
 }
 
-/** O que entrou nas folhas no mês da tela, e o que sobra disso tirando o obrigatório (D25). */
+/** A renda das folhas no mês da tela: bruta, e líquida (descontos e consignados fora). */
 function linhasDeRenda(folhas) {
   const ids = new Set(folhas.map((c) => c.id));
   const doMes = visiveis(app).filter((l) => ids.has(l.contaId) && l.dataCompetencia.slice(0, 7) === vista.mes);
-  const bruta = doMes.filter((l) => l.tipo === 'receita').reduce((t, l) => t + l.valor, 0);
-  const nome = nomeDoMes(vista.mes).split(' ')[0];
-  return linhaDeResumo(`renda de ${nome}`, dinheiroHTML(bruta)) +
-    linhaDeResumo('renda disponível', dinheiroHTML(rendaDisponivel(app, doMes)), 'abate');
+  const { bruta, liquida } = rendaDaFolha(app, doMes, ids);
+  return linhaDeResumo('renda bruta', dinheiroHTML(bruta)) +
+    linhaDeResumo('renda líquida', dinheiroHTML(liquida));
 }
 
 /** Geral da renda: a soma das fontes no mês, e quantas folhas ainda não fecharam. */

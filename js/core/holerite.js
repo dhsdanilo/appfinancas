@@ -48,6 +48,26 @@ export function liquido(linhas) {
   return linhas.reduce((t, l) => t - sinalDeSaida(l), 0);
 }
 
+/**
+ * Renda bruta e líquida das folhas num conjunto de lançamentos (pedido dele,
+ * 03/10/2026). Bruta: o que entrou. Líquida: o que sobra para cair na conta —
+ * a bruta menos todo desconto e menos o que sai da folha para outra coisa que
+ * não seja caixa (o consignado, a previdência que vira investimento). O
+ * líquido transferido para a corrente não desconta: ele É a renda líquida.
+ */
+export function rendaDaFolha(estado, lancamentos, folhaIds) {
+  const caixa = (id) => ['corrente', 'especie'].includes(estado.contas[id]?.tipo);
+  let bruta = 0;
+  let descontos = 0;
+  for (const l of lancamentos) {
+    if (!folhaIds.has(l.contaId)) continue;
+    if (l.tipo === 'receita') bruta += l.valor;
+    else if (l.tipo === 'despesa') descontos += l.valor;
+    else if (l.contaDestinoId && !folhaIds.has(l.contaDestinoId) && !caixa(l.contaDestinoId)) descontos += l.valor;
+  }
+  return { bruta, liquida: bruta - descontos };
+}
+
 /** Renda disponível de um conjunto de lançamentos: receitas menos obrigatórias (D25). */
 export function rendaDisponivel(estado, lancamentos) {
   let renda = 0;
