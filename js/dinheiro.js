@@ -451,45 +451,38 @@ function pintarResumoDeCaixa(contas) {
   $('resumo').innerHTML = `<div class="blocos">${blocos.join('')}</div>`;
 }
 
+/**
+ * A conta de caixa na largura toda, como as outras áreas (pedido dele,
+ * 03/10/2026): o saldo real, cada coisa que vai sair até o fim do mês
+ * separada pela origem, e o saldo previsto por último, em destaque.
+ */
 function blocoDeCaixa(nome, p, total = false, conta = null) {
-  const linhas = [
-    linhaDeResumo('saldo real', dinheiroHTML(p.real), p.real < 0 ? 'negativo' : ''),
-    ...p.faturas.map((f) =>
-      linhaDeResumo(total ? f.cartao.nome : `fatura ${f.cartao.nome}`, dinheiroHTML(-f.valor), 'abate')
-    ),
-  ];
+  const menos = (v) => `−${formatar(v)}`;
+  const numeros = [numeroDaFaixa('saldo real', formatar(p.real))];
+  for (const f of p.faturas) numeros.push(numeroDaFaixa(`fatura ${f.cartao.nome}`, menos(f.valor)));
   // O "a sair" aberto pela origem: assim o número bate com o que se vê.
   const partes = p.partes;
-  if (partes) {
-    if (partes.recorrentes > 0) {
-      linhas.push(linhaDeResumo(`recorrentes até ${diaCurto(p.ate)}`, dinheiroHTML(-partes.recorrentes, { estimado: p.estimado }), 'abate'));
-    }
-    for (const [cartaoId, valor] of partes.cartoes) {
-      linhas.push(linhaDeResumo(`recorrentes no ${app.contas[cartaoId]?.nome ?? 'cartão'}`, dinheiroHTML(-valor, { estimado: p.estimado }), 'abate'));
-    }
-    if (partes.agendados > 0) {
-      linhas.push(linhaDeResumo('agendados e vencidos', dinheiroHTML(-partes.agendados), 'abate'));
-    }
-  } else if (p.aSair > 0) {
-    linhas.push(
-      linhaDeResumo(`recorrentes e agendados até ${diaCurto(p.ate)}`, dinheiroHTML(-p.aSair, { estimado: p.estimado }), 'abate')
-    );
+  const til = p.estimado ? '~' : '';
+  if (partes?.recorrentes > 0) numeros.push(numeroDaFaixa(`recorrentes até ${diaCurto(p.ate)}`, `${til}${menos(partes.recorrentes)}`));
+  for (const [cartaoId, valor] of partes?.cartoes ?? []) {
+    numeros.push(numeroDaFaixa(`recorrentes no ${app.contas[cartaoId]?.nome ?? 'cartão'}`, `${til}${menos(valor)}`));
   }
+  if (partes?.agendados > 0) numeros.push(numeroDaFaixa('agendados e vencidos', menos(partes.agendados)));
   const temPrevisao = p.faturas.length || p.aSair > 0;
-  if (temPrevisao) {
-    linhas.push(
-      linhaDeResumo('saldo previsto', dinheiroHTML(p.previsto, { estimado: p.estimado }),
-        `fecho ${p.previsto < 0 ? 'negativo' : ''}`)
-    );
-  }
+  const previsto = temPrevisao
+    ? `<div class="numero-faixa previsto-faixa ${p.previsto < 0 ? 'negativo' : ''}">
+        <span class="rotulo-numero">saldo previsto</span>
+        <span class="valor-numero">${til}${p.previsto < 0 ? menos(-p.previsto) : formatar(p.previsto)}</span>
+      </div>`
+    : '';
   // Conferir com o banco (ou a carteira) mora na própria conta (03 §8).
   const pe = conta
     ? `<div class="pe-bloco"><span class="fino">${conta.conferidaEm ? `conferida em ${diaCurto(conta.conferidaEm)}` : 'nunca conferida'}</span>
         <button type="button" class="elo" data-conferir="${escapar(conta.id)}">conferir</button></div>`
     : '';
-  return `<div class="bloco ${total ? 'total' : ''}">
+  return `<div class="bloco largo ${total ? 'total' : ''}">
     <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(nome)}</p>
-    <dl>${linhas.join('')}</dl>
+    <div class="numeros-renda numeros-caixa">${numeros.join('')}${previsto}</div>
     ${pe}
   </div>`;
 }

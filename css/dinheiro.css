@@ -803,3 +803,17 @@ body[data-pagina="investimentos"] .acoes-topo .atalho { display: none; }
    estourava a janela para os lados. */
 .dialogo-ativo input,
 .dialogo-ativo select { min-width: 0; width: 100%; }
+
+/* A conta de caixa: o saldo previsto fecha a faixa, separado por um fio e em
+   destaque — vermelho com fundo quando negativo (09-identidade §3). */
+.numeros-caixa .previsto-faixa { margin-left: auto; padding-left: var(--e4); border-left: 1px solid var(--borda); }
+.numeros-caixa .previsto-faixa .valor-numero { font-size: var(--t-secao); }
+.numeros-caixa .previsto-faixa.negativo .valor-numero {
+  padding: 0 var(--e2);
+  border-radius: var(--raio-controle);
+  background: var(--alerta-fundo);
+  color: var(--alerta);
+}
+@media (max-width: 600px) {
+  .numeros-caixa .previsto-faixa { margin-left: 0; padding-left: 0; border-left: 0; }
+}
