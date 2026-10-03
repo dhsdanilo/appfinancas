@@ -101,3 +101,7 @@
 /* O tipo ocupa a linha inteira: três pílulas espremidas quebravam o rótulo. */
 #f-recorrencia .campo:first-of-type { flex: 1 1 100%; }
 #f-recorrencia .pilulas button { white-space: nowrap; }
+
+#lista-recorrencias .reajustes { color: var(--tinta-fraca); font-size: var(--t-miudo); }
+.historico-valores { flex: 1 1 100%; margin: 0; padding-left: var(--e4); font-size: var(--t-apoio); }
+.historico-valores .fino { color: var(--tinta-fraca); font-size: var(--t-miudo); }

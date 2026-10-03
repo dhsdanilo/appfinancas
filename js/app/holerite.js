@@ -74,11 +74,18 @@ export function criarHolerite({ janela, raiz, aoSalvar }) {
               <span class="nome-linha">${escapar(nomeDaLinha(l))}${obrig ? ' <span class="selo">obrigatória</span>' : ''}${l.estimado ? ' <span class="selo">estimado</span>' : ''}</span>
               <input type="text" inputmode="decimal" data-valor value="${escapar(formatar(l.valor, { comPrefixo: false }))}" ${l.fora ? 'disabled' : ''} aria-label="Valor de ${escapar(nomeDaLinha(l))}">
               <button type="button" class="elo" data-fora title="${l.fora ? 'Volta para este mês' : 'Não veio este mês'}">${l.fora ? 'voltar' : 'não veio'}</button>
+              ${reajustavel(l) ? `<label class="reajuste"><input type="checkbox" data-reajuste ${l.reajuste ? 'checked' : ''}> vale daqui pra frente</label>` : ''}
             </li>`;
           })
           .join('')
       : '<li class="vazio">Nenhuma linha prevista. Acrescente abaixo o que entrou e o que foi descontado — marcando "todo mês", o holerite do mês que vem já nasce pronto.</li>';
     pintarLiquido();
+  }
+
+  /** Linha fixa que veio com valor diferente: pode ser reajuste (aumento, por exemplo). */
+  function reajustavel(l) {
+    const serie = l.ocorrencia ? app.recorrencias[l.ocorrencia.recorrenciaId] : null;
+    return !l.fora && serie?.tipoValor === 'fixa' && l.valor !== l.ocorrencia.valor;
   }
 
   function valorDoLiquido() {
@@ -217,6 +224,9 @@ export function criarHolerite({ janela, raiz, aoSalvar }) {
         origemValor: o && l.valor === o.valor ? o.origemValor ?? 'digitado' : 'digitado',
         valorEstimadoOriginal: o?.estimado ? o.valor : null,
       });
+      if (l.reajuste && reajustavel(l) && recorrenciaId) {
+        await estado.aplicarEvento('recorrencia.reajustada', { id: recorrenciaId, desde: data, valor: l.valor });
+      }
     }
 
     if (total > 0) {
@@ -247,6 +257,15 @@ export function criarHolerite({ janela, raiz, aoSalvar }) {
     l.valor = Math.abs(deTexto(campo.value));
     l.estimado = false;
     pintarLiquido();
+  });
+
+  // Ao sair do campo, a linha se redesenha: é quando aparece a pergunta do reajuste.
+  el('linhas').addEventListener('change', (e) => {
+    const marca = e.target.closest('[data-reajuste]');
+    const l = linhas.find((x) => x.chave === e.target.closest('[data-chave]')?.dataset.chave);
+    if (!l) return;
+    if (marca) { l.reajuste = marca.checked; return; }
+    if (e.target.closest('[data-valor]')) pintar();
   });
 
   el('linhas').addEventListener('click', (e) => {

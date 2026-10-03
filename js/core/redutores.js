@@ -25,7 +25,7 @@ export const AREAS_PADRAO = ['caixa', 'cartoes'];
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 10;
+export const VERSAO_ESTADO = 11;
 
 export function estadoVazio() {
   return {
@@ -295,6 +295,22 @@ export const redutores = {
     for (const [campo, valor] of Object.entries(d)) {
       if (campo !== 'id' && valor !== undefined) r[campo] = valor;
     }
+    // Corrigir o valor de uma série com reajustes corrige o valor vigente —
+    // o último —, não reescreve a história dos anteriores.
+    if (d.valor !== undefined && r.valores?.length) {
+      r.valores = [...r.valores.slice(0, -1), { ...r.valores[r.valores.length - 1], valor: d.valor }];
+    }
+  },
+
+  'recorrencia.reajustada'(e, d) {
+    // Reajuste: um valor novo, a partir de uma data. Os meses antes dela
+    // continuam com o valor que tinham — previsão e histórico (design/10 §7).
+    const r = e.recorrencias[d.id];
+    if (!r) return;
+    const base = r.valores?.length ? r.valores : r.valor ? [{ desde: r.inicio ?? d.desde, valor: r.valor }] : [];
+    r.valores = [...base.filter((v) => v.desde !== d.desde), { desde: d.desde, valor: d.valor }]
+      .sort((a, b) => (a.desde < b.desde ? -1 : 1));
+    r.valor = r.valores[r.valores.length - 1].valor;
   },
 
   'recorrencia.arquivada'(e, d) {

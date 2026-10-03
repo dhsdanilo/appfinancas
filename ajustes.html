@@ -216,6 +216,30 @@
   </form>
 </dialog>
 
+<!-- Reajuste de uma recorrência fixa: um valor novo a partir de uma data
+     (design/10 §7). Os meses antes dela continuam como eram. -->
+<dialog id="dialogo-reajuste" class="dialogo-ciclo" aria-labelledby="titulo-reajuste">
+  <form class="formulario" id="f-reajuste">
+    <p class="titulo-bloco" id="titulo-reajuste">reajuste</p>
+    <div class="campo">
+      <label for="reaj-valor">Valor novo</label>
+      <input type="text" id="reaj-valor" name="valor" inputmode="decimal" autocomplete="off">
+    </div>
+    <div class="campo">
+      <label for="reaj-desde">A partir de</label>
+      <input type="date" id="reaj-desde" name="desde">
+    </div>
+    <ul class="historico-valores" id="historico-reajuste"></ul>
+    <p class="aviso erro" id="aviso-reajuste" hidden></p>
+    <div class="campo acao">
+      <button type="submit" class="principal">Reajustar</button>
+    </div>
+    <div class="campo acao">
+      <button type="button" id="b-cancelar-reajuste">Cancelar</button>
+    </div>
+  </form>
+</dialog>
+
 <script type="module" src="js/ajustes.js"></script>
 <script type="module" src="js/recorrencias.js"></script>
 </body>

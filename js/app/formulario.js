@@ -110,6 +110,10 @@ const MARCACAO = `
 
   <p class="desfazer" data-papel="desfazer" hidden></p>
 
+  <label class="reajuste" data-papel="linha-reajuste" hidden>
+    <input type="checkbox" data-papel="reajuste"> este valor vale daqui pra frente (reajuste)
+  </label>
+
   <p class="devolucao" data-papel="devolucao" hidden></p>
 
   <div class="acoes" data-papel="acoes"></div>
@@ -172,6 +176,7 @@ export async function criarFormulario({
     aoMudar: () => {
       for (const b of raiz.querySelectorAll('[data-acao]')) b.disabled = !pronto();
       if (app) pintarParcelas();
+      pintarReajuste();
     },
     aoConfirmar: async (e) => {
       if (!pronto()) { valor.desfocar(); return; }
@@ -794,6 +799,12 @@ export async function criarFormulario({
         (quantas > 1 ? `${quantas}× de ${quanto}` : quanto) +
         ` · ${nomeDaCategoria(app, categoriaId)}`,
     };
+    if (previstoDe && el('reajuste').checked && recorrenciaId) {
+      await estado.aplicarEvento('recorrencia.reajustada', {
+        id: recorrenciaId, desde: previstoDe.dataCompetencia, valor: valor.centavos(),
+      });
+    }
+    el('reajuste').checked = false;
     daSerie = null;
     previstoDe = null;
     await recarregar();
@@ -1087,6 +1098,18 @@ export async function criarFormulario({
    * Devolver é partir da compra (03 §3.3): só na correção de uma despesa, e
    * mostrando quanto já voltou.
    */
+  /**
+   * Lançando a ocorrência de uma conta FIXA com valor diferente, pergunta se é
+   * reajuste: sim, o valor novo vale daqui pra frente; não, só este mês
+   * (design/10 §7).
+   */
+  function pintarReajuste() {
+    const serie = previstoDe ? app?.recorrencias?.[previstoDe.recorrenciaId] : null;
+    const mostrar = Boolean(serie) && serie.tipoValor === 'fixa' && valor.centavos() > 0 && valor.centavos() !== previstoDe.valor;
+    el('linha-reajuste').hidden = !mostrar;
+    if (!mostrar) el('reajuste').checked = false;
+  }
+
   function pintarDevolucao() {
     const pode = Boolean(editando) && editando.tipo === 'despesa' && Boolean(aoDevolver);
     el('devolucao').hidden = !pode;

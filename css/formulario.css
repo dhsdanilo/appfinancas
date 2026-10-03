@@ -463,3 +463,12 @@ input[type="text"].observacao {
 /* O campo de criar não estica: numa coluna flex, a regra genérica de input o
    faria crescer até ocupar a tela. */
 .todas-categorias input[type="text"].nova-etiqueta { flex: none; min-height: 40px; }
+
+/* ── reajuste (design/10 §7) ────────────────────────────────────────────── */
+.reajuste, .reajuste-fila {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--e1);
+  color: var(--tinta-fraca);
+  font-size: var(--t-miudo);
+}

@@ -87,8 +87,12 @@ export function criarFila({ raiz, abrirPagamento, abrirConferencia, abrirHolerit
   function campoAberto(i) {
     const l = i.tipo === 'vencido' ? i.lancamento : i.ocorrencia;
     if (aberto.modo === 'valor') {
+      // Conta fixa que veio diferente: pode ser reajuste (design/10 §7).
+      const serie = app.recorrencias?.[l.recorrenciaId];
+      const reajustavel = serie?.tipoValor === 'fixa';
       return `<input type="text" inputmode="decimal" class="campo-fila" data-fila-campo
           value="${escapar(formatar(l.valor, { comPrefixo: false }))}" aria-label="Quanto foi">
+        ${reajustavel ? '<label class="reajuste-fila"><input type="checkbox" data-fila-reajuste> vale daqui pra frente</label>' : ''}
         <button type="button" class="principal" data-fila="ok-valor">Confirmar</button>
         <button type="button" class="elo" data-fila="cancelar">cancelar</button>`;
     }
@@ -160,8 +164,12 @@ export function criarFila({ raiz, abrirPagamento, abrirConferencia, abrirHolerit
       case 'ok-valor': {
         const valor = Math.abs(deTexto(campo?.value ?? ''));
         if (!valor) return;
+        const reajuste = raiz.querySelector(`[data-chave="${CSS.escape(i.chave)}"] [data-fila-reajuste]`)?.checked;
         if (i.tipo === 'vencido') await confirmarVencido(l, valor);
         else await lancarOcorrencia(l, { valor });
+        if (reajuste && l.recorrenciaId) {
+          await estado.aplicarEvento('recorrencia.reajustada', { id: l.recorrenciaId, desde: l.dataCompetencia, valor });
+        }
         break;
       }
       case 'ok-data': {

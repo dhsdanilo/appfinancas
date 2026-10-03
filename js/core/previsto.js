@@ -152,13 +152,13 @@ export function ocorrenciasPrevistas(estado, de, ate, dia = hoje(), { comPassado
       ...daSerie.map((l) => l.dataCompetencia.slice(0, 7)),
       ...(r.pulados ?? []),
     ]);
-    const { valor, estimado, origem } = valorDaSerie(r, daSerie);
-    if (!valor) continue;
-
     for (let mes = piso.slice(0, 7); mes <= ate.slice(0, 7); mes = proximoMes(mes)) {
       const [ano, m] = mes.split('-').map(Number);
       if (mesDoAno && m !== mesDoAno) continue;
       const data = diaNoMes(ano, m, r.dia ?? 1);
+      // O valor do mês: com reajuste, cada mês usa o que valia nele.
+      const { valor, estimado, origem } = valorDaSerie(r, daSerie, data);
+      if (!valor) continue;
       if (data < piso || data > ate) continue;
       if (r.inicio && data < r.inicio) continue;
       if (r.fim && data > r.fim) continue;
@@ -196,8 +196,10 @@ export function ocorrenciasPrevistas(estado, de, ate, dia = hoje(), { comPassado
  * e superestimar a saída é prudência; o contrário é como se endivida sem
  * perceber. Estimativa aparece sempre com ~.
  */
-export function valorDaSerie(r, daSerie) {
-  if (r.tipoValor === 'fixa' && r.valor) return { valor: r.valor, estimado: false, origem: 'digitado' };
+export function valorDaSerie(r, daSerie, data = hoje()) {
+  if (r.tipoValor === 'fixa' && (r.valores?.length || r.valor)) {
+    return { valor: valorVigente(r, data), estimado: false, origem: 'digitado' };
+  }
   const ultimas = [...daSerie]
     .sort((a, b) => (a.dataCompetencia < b.dataCompetencia ? 1 : -1))
     .slice(0, 3);
@@ -275,4 +277,26 @@ export function saldoPrevisto(estado, contaId, dia = hoje()) {
 export function ocorrenciasVencidas(estado, dia = hoje()) {
   const de = inicioDoMes(somarMeses(dia, -12));
   return ocorrenciasPrevistas(estado, de, dia, dia, { comPassado: true });
+}
+
+/**
+ * O valor de uma série fixa numa data: o último reajuste que já valia nela.
+ * Antes do primeiro, o primeiro — a série não tem valor "de antes de existir".
+ */
+export function valorVigente(r, data = hoje()) {
+  const valores = r.valores?.length ? r.valores : [{ desde: r.inicio ?? '', valor: r.valor }];
+  const valendo = valores.filter((v) => v.desde <= data);
+  return (valendo[valendo.length - 1] ?? valores[0]).valor;
+}
+
+/** O reajuste agendado, se houver: o primeiro valor que passa a valer depois de `data`. */
+export function proximoReajuste(r, data = hoje()) {
+  return (r.valores ?? []).find((v) => v.desde > data) ?? null;
+}
+
+/** O último reajuste que já valeu, com o valor de antes dele. */
+export function ultimoReajuste(r, data = hoje()) {
+  const valores = (r.valores ?? []).filter((v) => v.desde <= data);
+  if (valores.length < 2) return null;
+  return { ...valores[valores.length - 1], antes: valores[valores.length - 2].valor };
 }

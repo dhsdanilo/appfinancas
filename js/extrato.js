@@ -15,7 +15,7 @@ import { criarDevolucao } from './app/devolucao.js';
 import { criarConferencia } from './app/conferencia.js';
 import { criarHolerite } from './app/holerite.js';
 import { linhasDoHolerite, lancadosNoMes } from './core/holerite.js';
-import { situacao, saldoDevedor } from './core/divida.js';
+import { situacao, saldoDevedor, jurosDaParcela } from './core/divida.js';
 import { fotografar } from './app/contrato.js';
 import { instalarServiceWorker } from './app/instalar.js';
 import { iniciarSincronia } from './app/sincronia-viva.js';
@@ -612,6 +612,10 @@ function linhaHTML(l, ids, saldoApos = null) {
   } else if (transferencia) {
     oque = nomeDaTransferencia(l, d, conta, destino);
     onde = `${conta?.nome ?? '—'} → ${destino?.nome ?? '—'}`;
+    // Na parcela de um contrato, a parte que é juros — informação, não gasto.
+    const k = indiceDaParcela(l, destino);
+    const juros = k ? jurosDaParcela(app, destino.id, k) : null;
+    if (juros) onde += ` · juros ~${formatar(juros)}`;
   } else if (ajuste) {
     oque = 'Ajuste de caixa';
     onde = conta?.nome ?? '—';
@@ -673,13 +677,18 @@ function nomeDaTransferencia(l, direcaoNoFoco, conta, destino) {
   return 'Transferência';
 }
 
+/** Qual parcela do contrato é esta transferência (1 em diante), ou 0. */
+function indiceDaParcela(l, destino) {
+  const c = destino?.contrato;
+  if (!c?.parcelas || !c.primeira) return 0;
+  const mes = l.dataCompetencia.slice(0, 7);
+  return Array.from({ length: c.parcelas }, (_, i) => somarMeses(c.primeira, i).slice(0, 7)).indexOf(mes) + 1;
+}
+
 /** " · parcela 17/72", quando a transferência é parcela de um contrato. */
 function numeroDaParcela(l, destino) {
-  const c = destino?.contrato;
-  if (!c?.parcelas || !c.primeira) return '';
-  const mes = l.dataCompetencia.slice(0, 7);
-  const k = Array.from({ length: c.parcelas }, (_, i) => somarMeses(c.primeira, i).slice(0, 7)).indexOf(mes);
-  return k >= 0 ? ` · parcela ${k + 1}/${c.parcelas}` : '';
+  const k = indiceDaParcela(l, destino);
+  return k ? ` · parcela ${k}/${destino.contrato.parcelas}` : '';
 }
 
 // ── os diálogos ───────────────────────────────────────────────────────────

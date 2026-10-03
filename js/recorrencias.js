@@ -10,7 +10,7 @@ import { novoId } from './core/id.js';
 import { deTexto, formatar } from './core/dinheiro.js';
 import { hoje, diaCurto, fimDoMes, somarMeses } from './core/datas.js';
 import { visiveis, nomeDaCategoria } from './core/lancamentos.js';
-import { ocorrenciasPrevistas, valorDaSerie } from './core/previsto.js';
+import { ocorrenciasPrevistas, valorDaSerie, proximoReajuste, ultimoReajuste } from './core/previsto.js';
 import { dinheiroHTML } from './app/dinheiro-html.js';
 import { opcoesDeConta, areaDaConta, categoriaNaArea } from './app/areas.js';
 
@@ -56,14 +56,22 @@ async function pintar() {
         ? `encerrada em ${diaCurto(r.fim)}`
         : p ? `próxima ${diaCurto(p.dataCompetencia)}` : 'em dia';
     const explica = r.tipoValor === 'fixa' ? 'fixa' : r.tipo === 'receita' ? 'estimada pelo piso' : 'estimada pela média';
+    // O histórico do valor fica à vista: quando mudou, e quanto era.
+    const ultimo = ultimoReajuste(r);
+    const agendado = proximoReajuste(r);
+    const reajustes = [
+      ultimo ? `reajustada em ${nomeCurtoDoMes(ultimo.desde)} · era ${formatar(ultimo.antes)}` : '',
+      agendado ? `${formatar(agendado.valor)} a partir de ${nomeCurtoDoMes(agendado.desde)}` : '',
+    ].filter(Boolean).join(' · ');
     return `<li class="item" data-id="${escapar(r.id)}" data-area="${areaDaConta(conta)}">
       <button type="button" class="nome" data-acao="editar" title="corrigir">
         <span class="ponto-area" aria-hidden="true"></span>${escapar(r.nome)}</button>
-      <span class="meta">${escapar(NOME_DO_TIPO[r.tipo] ?? r.tipo)} · ${escapar(onde)} · ${escapar(quando)} · ${escapar(estado)}</span>
+      <span class="meta">${escapar(NOME_DO_TIPO[r.tipo] ?? r.tipo)} · ${escapar(onde)} · ${escapar(quando)} · ${escapar(estado)}${reajustes ? `<br><span class="reajustes">${escapar(reajustes)}</span>` : ''}</span>
       <span class="valor">${valor ? dinheiroHTML(valor, { estimado }) : '—'}</span>
       <span class="uso">${escapar(explica)}</span>
       <span class="acoes-item">
         <button type="button" class="elo" data-acao="editar">corrigir</button>
+        ${r.tipoValor === 'fixa' ? '<button type="button" class="elo" data-acao="reajustar">reajustar</button>' : ''}
         ${r.fim && r.fim < hoje()
           ? '<button type="button" class="elo" data-acao="retomar">retomar</button>'
           : '<button type="button" class="elo" data-acao="encerrar">encerrar</button>'}
@@ -218,6 +226,8 @@ $('lista-recorrencias').addEventListener('click', async (e) => {
   switch (b.dataset.acao) {
     case 'editar':
       return abrir(r);
+    case 'reajustar':
+      return abrirReajuste(r);
     case 'encerrar':
       // Encerrar não apaga nada: os lançamentos que ela gerou continuam, e
       // a projeção para daqui pra frente.
@@ -232,6 +242,46 @@ $('lista-recorrencias').addEventListener('click', async (e) => {
   }
   await pintar();
 });
+
+// ── reajuste (design/10 §7) ───────────────────────────────────────────────
+
+let reajustando = null;
+
+const nomeCurtoDoMes = (dia) => `${dia.slice(5, 7)}/${dia.slice(0, 4)}`;
+
+function abrirReajuste(r) {
+  reajustando = r;
+  const desde = hoje();
+  const proxima = ocorrenciasPrevistas(app, desde, fimDoMes(somarMeses(desde, 12))).find((o) => o.recorrenciaId === r.id);
+  $('titulo-reajuste').textContent = r.nome;
+  $('f-reajuste').elements.valor.value = '';
+  // O padrão é a próxima ocorrência: o reajuste que se informa hoje vale da
+  // próxima conta em diante.
+  $('f-reajuste').elements.desde.value = proxima?.dataCompetencia ?? desde;
+  const valores = r.valores?.length ? r.valores : [{ desde: r.inicio, valor: r.valor }];
+  $('historico-reajuste').innerHTML = valores
+    .map((v) => `<li>${escapar(formatar(v.valor))} <span class="fino">desde ${escapar(nomeCurtoDoMes(v.desde))}</span></li>`)
+    .join('');
+  $('aviso-reajuste').hidden = true;
+  $('dialogo-reajuste').showModal();
+  $('f-reajuste').elements.valor.focus();
+}
+
+$('f-reajuste').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const valor = Math.abs(deTexto($('f-reajuste').elements.valor.value));
+  const desde = $('f-reajuste').elements.desde.value;
+  if (!valor || !desde) {
+    $('aviso-reajuste').textContent = !valor ? 'Falta o valor novo.' : 'Falta a data a partir da qual vale.';
+    $('aviso-reajuste').hidden = false;
+    return;
+  }
+  await estado.aplicarEvento('recorrencia.reajustada', { id: reajustando.id, desde, valor });
+  $('dialogo-reajuste').close();
+  reajustando = null;
+  await pintar();
+});
+$('b-cancelar-reajuste').addEventListener('click', () => $('dialogo-reajuste').close());
 
 estado.aoAplicar(() => pintar());
 await pintar();

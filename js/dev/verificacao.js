@@ -1437,6 +1437,40 @@ caso('dívida', 'a taxa observada entre duas fotos (D24)', async () => {
   verdade(Math.abs(s.taxa - 0.02) < 0.001, `taxa ${s.taxa}`);
 });
 
+
+caso('previsto', 'reajuste: cada mês com o valor que valia nele', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', { id: 'k1', nome: 'Corrente', tipo: 'corrente' });
+  await estado.aplicarEvento('recorrencia.criada', {
+    id: 'alug', nome: 'Aluguel', tipo: 'despesa', contaId: 'k1', categoriaId: 'x',
+    tipoValor: 'fixa', valor: 60000, dia: 5, inicio: '2027-01-05',
+  });
+  await estado.aplicarEvento('recorrencia.reajustada', { id: 'alug', desde: '2027-04-05', valor: 70000 });
+  let e = await estado.calcular();
+  const valores = () => previsto
+    .ocorrenciasPrevistas(e, '2027-01-01', '2027-06-30', '2027-01-01')
+    .map((o) => o.valor / 100);
+  igual(valores(), [600, 600, 600, 700, 700, 700], 'antes do reajuste, o valor antigo; depois, o novo');
+  igual(e.recorrencias.alug.valores.map((v) => v.desde), ['2027-01-05', '2027-04-05'], 'a história fica guardada');
+
+  await estado.aplicarEvento('recorrencia.alterada', { id: 'alug', valor: 72000 });
+  e = await estado.calcular();
+  igual(valores(), [600, 600, 600, 720, 720, 720], 'corrigir mexe no valor vigente, não na história');
+});
+
+caso('dívida', 'os juros de cada parcela, pelo contrato', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', {
+    id: 'emp', nome: 'Empréstimo', tipo: 'divida',
+    contrato: { valorTomado: 1000000, data: '2027-01-01', parcelas: 12, valorParcela: 94560, primeira: '2027-02-01', taxa: 0.02 },
+  });
+  const e = await estado.calcular();
+  igual(divida.jurosDaParcela(e, 'emp', 1), 20000, 'a primeira: 2% sobre os R$ 10.000,00 tomados');
+  verdade(divida.jurosDaParcela(e, 'emp', 12) < divida.jurosDaParcela(e, 'emp', 2), 'e diminui conforme a dívida cai');
+});
+
 // ── apoio ─────────────────────────────────────────────────────────────────
 
 async function limpar() {

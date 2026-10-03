@@ -131,3 +131,16 @@ export function saldoDevedor(estado, dividaId, dia = hoje()) {
   const ultima = (conta?.fotos ?? []).filter((f) => f.data <= dia).pop();
   return ultima ? ultima.valor : null;
 }
+
+/**
+ * Quanto de uma parcela é juros, pelo calendário do contrato (Price): o saldo
+ * antes dela vezes a taxa. É informação — juros aparecem como juros, não como
+ * gasto (decidido 03/10/2026). `k` começa em 1.
+ */
+export function jurosDaParcela(estado, dividaId, k) {
+  const s = situacao(estado, dividaId);
+  if (!s || k < 1 || k > s.parcelasTotal) return null;
+  const c = s.contrato;
+  const antes = saldoPrice(c.valorTomado, s.taxa, c.valorParcela, k - 1);
+  return Math.min(c.valorParcela, Math.round(antes * s.taxa));
+}
