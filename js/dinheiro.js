@@ -853,8 +853,11 @@ function blocoDeTotal(aba, contas) {
 function numerosDeRenda(folhas) {
   const ids = new Set(folhas.map((c) => c.id));
   const doMes = visiveis(app).filter((l) => ids.has(l.contaId) && l.dataCompetencia.slice(0, 7) === vista.mes);
-  const { bruta, liquida } = rendaDaFolha(app, doMes, ids);
-  return numeroDaFaixa('bruto', formatar(bruta)) + numeroDaFaixa('líquido', formatar(liquida));
+  const { bruta, descontos, emprestimos, liquida } = rendaDaFolha(app, doMes, ids);
+  return numeroDaFaixa('bruto', formatar(bruta)) +
+    numeroDaFaixa('descontos', formatar(descontos)) +
+    numeroDaFaixa('empréstimos', formatar(emprestimos)) +
+    numeroDaFaixa('líquido', formatar(liquida));
 }
 
 /** Geral da renda: a soma das fontes no mês, e quantas folhas ainda não fecharam. */

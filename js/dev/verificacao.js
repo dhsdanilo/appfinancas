@@ -1632,8 +1632,8 @@ caso('dívida', 'consignado: a parcela já vem pronta no holerite, e conta no l�
   await ev('lancamento.registrado', { id: 'q', tipo: 'transferencia', valor: 390000, contaId: 'fo', contaDestinoId: 'cc', dataCompetencia: '2027-03-05', confirmado: true });
   const depois = await estado.calcular();
   const doMes = lanc.visiveis(depois, '2027-03-31').filter((l) => l.dataCompetencia.slice(0, 7) === '2027-03');
-  igual(holerite.rendaDaFolha(depois, doMes, new Set(['fo'])), { bruta: 500000, liquida: 390000 },
-    'bruta 5.000; líquida 5.000 − 500 de IR − 600 do consignado');
+  igual(holerite.rendaDaFolha(depois, doMes, new Set(['fo'])), { bruta: 500000, descontos: 50000, emprestimos: 60000, liquida: 390000 },
+    'bruta 5.000; descontos 500 de IR; empréstimos 600 do consignado; líquida 3.900');
 });
 
 caso('dívida', 'a série que a primeira versão criava não projeta mais nem repete o mês já lançado', async () => {

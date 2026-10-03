@@ -59,13 +59,19 @@ export function rendaDaFolha(estado, lancamentos, folhaIds) {
   const caixa = (id) => ['corrente', 'especie'].includes(estado.contas[id]?.tipo);
   let bruta = 0;
   let descontos = 0;
+  // Os empréstimos (consignado) à parte dos descontos: é dívida, não imposto
+  // nem plano de saúde (pedido dele, 03/10/2026).
+  let emprestimos = 0;
   for (const l of lancamentos) {
     if (!folhaIds.has(l.contaId)) continue;
     if (l.tipo === 'receita') bruta += l.valor;
     else if (l.tipo === 'despesa') descontos += l.valor;
-    else if (l.contaDestinoId && !folhaIds.has(l.contaDestinoId) && !caixa(l.contaDestinoId)) descontos += l.valor;
+    else if (l.contaDestinoId && !folhaIds.has(l.contaDestinoId) && !caixa(l.contaDestinoId)) {
+      if (estado.contas[l.contaDestinoId]?.tipo === 'divida') emprestimos += l.valor;
+      else descontos += l.valor;
+    }
   }
-  return { bruta, liquida: bruta - descontos };
+  return { bruta, descontos, emprestimos, liquida: bruta - descontos - emprestimos };
 }
 
 /** Renda disponível de um conjunto de lançamentos: receitas menos obrigatórias (D25). */
