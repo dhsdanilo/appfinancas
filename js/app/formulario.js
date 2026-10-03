@@ -150,6 +150,9 @@ export async function criarFormulario({
   let todasAbertas = false;
   let realcada = 0;
   let repete = 'nao';
+  // Na correção: como o lançamento estava quando abriu ('nao', 'fixa' ou
+  // 'estimada'). Mudou, salvar mexe na série (cria, encerra ou troca o tipo).
+  let repeteAntes = 'nao';
   // Dedo ou mouse — é o contexto que muda a pressa, não a marca do aparelho.
   // No PC o refino nasce aberto; no celular, a um toque (03-alimentacao §1).
   let refinoAberto = !matchMedia('(pointer: coarse)').matches;
@@ -625,16 +628,70 @@ export async function criarFormulario({
   }
 
   function pintarRepete() {
-    el('linha-repete').hidden = Boolean(editando) || Boolean(daSerie);
+    // Parcela de compra não repete: parcelamento já é outra série.
+    el('linha-repete').hidden = Boolean(daSerie) || Boolean(editando?.parcela);
     for (const b of raiz.querySelectorAll('[data-repete]')) {
       b.setAttribute('aria-pressed', String(b.dataset.repete === repete));
     }
     el('pista-repete').textContent =
-      repete === 'fixa'
-        ? 'todo mês, mesmo valor'
-        : repete === 'estimada'
-          ? 'todo mês, média das últimas 3'
-          : '';
+      editando && repeteAntes !== 'nao' && repete === 'nao'
+        ? outrosDaSerie().length ? 'a série para depois deste; os meses já lançados ficam' : 'deixa de repetir: vira lançamento único'
+        : editando && repeteAntes === 'nao' && repete !== 'nao'
+          ? `${repete === 'fixa' ? 'todo mês, mesmo valor' : 'todo mês, média das últimas 3'} — a partir deste`
+          : repete === 'fixa'
+            ? 'todo mês, mesmo valor'
+            : repete === 'estimada'
+              ? 'todo mês, média das últimas 3'
+              : '';
+  }
+
+  /** A série do lançamento em correção, se ela ainda projeta daqui pra frente. */
+  function serieViva(l) {
+    const r = l?.recorrenciaId ? app?.recorrencias?.[l.recorrenciaId] : null;
+    if (!r || r.arquivada) return null;
+    if (r.fim && r.fim < l.dataCompetencia) return null;
+    return r;
+  }
+
+  /** Os outros lançamentos da mesma série, além do que está em correção. */
+  function outrosDaSerie() {
+    if (!editando?.recorrenciaId) return [];
+    return Object.values(app.lancamentos).filter(
+      (l) => !l.removido && l.recorrenciaId === editando.recorrenciaId && l.id !== editando.id
+    );
+  }
+
+  /**
+   * Mudou o "repete" na correção (pedido dele, 03/10/2026):
+   *   não → fixa/estimada: nasce a série a partir deste lançamento, e ele é o primeiro.
+   *   fixa/estimada → não: sozinho na série, ela some e ele vira único; com
+   *     outros meses lançados, a série termina neste — o passado fica.
+   *   fixa ↔ estimada: a série troca de tipo.
+   * Devolve true se mexeu em alguma coisa.
+   */
+  async function aplicarMudancaDeRepete() {
+    if (!editando || editando.parcela || repete === repeteAntes) return false;
+    const l = editando;
+    if (repeteAntes === 'nao') {
+      const id = await garantirRecorrencia();
+      await estado.aplicarEvento('lancamento.alterado', { id: l.id, recorrenciaId: id });
+    } else if (repete === 'nao') {
+      if (outrosDaSerie().length) {
+        await estado.aplicarEvento('recorrencia.alterada', { id: l.recorrenciaId, fim: l.dataCompetencia });
+      } else {
+        const serie = l.recorrenciaId;
+        await estado.aplicarEvento('lancamento.alterado', { id: l.id, recorrenciaId: null });
+        await estado.aplicarEvento('recorrencia.removida', { id: serie });
+      }
+    } else {
+      await estado.aplicarEvento('recorrencia.alterada', {
+        id: l.recorrenciaId,
+        tipoValor: repete === 'fixa' ? 'fixa' : 'variavel',
+        valor: repete === 'fixa' ? valor.centavos() : null,
+      });
+    }
+    repeteAntes = repete;
+    return true;
   }
 
   function pintarDetalhes() {
@@ -710,8 +767,17 @@ export async function criarFormulario({
       dataCaixa: data,
     });
 
+    const mexeuNaSerie = await aplicarMudancaDeRepete();
+
     // Abriu, olhou e fechou: não existe evento "salvou igual".
-    if (Object.keys(mudancas).length === 0) return true;
+    if (Object.keys(mudancas).length === 0) {
+      if (mexeuNaSerie) {
+        await recarregar();
+        editando = app.lancamentos[editando.id] ?? editando;
+        if (aoSalvar) await aoSalvar();
+      }
+      return true;
+    }
 
     await estado.aplicarEvento('lancamento.alterado', { id: editando.id, ...mudancas });
     await propagarParaAsIrmas(mudancas);
@@ -1184,6 +1250,12 @@ export async function criarFormulario({
       valor.definir(l.valor);
       el('desfazer').hidden = true;
       el('nova-etiqueta').value = '';
+      // O "repete" mostra como o lançamento está: dentro de uma série viva,
+      // fixa ou estimada; fora, não.
+      app = await estado.calcular();
+      const serie = serieViva(l);
+      repeteAntes = serie ? (serie.tipoValor === 'fixa' ? 'fixa' : 'estimada') : 'nao';
+      repete = repeteAntes;
       await recarregar();
     },
 
@@ -1216,6 +1288,7 @@ export async function criarFormulario({
       detalheId = o.detalheId ?? null;
       etiquetas = [];
       repete = 'nao';
+      repeteAntes = 'nao';
       el('parcelas').value = '1';
       el('observacao').value = '';
       valor.definir(o.valor);
@@ -1233,6 +1306,7 @@ export async function criarFormulario({
       etiquetas = [];
       detalheId = null;
       repete = 'nao';
+      repeteAntes = 'nao';
       todasAbertas = false;
       el('parcelas').value = '1';
       el('observacao').value = '';
