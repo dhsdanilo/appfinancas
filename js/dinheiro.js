@@ -253,7 +253,7 @@ function cartaoDoInicio(area, contas) {
     const { liquida } = rendaDaFolha(app, doMes, new Set(contas.map((c) => c.id)));
     linhas.push(linhaDeResumo(`renda líquida de ${nomeDoMes(mes).split(' ')[0]}`, dinheiroHTML(liquida)));
     const faltam = contas.filter((c) => linhasDoHolerite(app, c.id, mes).some((l) => !l.automatico)).length;
-    if (faltam) linhas.push(linhaDeResumo('holerites a lançar', String(faltam), 'abate'));
+    if (faltam) linhas.push(linhaDeResumo('contracheques a lançar', String(faltam), 'abate'));
   }
   if (area.id === 'investimentos') {
     const total = contas.reduce((t, c) => t + saldoReal(app, c.id), 0);
@@ -538,14 +538,14 @@ function peDaFolha(c) {
   const nome = nomeDoMes(mes).split(' ')[0];
   const aberta = saldoReal(app, c.id) !== 0;
   const feito = !faltam && lancados && !aberta;
-  const situacaoDaFolha = feito
-    ? `holerite de ${escapar(nome)} lançado`
-    : faltam
-      ? `${faltam} linha${faltam > 1 ? 's' : ''} prevista${faltam > 1 ? 's' : ''}`
-      : aberta ? 'a folha não fechou' : 'sem linhas previstas';
+  // Lançado, o rodapé é só a frase (pedido dele, 03/10/2026).
+  if (feito) return `<div class="pe-bloco"><span class="fino">contracheque de ${escapar(nome)} lançado</span></div>`;
+  const situacaoDaFolha = faltam
+    ? `${faltam} linha${faltam > 1 ? 's' : ''} prevista${faltam > 1 ? 's' : ''}`
+    : aberta ? 'a folha não fechou' : 'sem linhas previstas';
   return `<div class="pe-bloco">
     <span class="fino">${situacaoDaFolha}</span>
-    <button type="button" class="${feito ? 'elo' : 'principal'}" data-holerite="${escapar(c.id)}">${feito ? 'linha a mais' : `Lançar holerite de ${escapar(nome)}`}</button>
+    <button type="button" class="principal" data-holerite="${escapar(c.id)}">Lançar contracheque de ${escapar(nome)}</button>
   </div>`;
 }
 
@@ -821,11 +821,13 @@ function pintarResumoDeSaldos(aba, contas) {
     const saldo = saldoReal(app, c.id);
     const aviso =
       aba.id === 'folha' && saldo !== 0
-        ? '<p class="aviso-bloco">Depois do holerite completo, a folha volta a zero. Diferente de zero é desconto esquecido.</p>'
+        ? '<p class="aviso-bloco">Depois do contracheque completo, a folha volta a zero. Diferente de zero é desconto esquecido.</p>'
         : '';
+    // Na folha: "EBTTIFSP · Outubro", bruto, líquido e saldo atual (pedido dele).
+    const titulo = aba.id === 'folha' ? `${c.nome} · ${nomeDoMes(vista.mes).split(' ')[0]}` : c.nome;
     return `<div class="bloco">
-      <p class="nome-bloco">${escapar(c.nome)}</p>
-      <dl>${aba.id === 'folha' ? linhasDeRenda([c]) : ''}${aba.id === 'folha' && saldo === 0 ? '' : linhaDeResumo(aba.id === 'folha' ? 'na folha sem fechar' : 'saldo', dinheiroHTML(saldo), saldo < 0 ? 'negativo' : '')}</dl>
+      <p class="nome-bloco">${escapar(titulo)}</p>
+      <dl>${aba.id === 'folha' ? linhasDeRenda([c]) : ''}${linhaDeResumo(aba.id === 'folha' ? 'saldo atual' : 'saldo', dinheiroHTML(saldo), saldo < 0 ? 'negativo' : '')}</dl>
       ${aviso}
       ${aba.id === 'folha' ? peDaFolha(c) : ''}
     </div>`;
@@ -846,17 +848,17 @@ function linhasDeRenda(folhas) {
   const ids = new Set(folhas.map((c) => c.id));
   const doMes = visiveis(app).filter((l) => ids.has(l.contaId) && l.dataCompetencia.slice(0, 7) === vista.mes);
   const { bruta, liquida } = rendaDaFolha(app, doMes, ids);
-  return linhaDeResumo('renda bruta', dinheiroHTML(bruta)) +
-    linhaDeResumo('renda líquida', dinheiroHTML(liquida));
+  return linhaDeResumo('bruto', dinheiroHTML(bruta)) +
+    linhaDeResumo('líquido', dinheiroHTML(liquida));
 }
 
 /** Geral da renda: a soma das fontes no mês, e quantas folhas ainda não fecharam. */
 function blocoDasFolhas(folhas) {
   const abertas = folhas.filter((c) => saldoReal(app, c.id) !== 0).length;
   return `<div class="bloco total">
-    <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>geral</p>
-    <dl>${linhasDeRenda(folhas)}</dl>
-    ${abertas ? `<p class="aviso-bloco">${abertas} folha${abertas > 1 ? 's' : ''} sem fechar: abra a aba de cada uma para lançar o holerite.</p>` : ''}
+    <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>geral · ${escapar(nomeDoMes(vista.mes).split(' ')[0])}</p>
+    <dl>${linhasDeRenda(folhas)}${linhaDeResumo('saldo atual', dinheiroHTML(folhas.reduce((t, c) => t + saldoReal(app, c.id), 0)))}</dl>
+    ${abertas ? `<p class="aviso-bloco">${abertas} folha${abertas > 1 ? 's' : ''} sem fechar: abra a aba de cada uma para lançar o contracheque.</p>` : ''}
   </div>`;
 }
 

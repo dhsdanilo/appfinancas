@@ -11,7 +11,7 @@ const TELAS = {
   lancamentos: { grupo: 'dinheiro', titulo: 'Lançamentos', sub: 'Tudo o que entrou e saiu, num lugar só.' },
   contas: { grupo: 'dinheiro', titulo: 'Contas', sub: 'Corrente e espécie: o dinheiro que se usa.' },
   cartoes: { grupo: 'dinheiro', titulo: 'Cartões', sub: 'Faturas, limites e o que já tem dono.' },
-  renda: { grupo: 'dinheiro', titulo: 'Renda', sub: 'Cada fonte de renda e o seu holerite.' },
+  renda: { grupo: 'dinheiro', titulo: 'Renda', sub: 'Cada fonte de renda e o seu contracheque.' },
   investimentos: { grupo: 'dinheiro', titulo: 'Investimentos', sub: 'O que está guardado e quanto rende.' },
   dividas: { grupo: 'dinheiro', titulo: 'Dívidas', sub: 'Cada empréstimo, o que falta e quanto custa.' },
   planejamento: { grupo: 'planejamento', titulo: 'Planejamento', sub: 'O que volta todo mês, e o que muda de valor.' },

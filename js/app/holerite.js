@@ -32,7 +32,7 @@ const MARCACAO = `
   </div>
   <p class="recado" data-papel="recado" hidden></p>
   <div class="acoes">
-    <button type="button" class="principal" data-papel="b-lancar">Lançar holerite</button>
+    <button type="button" class="principal" data-papel="b-lancar">Lançar contracheque</button>
     <button type="button" data-papel="b-voltar">Voltar</button>
   </div>
 `;
@@ -157,7 +157,7 @@ export function criarHolerite({ janela, raiz, aoSalvar }) {
     const [ano, m] = mes.split('-').map(Number);
     const dia = previstas[0] ? previstas[0].dataCompetencia : mes === hoje().slice(0, 7) ? hoje() : diaNoMes(ano, m, 1);
     el('data').value = dia;
-    el('cabeca').innerHTML = `<strong>${escapar(folha.nome)}</strong> · holerite de ${escapar(nomeDoMes(mes))} · confira: falta alguma linha? Volte, lance na folha e abra de novo.`;
+    el('cabeca').innerHTML = `<strong>${escapar(folha.nome)}</strong> · contracheque de ${escapar(nomeDoMes(mes))} · confira: falta alguma linha? Volte, lance na folha e abra de novo.`;
 
     const caixa = Object.values(app.contas).filter((c) => !c.arquivada && (c.tipo === 'corrente' || c.tipo === 'especie'));
     el('destino').innerHTML = opcoesDeConta(caixa, folha.liquidoPara ?? caixa[0]?.id);

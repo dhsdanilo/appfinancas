@@ -808,7 +808,7 @@ function mostrarCamposDeCartao() {
     : tipo === 'divida'
       ? '<strong>O saldo devedor é o que o banco mostra hoje</strong>, se você souber — é a foto que manda. Sem ele, o app estima pelo contrato.'
       : tipo === 'folha'
-        ? '<strong>Uma fonte de renda por origem</strong>: o salário, o contrato PJ, os atendimentos. O holerite de cada uma se lança na tela de Renda.'
+        ? '<strong>Uma fonte de renda por origem</strong>: o salário, o contrato PJ, os atendimentos. O contracheque de cada uma se lança na tela de Renda.'
         : DICA_DO_SALDO;
 }
 

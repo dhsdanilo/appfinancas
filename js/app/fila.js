@@ -56,7 +56,7 @@ export function criarFila({ raiz, abrirPagamento, abrirConferencia, abrirHolerit
       return `${escapar(i.conta.nome)} · <span class="quando">sem conferir desde ${diaCurto(i.data)}</span>`;
     }
     if (i.tipo === 'holerite') {
-      return `Holerite de ${escapar(nomeDoMes(i.mes).split(' ')[0])} · ${escapar(i.conta.nome)} · <span class="quando">desde ${diaCurto(i.data)}</span>`;
+      return `Contracheque de ${escapar(nomeDoMes(i.mes).split(' ')[0])} · ${escapar(i.conta.nome)} · <span class="quando">desde ${diaCurto(i.data)}</span>`;
     }
     const l = i.tipo === 'vencido' ? i.lancamento : i.ocorrencia;
     const conta = app.contas[l.contaId]?.nome ?? '';

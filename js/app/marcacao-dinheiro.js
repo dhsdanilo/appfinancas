@@ -99,9 +99,9 @@ export const DIALOGOS = `
   <div class="form-simples" id="formulario-conferencia"></div>
 </dialog>
 
-<dialog id="dialogo-holerite" class="dialogo-captura dialogo-holerite" aria-label="Holerite">
+<dialog id="dialogo-holerite" class="dialogo-captura dialogo-holerite" aria-label="Contracheque">
   <div class="cabecalho-dialogo">
-    <strong>Holerite</strong>
+    <strong>Contracheque</strong>
     <button type="button" class="elo" data-fechar>fechar</button>
   </div>
   <div class="form-simples" id="formulario-holerite"></div>
