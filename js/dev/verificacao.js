@@ -1675,6 +1675,26 @@ caso('cartão', 'a compra pode cair na fatura vizinha, sem mudar a data dela', a
   igual(e.lancamentos.c1.cicloFatura, '2027-02-25', 'e para trás também');
 });
 
+caso('previsto', 'o mês seguinte de uma conta fixa vem com as etiquetas e a descrição do último', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', { id: 'k1', nome: 'Corrente', tipo: 'corrente' });
+  await estado.aplicarEvento('recorrencia.criada', {
+    id: 'alug', nome: 'Aluguel', tipo: 'despesa', contaId: 'k1', categoriaId: 'x',
+    tipoValor: 'fixa', valor: 60000, dia: 5, inicio: '2027-01-05', etiquetas: ['casa'],
+  });
+  let e = await estado.calcular();
+  igual(previsto.ocorrenciasPrevistas(e, '2027-01-01', '2027-01-31', '2027-01-01')[0].etiquetas, ['casa'],
+    'antes de lançar: as da série');
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'jan', tipo: 'despesa', valor: 60000, contaId: 'k1', categoriaId: 'x', recorrenciaId: 'alug',
+    dataCompetencia: '2027-01-05', confirmado: true, etiquetas: ['casa', 'apto'], detalheId: 'imob',
+  });
+  e = await estado.calcular();
+  const fev = previsto.ocorrenciasPrevistas(e, '2027-02-01', '2027-02-28', '2027-01-10')[0];
+  igual([fev.etiquetas, fev.detalheId], [['casa', 'apto'], 'imob'], 'depois: as do último lançado');
+});
+
 // ── apoio ─────────────────────────────────────────────────────────────────
 
 async function limpar() {

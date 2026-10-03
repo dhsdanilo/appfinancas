@@ -196,6 +196,8 @@ export function criarHolerite({ janela, raiz, aoSalvar }) {
         categoriaId: l.categoriaId,
         contaDestinoId: l.contaDestinoId,
         recorrenciaId,
+        detalheId: o?.detalheId ?? null,
+        etiquetas: [...(o?.etiquetas ?? [])],
         // O estimado e o realizado ficam os dois (03 §5, R18).
         origemValor: o && l.valor === o.valor ? o.origemValor ?? 'digitado' : 'digitado',
         valorEstimadoOriginal: o?.estimado ? o.valor : null,

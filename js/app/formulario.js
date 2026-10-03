@@ -1085,6 +1085,7 @@ export async function criarFormulario({
       contaId,
       categoriaId,
       detalheId,
+      etiquetas: [...etiquetas],
       tipoValor: repete === 'fixa' ? 'fixa' : 'variavel',
       valor: repete === 'fixa' ? valor.centavos() : null,
       periodicidade: 'mensal',
@@ -1506,7 +1507,7 @@ export async function criarFormulario({
       contaId = o.contaId;
       categoriaId = o.categoriaId;
       detalheId = o.detalheId ?? null;
-      etiquetas = [];
+      etiquetas = [...(o.etiquetas ?? [])];
       repete = 'nao';
       repeteAntes = 'nao';
       faturaDesloca = 0;

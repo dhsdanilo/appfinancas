@@ -25,7 +25,7 @@ export const AREAS_PADRAO = ['caixa', 'cartoes'];
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 15;
+export const VERSAO_ESTADO = 16;
 
 export function estadoVazio() {
   return {
@@ -325,6 +325,9 @@ export const redutores = {
       contaDestinoId: d.contaDestinoId ?? null,
       categoriaId: d.categoriaId ?? null,
       detalheId: d.detalheId ?? null,
+      // As etiquetas da série, para o primeiro mês projetado antes de haver
+      // um lançamento dela (depois, vale o último lançado).
+      etiquetas: d.etiquetas ?? [],
       // fixa = valor travado; estimada = média das últimas 3 cobranças (E2), e
       // o valor aparece sempre com ~, porque total com estimativa dentro leva ~.
       tipoValor: d.tipoValor ?? 'fixa',

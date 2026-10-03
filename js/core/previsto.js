@@ -153,6 +153,9 @@ export function ocorrenciasPrevistas(estado, de, ate, dia = hoje(), { comPassado
     if (!conta || conta.arquivada) continue;
 
     const daSerie = todos.filter((l) => l.recorrenciaId === r.id);
+    // O mês que vem nasce igual ao último lançado: as etiquetas e a descrição
+    // dele (pedido dele, 03/10/2026). Mudou em outubro, novembro acompanha.
+    const ultimo = daSerie.reduce((u, l) => (!u || l.dataCompetencia >= u.dataCompetencia ? l : u), null);
     const cobertos = new Set([
       ...daSerie.map((l) => l.dataCompetencia.slice(0, 7)),
       ...(r.pulados ?? []),
@@ -180,8 +183,8 @@ export function ocorrenciasPrevistas(estado, de, ate, dia = hoje(), { comPassado
         contaId: r.contaId,
         contaDestinoId: r.contaDestinoId ?? null,
         categoriaId: r.categoriaId ?? null,
-        detalheId: r.detalheId ?? null,
-        etiquetas: [],
+        detalheId: ultimo?.detalheId ?? r.detalheId ?? null,
+        etiquetas: [...(ultimo?.etiquetas ?? r.etiquetas ?? [])],
         origemValor: origem,
         dataCompetencia: data,
         dataCaixa: ciclo ? ciclo.vencimento : data,
