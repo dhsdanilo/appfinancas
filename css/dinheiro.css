@@ -719,3 +719,12 @@ body[data-pagina="dividas"] .bloco { min-width: 0; }
   font-size: var(--t-corpo);
 }
 .lancar-rapido:hover { background: var(--acento-fundo); }
+
+/* O cartão na largura toda: o limite em cima (não muda com o mês), a fatura
+   do mês embaixo (pedido dele, 03/10/2026). */
+.cartao-resumo .limite-cartao { display: flex; flex-direction: column; gap: var(--e2); padding-bottom: var(--e3); border-bottom: 1px solid var(--borda); }
+.cartao-resumo .fatura-do-mes { padding-top: var(--e3); }
+.cartao-resumo .fatura-do-mes.vencida .valor-numero { color: var(--alerta); }
+.barra-limite { height: 6px; border-radius: 3px; background: var(--borda); overflow: hidden; }
+.barra-limite i { display: block; height: 100%; background: var(--area, var(--acento)); }
+.barra-limite.alto i { background: var(--alerta); }

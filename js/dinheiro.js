@@ -35,7 +35,7 @@ import {
   faturas, resumoDoCartao, saldoPrevisto, ocorrenciasPrevistas,
 } from './core/previsto.js';
 import {
-  hoje, inicioDoMes, fimDoMes, somarMeses, nomeDoMes, diaCurto,
+  hoje, inicioDoMes, fimDoMes, somarMeses, nomeDoMes, diaCurto, proximoMes,
 } from './core/datas.js';
 
 const $ = (id) => document.getElementById(id);
@@ -106,9 +106,24 @@ function guardarVista() {
   }
 }
 
+// Em Cartões o mês é o da fatura, e a tela abre na fatura ABERTA — a que
+// ainda recebe compras (pedido dele, 03/10/2026). O mês das outras telas fica
+// guardado e volta quando se sai dela.
+let mesForaDosCartoes = null;
+let abrirNaFaturaAberta = false;
+
+/** Cartões é sempre mês a mês: a fatura é mensal, um intervalo a cortaria. */
+const modoDaTela = () => (PAGINA === 'cartoes' ? 'mes' : vista.modo);
+
 /** Entra numa tela de dinheiro: troca o foco e pinta. */
 function entrar(pagina) {
   if (PAGINA && PAGINA !== pagina) guardarVista();
+  if (pagina === 'cartoes' && PAGINA !== 'cartoes') {
+    mesForaDosCartoes = vista.mes;
+    abrirNaFaturaAberta = true;
+  } else if (pagina !== 'cartoes' && PAGINA === 'cartoes' && mesForaDosCartoes) {
+    vista.mes = mesForaDosCartoes;
+  }
   PAGINA = pagina;
   AREA = AREA_DA_PAGINA[pagina] ?? null;
   Object.assign(vista, FOCO_PADRAO, focos[pagina] ?? lerGuardado(chaveDaTela(pagina)));
@@ -117,7 +132,7 @@ function entrar(pagina) {
 }
 
 function intervalo() {
-  if (vista.modo === 'intervalo' && vista.de && vista.ate) {
+  if (modoDaTela() === 'intervalo' && vista.de && vista.ate) {
     return vista.de <= vista.ate ? { de: vista.de, ate: vista.ate } : { de: vista.ate, ate: vista.de };
   }
   const dia = `${vista.mes}-01`;
@@ -157,6 +172,12 @@ function pintarArea() {
   $('barra-acoes').dataset.area = aba.id;
   document.body.dataset.area = aba.id;
   if (aba.id === 'dividas') return pintarDividas(contas);
+  if (aba.id === 'cartoes' && abrirNaFaturaAberta) {
+    abrirNaFaturaAberta = false;
+    const comCiclo = contas.find((c) => temCiclo(c));
+    const aberta = comCiclo ? resumoDoCartao(app, comCiclo.id)?.aberta : null;
+    vista.mes = aberta ? aberta.vencimento.slice(0, 7) : proximoMes(hoje().slice(0, 7));
+  }
   pintarSubabas(contas);
   pintarPeriodo();
 
@@ -373,7 +394,8 @@ function pintarSubabas(contas) {
 }
 
 function pintarPeriodo() {
-  const porMes = vista.modo === 'mes';
+  const porMes = modoDaTela() === 'mes';
+  $('p-modo').hidden = PAGINA === 'cartoes';
   $('p-antes').hidden = !porMes;
   $('p-depois').hidden = !porMes;
   $('p-rotulo').hidden = !porMes;
@@ -451,78 +473,112 @@ const linhaDeResumo = (rotulo, valorHTML, classe = '') =>
 
 /** Cartões: nunca "saldo" — fatura aberta, fatura fechada e limite livre. */
 function pintarResumoDeCartoes(cartoes) {
-  const bloco = cartoes.length === 1 ? blocoDeCartao(cartoes[0]) : blocoDosCartoes(cartoes);
-  $('resumo').innerHTML = `<div class="blocos">${bloco}</div>`;
+  $('resumo').innerHTML = `<div class="blocos">${blocoDosCartoes(cartoes)}</div>`;
 }
 
-/** Geral dos cartões: as faturas somadas. Pagar é na aba de cada um. */
+/**
+ * A fatura que vence no mês da tela: situação, total, pago e o que ainda vai
+ * entrar nela (as recorrentes do cartão que ninguém lançou).
+ */
+function faturaDoMes(c) {
+  const f = (faturas(app, c.id) ?? []).find((x) => x.vencimento.slice(0, 7) === vista.mes);
+  if (!f) return null;
+  const projetadas = ocorrenciasPrevistas(app, somarMeses(`${vista.mes}-01`, -2), fimDoMes(`${vista.mes}-01`))
+    .filter((o) => o.contaId === c.id && o.cicloFatura === f.fechamento);
+  const aVir = projetadas.reduce((t, o) => t + sinalDeSaida(o), 0);
+  return { ...f, previsto: f.total + aVir, estimado: projetadas.some((o) => o.estimado) };
+}
+
+/**
+ * O cartão na largura toda, em duas linhas (pedido dele, 03/10/2026): em cima
+ * o limite, que não muda com o mês — usado de total, com uma barra discreta;
+ * embaixo a fatura que se está olhando. Com vários cartões, a aba Geral soma.
+ */
 function blocoDosCartoes(cartoes) {
-  let fechada = 0;
-  let aberta = 0;
-  let livre = 0;
-  let comLimite = false;
-  for (const c of cartoes) {
-    const r = resumoDoCartao(app, c.id);
-    if (!r) continue;
-    fechada += r.fechada?.aPagar ?? 0;
-    aberta += r.aberta?.aPagar ?? 0;
-    if (r.limiteLivre !== null) { livre += r.limiteLivre; comLimite = true; }
-  }
-  const linhas = [];
-  if (fechada) linhas.push(linhaDeResumo('faturas fechadas a pagar', dinheiroHTML(fechada), 'negativo'));
-  linhas.push(linhaDeResumo('faturas abertas', dinheiroHTML(aberta)));
-  if (comLimite) linhas.push(linhaDeResumo('limite livre', dinheiroHTML(livre), livre < 0 ? 'negativo' : ''));
-  return `<div class="bloco total">
-    <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>geral</p>
-    <dl>${linhas.join('')}</dl>
-  </div>`;
-}
+  const comCiclo = cartoes.filter((c) => temCiclo(c));
+  const semCiclo = cartoes.filter((c) => !temCiclo(c));
+  const um = cartoes.length === 1 ? cartoes[0] : null;
+  const nome = um ? um.nome : 'geral';
 
-function blocoDeCartao(c) {
-  const pagadora = app.contas[c.pagaCom];
-  const rodape = pagadora
-    ? `paga com ${escapar(pagadora.nome)}`
-    : `sem conta que paga — <button type="button" class="elo" data-editar-conta="${escapar(c.id)}">defina o “paga com”</button> pra fatura pesar no saldo previsto`;
-
-  if (!temCiclo(c)) {
-    return `<div class="bloco">
-      <p class="nome-bloco">${escapar(c.nome)}</p>
+  if (um && !comCiclo.length) {
+    return `<div class="bloco largo">
+      <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(um.nome)}</p>
       <p class="aviso-bloco">Sem dia de fechamento e de vencimento, o app não sabe a qual
-        fatura cada compra pertence. <button type="button" class="elo" data-editar-conta="${escapar(c.id)}">Defina o ciclo</button>.</p>
-      <dl>${linhaDeResumo('em aberto', dinheiroHTML(saldoReal(app, c.id)), saldoReal(app, c.id) < 0 ? 'negativo' : '')}</dl>
+        fatura cada compra pertence. <button type="button" class="elo" data-editar-conta="${escapar(um.id)}">Defina o ciclo</button>.</p>
+      <div class="numeros-renda">${numeroDaFaixa('em aberto', formatar(-saldoReal(app, um.id)))}</div>
     </div>`;
   }
 
-  const r = resumoDoCartao(app, c.id);
-  const linhas = [];
-  if (r.fechada) {
-    linhas.push(
-      linhaDeResumo(
-        r.fechada.atrasada ? `fatura fechada · venceu ${diaCurto(r.fechada.vencimento)}` : `fatura fechada · vence ${diaCurto(r.fechada.vencimento)}`,
-        dinheiroHTML(r.fechada.aPagar),
-        'negativo'
-      )
-    );
+  // Linha 1: o limite.
+  let usado = 0;
+  let limite = 0;
+  for (const c of comCiclo) {
+    usado += resumoDoCartao(app, c.id)?.divida ?? 0;
+    limite += c.limite ?? 0;
   }
-  linhas.push(
-    linhaDeResumo(
-      `fatura aberta · fecha ${diaCurto(r.aberta.fechamento)} · vence ${diaCurto(r.aberta.vencimento)}`,
-      dinheiroHTML(r.aberta.aPagar)
-    )
-  );
-  if (r.limiteLivre !== null) {
-    linhas.push(linhaDeResumo('limite livre', dinheiroHTML(r.limiteLivre), r.limiteLivre < 0 ? 'negativo' : ''));
+  const temLimite = comCiclo.some((c) => c.limite);
+  const pct = temLimite && limite > 0 ? Math.min(100, Math.max(0, (usado / limite) * 100)) : 0;
+  const linhaLimite = temLimite
+    ? `<div class="limite-cartao">
+        <div class="numeros-renda">
+          ${numeroDaFaixa('limite usado', formatar(usado))}
+          ${numeroDaFaixa('limite total', formatar(limite))}
+          ${numeroDaFaixa('limite livre', formatar(limite - usado))}
+        </div>
+        <div class="barra-limite ${pct >= 90 ? 'alto' : ''}" role="img" aria-label="${Math.round(pct)}% do limite usado"><i style="width:${pct.toFixed(1)}%"></i></div>
+      </div>`
+    : `<div class="numeros-renda">${numeroDaFaixa('limite usado', formatar(usado))}</div>`;
+
+  // Linha 2: a fatura do mês da tela.
+  const fs = comCiclo.map((c) => ({ c, f: faturaDoMes(c) })).filter((x) => x.f);
+  const mesNome = nomeDoMes(vista.mes).split(' ')[0];
+  let linhaFatura;
+  if (!fs.length) {
+    linhaFatura = `<div class="numeros-renda">${numeroDaFaixa(`fatura de ${mesNome}`, 'sem compras')}</div>`;
+  } else {
+    const total = fs.reduce((t, x) => t + x.f.total, 0);
+    const pago = fs.reduce((t, x) => t + x.f.pago, 0);
+    const aPagar = fs.reduce((t, x) => t + x.f.aPagar, 0);
+    const previsto = fs.reduce((t, x) => t + x.f.previsto, 0);
+    const estimado = fs.some((x) => x.f.estimado);
+    const f = fs[0].f;
+    const situacao = um
+      ? f.situacao === 'aberta' ? 'aberta' : f.situacao === 'futura' ? 'por vir' : aPagar > 0 ? (f.vencimento < hoje() ? 'vencida' : 'fechada') : 'paga'
+      : `${fs.length} fatura${fs.length > 1 ? 's' : ''}`;
+    const partes = [numeroDaFaixa(`fatura de ${mesNome}`, situacao)];
+    if (um) partes.push(numeroDaFaixa('fecha · vence', `${diaCurto(f.fechamento)} · ${diaCurto(f.vencimento)}`));
+    partes.push(numeroDaFaixa('total', formatar(total)));
+    if (f.situacao === 'fechada' || !um) {
+      partes.push(numeroDaFaixa('pago', formatar(pago)));
+      if (aPagar > 0 && pago > 0) partes.push(numeroDaFaixa('falta', formatar(aPagar)));
+    }
+    if (f.situacao !== 'fechada' && previsto !== total) {
+      partes.push(numeroDaFaixa('previsto', `${estimado ? '~' : ''}${formatar(previsto)}`));
+    }
+    linhaFatura = `<div class="numeros-renda fatura-do-mes ${situacao === 'vencida' ? 'vencida' : ''}">${partes.join('')}</div>`;
   }
 
-  const aPagar = r.fechada?.aPagar || r.aberta.aPagar;
-  return `<div class="bloco">
-    <p class="nome-bloco">${escapar(c.nome)}</p>
-    <dl>${linhas.join('')}</dl>
-    <div class="pe-bloco">
-      <span class="fino">${rodape}</span>
-      <button type="button" class="principal" data-pagar="${escapar(c.id)}" data-valor="${aPagar}"
-        ${aPagar > 0 ? '' : 'disabled'}>Pagar fatura</button>
-    </div>
+  // O pé: quem paga e o botão — só com um cartão, e só se há o que pagar.
+  let pe = '';
+  if (um) {
+    const pagadora = app.contas[um.pagaCom];
+    const f = fs[0]?.f;
+    const aPagar = f?.aPagar ?? 0;
+    pe = `<div class="pe-bloco">
+      <span class="fino">${pagadora ? `paga com ${escapar(pagadora.nome)}` : `sem conta que paga — <button type="button" class="elo" data-editar-conta="${escapar(um.id)}">defina o “paga com”</button>`}</span>
+      ${aPagar > 0 && f.situacao !== 'futura' ? `<button type="button" class="principal" data-pagar="${escapar(um.id)}" data-valor="${aPagar}">Pagar fatura</button>` : ''}
+    </div>`;
+  }
+  const aviso = semCiclo.length && !um
+    ? `<p class="aviso-bloco">${semCiclo.map((c) => escapar(c.nome)).join(', ')} sem ciclo: fora da soma das faturas.</p>`
+    : '';
+
+  return `<div class="bloco largo cartao-resumo">
+    <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(nome)}</p>
+    ${linhaLimite}
+    ${linhaFatura}
+    ${aviso}
+    ${pe}
   </div>`;
 }
 
@@ -996,7 +1052,7 @@ function pintarListaDeCartoes(cartoes) {
     const pagamentos = visiveis(app).filter((l) => l.contaDestinoId === c.id && noPeriodo(l.dataCaixa));
     pago += pagamentos.reduce((t, l) => t + l.valor, 0);
 
-    if (!temCiclo(c) || vista.modo === 'intervalo') {
+    if (!temCiclo(c) || modoDaTela() === 'intervalo') {
       const compras = [
         ...visiveis(app).filter((l) => l.contaId === c.id && noPeriodo(dataVista(l))),
         ...previstas.filter((o) => o.contaId === c.id && noPeriodo(o.dataCompetencia)),
