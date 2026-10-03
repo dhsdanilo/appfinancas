@@ -120,6 +120,39 @@
       </div>
     </div>
 
+    <!-- O contrato de um empréstimo (design/10 §4): o app gera as parcelas e
+         estima o saldo devedor entre uma foto do banco e outra. -->
+    <div class="so-cartao" id="campos-divida" hidden>
+      <div class="campo">
+        <label for="div-tomado">Valor tomado</label>
+        <input type="text" id="div-tomado" name="tomado" inputmode="decimal" autocomplete="off" placeholder="0,00">
+      </div>
+      <div class="campo">
+        <label for="div-data-contrato">Contratado em</label>
+        <input type="date" id="div-data-contrato" name="dataContrato">
+      </div>
+      <div class="campo estreito">
+        <label for="div-parcelas">Parcelas</label>
+        <input type="number" id="div-parcelas" name="parcelas" min="1" max="600">
+      </div>
+      <div class="campo">
+        <label for="div-valor-parcela">Valor da parcela</label>
+        <input type="text" id="div-valor-parcela" name="valorParcela" inputmode="decimal" autocomplete="off" placeholder="0,00">
+      </div>
+      <div class="campo">
+        <label for="div-primeira">Primeira parcela</label>
+        <input type="date" id="div-primeira" name="primeira">
+      </div>
+      <div class="campo estreito">
+        <label for="div-taxa">Taxa % a.m.</label>
+        <input type="text" id="div-taxa" name="taxa" inputmode="decimal" autocomplete="off" placeholder="opcional">
+      </div>
+      <div class="campo">
+        <label for="div-paga">Paga com</label>
+        <select id="div-paga" name="pagaComDivida" data-papel="paga-divida"></select>
+      </div>
+    </div>
+
     <div class="campo acao">
       <button type="submit" class="principal">Criar conta</button>
     </div>
@@ -258,6 +291,56 @@
       Mudar o dia de fechamento ou de vencimento refaz só as faturas que ainda não fecharam.
       A fatura fechada fica como o banco a fechou.
     </p>
+    <div class="campo acao">
+      <button type="submit" class="principal" value="salvar">Salvar</button>
+    </div>
+    <div class="campo acao">
+      <button type="submit" value="cancelar" formnovalidate>Cancelar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- O contrato de uma dívida que já existe (design/10 §4). -->
+<dialog id="dialogo-contrato" class="dialogo-ciclo" data-area="dividas" aria-labelledby="titulo-contrato">
+  <form class="formulario" id="f-contrato" method="dialog">
+    <p class="titulo-bloco" id="titulo-contrato">contrato</p>
+      <div class="campo">
+        <label for="ct-tomado">Valor tomado</label>
+        <input type="text" id="ct-tomado" name="tomado" inputmode="decimal" autocomplete="off" placeholder="0,00">
+      </div>
+      <div class="campo">
+        <label for="ct-data-contrato">Contratado em</label>
+        <input type="date" id="ct-data-contrato" name="dataContrato">
+      </div>
+      <div class="campo estreito">
+        <label for="ct-parcelas">Parcelas</label>
+        <input type="number" id="ct-parcelas" name="parcelas" min="1" max="600">
+      </div>
+      <div class="campo">
+        <label for="ct-valor-parcela">Valor da parcela</label>
+        <input type="text" id="ct-valor-parcela" name="valorParcela" inputmode="decimal" autocomplete="off" placeholder="0,00">
+      </div>
+      <div class="campo">
+        <label for="ct-primeira">Primeira parcela</label>
+        <input type="date" id="ct-primeira" name="primeira">
+      </div>
+      <div class="campo estreito">
+        <label for="ct-taxa">Taxa % a.m.</label>
+        <input type="text" id="ct-taxa" name="taxa" inputmode="decimal" autocomplete="off" placeholder="opcional">
+      </div>
+      <div class="campo">
+        <label for="ct-paga">Paga com</label>
+        <select id="ct-paga" name="pagaComDivida" data-papel="paga-divida"></select>
+      </div>
+    <div class="campo">
+      <label for="ct-foto">Saldo devedor hoje</label>
+      <input type="text" id="ct-foto" name="foto" inputmode="decimal" autocomplete="off" placeholder="o que o banco mostra">
+    </div>
+    <p class="dica">
+      Sem a taxa, o app usa a que está embutida no contrato (valor, parcelas e prestação), ou a
+      observada entre duas fotos do saldo. O saldo que o banco mostra, quando informado, manda.
+    </p>
+    <p class="aviso erro" id="aviso-contrato" hidden></p>
     <div class="campo acao">
       <button type="submit" class="principal" value="salvar">Salvar</button>
     </div>

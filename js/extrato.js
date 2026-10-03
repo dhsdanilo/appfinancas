@@ -7,7 +7,7 @@
 
 import * as estado from './core/estado.js';
 import { dinheiroHTML } from './app/dinheiro-html.js';
-import { formatar } from './core/dinheiro.js';
+import { formatar, deTexto } from './core/dinheiro.js';
 import { criarFormulario } from './app/formulario.js';
 import { criarTransferencia } from './app/transferencia.js';
 import { criarFila } from './app/fila.js';
@@ -15,6 +15,8 @@ import { criarDevolucao } from './app/devolucao.js';
 import { criarConferencia } from './app/conferencia.js';
 import { criarHolerite } from './app/holerite.js';
 import { linhasDoHolerite, lancadosNoMes } from './core/holerite.js';
+import { situacao, saldoDevedor } from './core/divida.js';
+import { fotografar } from './app/contrato.js';
 import { instalarServiceWorker } from './app/instalar.js';
 import { iniciarSincronia } from './app/sincronia-viva.js';
 import {
@@ -125,6 +127,7 @@ async function pintar() {
     pintarListaDeCartoes(foco);
   } else {
     if (aba.id === 'caixa') pintarResumoDeCaixa(foco);
+    else if (aba.id === 'dividas') pintarResumoDeDividas(foco);
     else pintarResumoDeSaldos(aba, foco);
     pintarLista(aba, foco);
   }
@@ -301,6 +304,69 @@ function peDaFolha(c) {
   return `<div class="pe-bloco">
     <span class="fino">${feito ? `holerite de ${escapar(nome)} lançado` : faltam ? `${faltam} linha${faltam > 1 ? 's' : ''} prevista${faltam > 1 ? 's' : ''}` : 'sem linhas previstas'}</span>
     <button type="button" class="${feito ? 'elo' : 'principal'}" data-holerite="${escapar(c.id)}">${feito ? 'linha a mais' : `Lançar holerite de ${escapar(nome)}`}</button>
+  </div>`;
+}
+
+// ── dívidas: um cartão por contrato (design/10 §4.3) ──────────────────────
+
+const pct = (taxa) => `${(taxa * 100).toFixed(2).replace('.', ',')}% ao mês`;
+
+function pintarResumoDeDividas(contas) {
+  const blocos = contas.map(blocoDeDivida);
+  if (contas.length > 1) {
+    const total = contas.reduce((t, c) => t + (saldoDevedor(app, c.id) ?? -saldoReal(app, c.id)), 0);
+    blocos.unshift(`<div class="bloco total">
+      <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>dívidas</p>
+      <dl>${linhaDeResumo('saldo devedor somado', dinheiroHTML(total, { estimado: contas.some((c) => situacao(app, c.id)?.estimado) }))}</dl>
+    </div>`);
+  }
+  $('resumo').innerHTML = `<div class="blocos">${blocos.join('')}</div>`;
+}
+
+function blocoDeDivida(c) {
+  const s = situacao(app, c.id);
+  const pagadora = app.contas[c.pagaCom];
+  const pe = `<div class="pe-bloco">
+      <span class="fino">${pagadora ? `paga com ${escapar(pagadora.nome)}` : 'sem conta que paga'}</span>
+      <span class="foto-divida" data-foto-de="${escapar(c.id)}">
+        <button type="button" class="elo" data-foto="${escapar(c.id)}">saldo do banco</button>
+      </span>
+    </div>`;
+
+  if (!s) {
+    const devedor = saldoDevedor(app, c.id);
+    return `<div class="bloco">
+      <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(c.nome)}</p>
+      <dl>${linhaDeResumo('saldo devedor', devedor != null ? dinheiroHTML(devedor) : '—')}</dl>
+      <p class="aviso-bloco">Sem contrato: o app não sabe as parcelas nem estima o saldo.
+        <a href="bancada.html#contas">Cadastre o contrato na bancada</a>.</p>
+      ${pe}
+    </div>`;
+  }
+
+  const base = s.foto
+    ? s.estimado ? `foto de ${diaCurto(s.foto.data)}${s.parcelasPagas ? ' + parcelas' : ''}` : 'informado hoje'
+    : 'pelo contrato';
+  const origem = s.origemTaxa === 'contratual'
+    ? 'contratual'
+    : s.origemTaxa === 'observada'
+      ? `observada em ${s.mesesObservados} ${s.mesesObservados > 1 ? 'meses' : 'mês'}`
+      : 'implícita no contrato';
+  const linhas = [
+    linhaDeResumo(`saldo devedor · ${base}`, dinheiroHTML(s.saldoDevedor, { estimado: s.estimado }), 'fecho-topo'),
+    linhaDeResumo(
+      `${s.parcelasPagas} de ${s.parcelasTotal} pagas · faltam ${s.restantes} × ${formatar(s.contrato.valorParcela)}`,
+      dinheiroHTML(s.somaRestante)
+    ),
+    linhaDeResumo('juros que ainda vêm', dinheiroHTML(s.jurosFuturos, { estimado: s.estimado }), 'abate'),
+    linhaDeResumo('juros já pagos', dinheiroHTML(s.jurosPagos, { estimado: s.estimado }), 'abate'),
+    linhaDeResumo(`taxa ${origem}`, pct(s.taxa), 'abate'),
+    linhaDeResumo(s.proxima ? `próxima ${diaCurto(s.proxima)}` : 'quitada pelo calendário', `termina ${nomeDoMes(s.termina.slice(0, 7))}`, 'abate'),
+  ];
+  return `<div class="bloco">
+    <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(c.nome)}</p>
+    <dl>${linhas.join('')}</dl>
+    ${pe}
   </div>`;
 }
 
@@ -688,6 +754,21 @@ document.addEventListener('click', async (e) => {
     return;
   }
 
+  // O saldo do banco de uma dívida: um campo ali mesmo, sem janela.
+  const foto = e.target.closest('[data-foto]');
+  if (foto) {
+    const lugar = foto.closest('[data-foto-de]');
+    lugar.innerHTML = `<input type="text" inputmode="decimal" class="campo-fila" data-foto-valor placeholder="o que o banco mostra" aria-label="Saldo devedor de hoje">
+      <button type="button" class="principal" data-foto-ok>ok</button>`;
+    lugar.querySelector('input').focus();
+    return;
+  }
+  const fotoOk = e.target.closest('[data-foto-ok]');
+  if (fotoOk) {
+    await salvarFoto(fotoOk.closest('[data-foto-de]'));
+    return;
+  }
+
   const doHolerite = e.target.closest('[data-holerite]');
   if (doHolerite) {
     await holerite.abrir(doHolerite.dataset.holerite, vista.mes);
@@ -835,6 +916,19 @@ for (const campo of ['p-de', 'p-ate']) {
     pintar();
   });
 }
+
+async function salvarFoto(lugar) {
+  const valor = Math.abs(deTexto(lugar.querySelector('[data-foto-valor]').value));
+  if (!valor) return;
+  await fotografar(lugar.dataset.fotoDe, valor);
+}
+
+document.addEventListener('keydown', async (e) => {
+  const campo = e.target.closest?.('[data-foto-valor]');
+  if (!campo || e.key !== 'Enter') return;
+  e.preventDefault();
+  await salvarFoto(campo.closest('[data-foto-de]'));
+});
 
 // Atalho global: lançar sem tirar a mão do teclado é o ponto do PC.
 document.addEventListener('keydown', (e) => {

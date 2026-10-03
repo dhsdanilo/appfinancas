@@ -491,3 +491,9 @@ button.linha.vencido { border-left: 3px solid var(--alerta); background: var(--a
   .linha-holerite [data-fora] { grid-column: 2 / -1; justify-self: end; }
   .linha-nova { grid-template-columns: 1fr 1fr; }
 }
+
+/* ── dívidas ────────────────────────────────────────────────────────────── */
+
+.linha-resumo.fecho-topo { padding-bottom: var(--e2); margin-bottom: var(--e1); border-bottom: 1px solid var(--borda); }
+.linha-resumo.fecho-topo dd { font-size: var(--t-secao); }
+.foto-divida { display: inline-flex; gap: var(--e1); align-items: center; }

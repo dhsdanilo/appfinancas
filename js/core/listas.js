@@ -6,6 +6,7 @@
 // em dado — quem escreve a frase é a tela, não o núcleo.
 
 import { visiveis, saldoReal } from './lancamentos.js';
+import { saldoDevedor } from './divida.js';
 
 /**
  * Quantos lançamentos usam cada item. É o número que torna a bancada útil em
@@ -51,7 +52,9 @@ export function podeRemover(estado, especie, id) {
 
 /** Conta com saldo não se arquiva antes de o saldo ser resolvido. */
 export function podeArquivarConta(estado, id) {
-  const saldo = saldoReal(estado, id);
+  // Na dívida o que importa é o que ainda se deve, não a soma dos pagamentos.
+  const devedor = estado.contas[id]?.tipo === 'divida' ? saldoDevedor(estado, id) : null;
+  const saldo = devedor != null ? -devedor : saldoReal(estado, id);
   if (saldo !== 0) return { pode: false, motivo: 'tem saldo', saldo };
   return { pode: true, saldo: 0 };
 }

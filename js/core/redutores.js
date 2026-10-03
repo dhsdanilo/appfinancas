@@ -25,7 +25,7 @@ export const AREAS_PADRAO = ['caixa', 'cartoes'];
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 9;
+export const VERSAO_ESTADO = 10;
 
 export function estadoVazio() {
   return {
@@ -87,6 +87,11 @@ export const redutores = {
       pagaCom: d.pagaCom ?? null,
       // Só em folha: para onde vai o líquido do holerite (design/10 §2).
       liquidoPara: d.liquidoPara ?? null,
+      // Só em dívida: o contrato (design/10 §4) e as fotos do saldo devedor
+      // que o banco informa (02 §3.11). A foto manda; o contrato estima entre
+      // uma e outra.
+      contrato: d.contrato ?? null,
+      fotos: d.foto ? [d.foto] : [],
       // Só em investimento (D16)
       risco: d.risco ?? null,
       liquidez: d.liquidez ?? null,
@@ -105,6 +110,7 @@ export const redutores = {
       'diaVencimento',
       'pagaCom',
       'liquidoPara',
+      'contrato',
       'risco',
       'liquidez',
     ]) {
@@ -140,6 +146,15 @@ export const redutores = {
   'conta.arquivada'(e, d) {
     const c = e.contas[d.id];
     if (c) c.arquivada = d.arquivada !== false;
+  },
+
+  'conta.fotografada'(e, d) {
+    // A foto do saldo: o número que o banco mostra, com a data. Uma por dia —
+    // a mais nova do dia substitui a anterior.
+    const c = e.contas[d.id];
+    if (!c) return;
+    c.fotos = [...(c.fotos ?? []).filter((f) => f.data !== d.data), { data: d.data, valor: d.valor }]
+      .sort((a, b) => (a.data < b.data ? -1 : 1));
   },
 
   'conta.conferida'(e, d) {

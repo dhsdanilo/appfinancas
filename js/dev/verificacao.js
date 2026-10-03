@@ -23,6 +23,7 @@ import * as datas from '../core/datas.js';
 import * as pendencias from '../core/pendencias.js';
 import { categoriaNaArea, areasParaConta } from '../app/areas.js';
 import * as holerite from '../core/holerite.js';
+import * as divida from '../core/divida.js';
 
 const BANCO_DE_TESTE = 'appfinancas-teste';
 
@@ -1380,6 +1381,60 @@ caso('folha', 'o holerite traz as linhas do mês, e o líquido zera a folha', as
   igual(holerite.linhasDoHolerite(e, 'fo', '2027-03', '2027-03-05'), [], 'nada mais a lançar em março');
   igual(holerite.rendaDisponivel(e, lanc.visiveis(e)), 720000,
     'renda disponível desconta só o obrigatório: o plano de saúde é gasto, não imposto');
+});
+
+
+caso('dívida', 'a taxa embutida no contrato sai do valor, das parcelas e da prestação', () => {
+  const pv = 5000000;
+  const i = 0.0182;
+  const n = 42;
+  const pmt = Math.round((pv * i) / (1 - (1 + i) ** -n));
+  const achada = divida.taxaImplicita(pv, n, pmt);
+  verdade(Math.abs(achada - i) < 0.00001, `achou ${achada}, esperava ${i}`);
+  igual(divida.taxaImplicita(pv, n, Math.floor(pv / n)), 0, 'parcela que nem paga o valor não tem taxa');
+});
+
+caso('dívida', 'o saldo devedor: estimado pelo contrato, e a foto do banco manda', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const contrato = {
+    valorTomado: 1200000, data: '2027-01-01', parcelas: 12, valorParcela: 110000, primeira: '2027-01-10', taxa: null,
+  };
+  await estado.aplicarEvento('conta.criada', { id: 'emp', nome: 'Empréstimo', tipo: 'divida', contrato });
+  let e = await estado.calcular();
+  let s = divida.situacao(e, 'emp', '2027-04-15');
+  igual([s.parcelasPagas, s.restantes, s.somaRestante], [4, 8, 880000], '4 parcelas venceram, faltam 8');
+  igual(s.origemTaxa, 'implicita', 'sem taxa informada nem fotos, a embutida no contrato');
+  verdade(s.estimado && s.saldoDevedor > 0 && s.saldoDevedor < 1200000, 'estimado pelo calendário');
+  igual(s.termina, '2027-12-10');
+  igual(s.jurosFuturos, s.somaRestante - s.saldoDevedor, 'os dois quanto-falta da D22');
+
+  await estado.aplicarEvento('conta.fotografada', { id: 'emp', data: '2027-04-15', valor: 900000 });
+  e = await estado.calcular();
+  s = divida.situacao(e, 'emp', '2027-04-15');
+  igual([s.saldoDevedor, s.estimado], [900000, false], 'no dia da foto, o número do banco, sem ~');
+  const depois = divida.situacao(e, 'emp', '2027-05-15');
+  verdade(depois.estimado && depois.saldoDevedor < 900000, 'depois da foto, estima a partir dela');
+});
+
+caso('dívida', 'a taxa observada entre duas fotos (D24)', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', { id: 'cc', nome: 'Corrente', tipo: 'corrente', saldoInicial: 1000000 });
+  await estado.aplicarEvento('conta.criada', {
+    id: 'emp', nome: 'Empréstimo', tipo: 'divida', foto: { data: '2027-01-01', valor: 1000000 },
+    contrato: { valorTomado: 1000000, data: '2027-01-01', parcelas: 10, valorParcela: 120000, primeira: '2027-02-01', taxa: null },
+  });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'p1', tipo: 'transferencia', valor: 120000, contaId: 'cc', contaDestinoId: 'emp',
+    dataCompetencia: '2027-02-01', dataCaixa: '2027-02-01', confirmado: true,
+  });
+  // Pagou 1.200, o saldo caiu 1.000: 200 foram juros, em um mês sobre 10.000 → 2%.
+  await estado.aplicarEvento('conta.fotografada', { id: 'emp', data: '2027-02-01', valor: 900000 });
+  const e = await estado.calcular();
+  const s = divida.situacao(e, 'emp', '2027-02-01');
+  igual(s.origemTaxa, 'observada');
+  verdade(Math.abs(s.taxa - 0.02) < 0.001, `taxa ${s.taxa}`);
 });
 
 // ── apoio ─────────────────────────────────────────────────────────────────

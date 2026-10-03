@@ -22,7 +22,9 @@ import { usos, podeRemover, podeArquivarConta, acharPorNome } from './core/lista
 import { dinheiroHTML } from './app/dinheiro-html.js';
 import { instalarServiceWorker } from './app/instalar.js';
 import { iniciarSincronia } from './app/sincronia-viva.js';
-import { AREAS, areaDaConta, AREAS_COM_CATEGORIA } from './app/areas.js';
+import { AREAS, areaDaConta, AREAS_COM_CATEGORIA, opcoesDeConta } from './app/areas.js';
+import { salvarContrato, fotografar } from './app/contrato.js';
+import { situacao, saldoDevedor } from './core/divida.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -145,6 +147,18 @@ function pintarDonos() {
  */
 const BLOCOS_DE_CONTA = AREAS.map((a) => ({ ...a, titulo: a.titulo.toLowerCase() }));
 
+/**
+ * O número da conta na lista. Na dívida é o saldo devedor (da foto ou estimado
+ * pelo contrato), negativo: é o que se deve.
+ */
+function valorDaConta(c) {
+  if (c.tipo === 'divida') {
+    const devedor = saldoDevedor(app, c.id);
+    if (devedor != null) return -devedor;
+  }
+  return saldoReal(app, c.id);
+}
+
 function pintarContas() {
   const contas = Object.values(app.contas);
   if (!contas.length) {
@@ -166,6 +180,13 @@ function pintarContas() {
       const pagadora = app.contas[c.pagaCom];
       if (pagadora) detalhes.push(`paga com ${pagadora.nome}`);
     }
+    if (c.tipo === 'divida') {
+      const s = situacao(app, c.id);
+      if (s) detalhes.push(`${s.parcelasPagas} de ${s.parcelasTotal} parcelas`);
+      else detalhes.push('sem contrato');
+      const pagadora = app.contas[c.pagaCom];
+      if (pagadora) detalhes.push(`paga com ${pagadora.nome}`);
+    }
     // A corrente diz quais cartões ela paga: é o vínculo visto do outro lado.
     const pagos = Object.values(app.contas)
       .filter((o) => o.tipo === 'cartao' && o.pagaCom === c.id && !o.arquivada)
@@ -178,12 +199,14 @@ function pintarContas() {
       meta: escapar(detalhes.join(' · ')),
       // O saldo de hoje é o número de primeira classe; o inicial é nota de
       // rodapé — e é por isso que o conserto dele mora na ação da linha.
-      valor: saldoReal(app, c.id),
+      valor: valorDaConta(c),
       uso: contarUso('contas', c.id),
       arquivada: c.arquivada,
       extras:
         (c.tipo === 'cartao' ? '<button type="button" class="elo" data-acao="ciclo">ciclo</button>' : '') +
-        '<button type="button" class="elo" data-acao="saldo-inicial">saldo inicial</button>',
+        (c.tipo === 'divida'
+          ? '<button type="button" class="elo" data-acao="contrato">contrato</button>'
+          : '<button type="button" class="elo" data-acao="saldo-inicial">saldo inicial</button>'),
     });
   };
 
@@ -199,7 +222,7 @@ function pintarContas() {
     html += doBloco.map(desenhar).join('');
     // Subtotal só quando há o que somar: com uma conta só, ele repetiria a linha.
     if (doBloco.length > 1) {
-      const soma = doBloco.reduce((t, c) => t + saldoReal(app, c.id), 0);
+      const soma = doBloco.reduce((t, c) => t + valorDaConta(c), 0);
       html += subtotal(bloco.titulo, soma);
     }
   }
@@ -466,6 +489,7 @@ function ligarLista(idDaLista, especie) {
       case 'fundir-nao': fundindo = null; return pintar();
       case 'fundir-sim': return fundirItem(especie, id, item);
       case 'ciclo': return abrirCiclo(id);
+      case 'contrato': return abrirContrato(id);
     }
   });
 }
@@ -624,6 +648,24 @@ $('f-conta').addEventListener('submit', (e) =>
       saldoInicial: tipo === 'cartao' ? -Math.abs(deTexto(campos.saldo.value)) : deTexto(campos.saldo.value),
       dataInicial: campos.data.value || hoje(),
     };
+    if (tipo === 'divida') {
+      // O saldo da dívida é o que se deve: vira a primeira foto, não saldo
+      // inicial (design/10 §4.2).
+      const devedor = Math.abs(deTexto(campos.saldo.value));
+      dados.saldoInicial = 0;
+      if (devedor) dados.foto = { data: dados.dataInicial, valor: devedor };
+      const contrato = lerContrato(campos);
+      if (contrato.erro) {
+        avisar(contrato.erro);
+        return [null, null];
+      }
+      if (contrato.valor) {
+        return ['conta.criada', dados, async () => {
+          app = await estado.calcular();
+          await salvarContrato(app, dados.id, contrato.valor, campos.pagaComDivida.value || null);
+        }];
+      }
+    }
     if (tipo === 'cartao') {
       dados.limite = deTexto(campos.limite.value) || null;
       dados.diaFechamento = Number(campos.fechamento.value) || null;
@@ -670,8 +712,10 @@ async function criar(e, especie, montar) {
   const botao = e.target.querySelector('[type="submit"]');
   botao.disabled = true;
   try {
-    const [tipo, dados] = await montar(nome, campos);
+    const [tipo, dados, depois] = await montar(nome, campos);
+    if (dados === null) return;
     await estado.aplicarEvento(tipo, dados);
+    if (depois) await depois();
 
     // O que foi escolhido fica: quem cadastra três receitas seguidas não quer
     // reescolher "receita" três vezes, e a data da conta é a mesma na leva toda.
@@ -693,15 +737,91 @@ async function criar(e, especie, montar) {
 function mostrarCamposDeCartao() {
   const tipo = $('f-conta').elements.tipo.value;
   const cartao = tipo === 'cartao';
+  $('campos-divida').hidden = tipo !== 'divida';
+  if (tipo === 'divida') $('rotulo-saldo').textContent = 'Saldo devedor hoje';
   // O "criar conta" veste a cor da área do tipo escolhido (09-identidade §3).
   $('f-conta').dataset.area = areaDaConta({ tipo });
   $('campos-cartao').hidden = !cartao;
-  $('rotulo-saldo').textContent = cartao ? 'Já na fatura aberta' : 'Saldo de hoje';
+  if (tipo !== 'divida') $('rotulo-saldo').textContent = cartao ? 'Já na fatura aberta' : 'Saldo de hoje';
   // A dica fala do campo que está na tela: no cartão, não existe "saldo".
   $('dica-conta').innerHTML = cartao
     ? '<strong>O valor é o que já está na fatura aberta hoje</strong>: as compras de antes de o cartão entrar no app. Dali pra frente, cada compra lançada cai na fatura certa sozinha.'
     : DICA_DO_SALDO;
 }
+
+/**
+ * Lê os campos do contrato. Nenhum preenchido: dívida sem contrato (vale, a
+ * D22 continua funcionando só com fotos). Algum preenchido: os essenciais
+ * passam a ser obrigatórios, e a recusa diz qual falta.
+ */
+function lerContrato(campos) {
+  const parcelas = Number(campos.parcelas.value) || 0;
+  const valorParcela = Math.abs(deTexto(campos.valorParcela.value));
+  const valorTomado = Math.abs(deTexto(campos.tomado.value));
+  const primeira = campos.primeira.value;
+  const taxaTexto = campos.taxa.value.trim();
+  const algum = parcelas || valorParcela || valorTomado || primeira || taxaTexto;
+  if (!algum) return { valor: null };
+  if (!valorTomado) return { erro: 'Falta o valor tomado do empréstimo.' };
+  if (!parcelas) return { erro: 'Falta o número de parcelas.' };
+  if (!valorParcela) return { erro: 'Falta o valor da parcela.' };
+  if (!primeira) return { erro: 'Falta a data da primeira parcela.' };
+  return {
+    valor: {
+      valorTomado,
+      data: campos.dataContrato.value || primeira,
+      parcelas,
+      valorParcela,
+      primeira,
+      // "1,82" % ao mês → 0,0182. Vazio: o app usa a observada ou a implícita.
+      taxa: taxaTexto ? Math.abs(deTexto(taxaTexto)) / 10000 : null,
+    },
+  };
+}
+
+// ── o contrato de uma dívida que já existe ────────────────────────────────
+
+let contratoDe = null;
+
+function abrirContrato(id) {
+  const c = app.contas[id];
+  contratoDe = id;
+  const f = $('f-contrato').elements;
+  const ct = c.contrato ?? {};
+  $('titulo-contrato').textContent = c.nome;
+  f.tomado.value = ct.valorTomado ? formatarSimples(ct.valorTomado).replace('R$ ', '') : '';
+  f.dataContrato.value = ct.data ?? '';
+  f.parcelas.value = ct.parcelas ?? '';
+  f.valorParcela.value = ct.valorParcela ? formatarSimples(ct.valorParcela).replace('R$ ', '') : '';
+  f.primeira.value = ct.primeira ?? '';
+  f.taxa.value = ct.taxa != null ? String((ct.taxa * 100).toFixed(2)).replace('.', ',') : '';
+  f.foto.value = '';
+  pintarPagadoras();
+  f.pagaComDivida.value = c.pagaCom ?? '';
+  $('aviso-contrato').hidden = true;
+  $('dialogo-contrato').showModal();
+  f.tomado.focus();
+}
+
+$('f-contrato').addEventListener('submit', async (e) => {
+  if (e.submitter?.value !== 'salvar') return;
+  e.preventDefault();
+  const id = contratoDe;
+  const f = $('f-contrato').elements;
+  const contrato = lerContrato(f);
+  if (contrato.erro || !contrato.valor) {
+    $('aviso-contrato').textContent = contrato.erro ?? 'Preencha o contrato.';
+    $('aviso-contrato').hidden = false;
+    return;
+  }
+  await salvarContrato(app, id, contrato.valor, f.pagaComDivida.value || null);
+  const foto = Math.abs(deTexto(f.foto.value));
+  if (foto) await fotografar(id, foto);
+  $('dialogo-contrato').close();
+  contratoDe = null;
+  avisar('');
+  await recarregar();
+});
 
 /** Quem pode pagar a fatura: as contas de caixa — corrente e espécie. */
 function pintarPagadoras() {
@@ -714,6 +834,16 @@ function pintarPagadoras() {
   for (const select of document.querySelectorAll('[data-papel="paga-com"]')) {
     const antes = select.value;
     select.innerHTML = opcoes;
+    select.value = antes;
+  }
+  // A parcela de uma dívida pode sair da corrente, do cartão ou da folha
+  // (consignado) — design/10 §4.1.
+  const quemPagaDivida = Object.values(app.contas).filter(
+    (c) => !c.arquivada && ['corrente', 'especie', 'cartao', 'folha'].includes(c.tipo)
+  );
+  for (const select of document.querySelectorAll('[data-papel="paga-divida"]')) {
+    const antes = select.value;
+    select.innerHTML = opcoesDeConta(quemPagaDivida, antes, { vazia: true });
     select.value = antes;
   }
 }
