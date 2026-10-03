@@ -179,6 +179,19 @@ function pintarArea() {
     else pintarResumoDeSaldos(aba, foco);
     pintarLista(aba, foco);
   }
+  // Com uma conta à vista, o "editar" dela fica no canto de cima; a lista
+  // "Suas contas" de baixo saiu (pedido dele, 03/10/2026).
+  if (foco.length === 1) {
+    $('resumo').insertAdjacentHTML('afterbegin', `<div class="topo-conta">
+      <button type="button" class="elo" data-editar-conta="${escapar(foco[0].id)}">editar ${escapar(foco[0].nome)}</button>
+    </div>`);
+  }
+  const arquivadas = Object.values(app.contas).filter((c) => c.arquivada && aba.tipos.includes(c.tipo) && !contas.includes(c));
+  if (arquivadas.length) {
+    $('resumo').insertAdjacentHTML('beforeend', `<p class="arquivadas-area fino">arquivadas: ${arquivadas
+      .map((c) => `<button type="button" class="elo" data-editar-conta="${escapar(c.id)}">${escapar(c.nome)}</button>`)
+      .join(' · ')}</p>`);
+  }
   guardarVista();
 }
 
@@ -347,10 +360,10 @@ function contasDaAba(aba) {
 }
 
 function pintarSubabas(contas) {
-  // Com uma conta só, "todas" e ela são a mesma coisa: a sub-aba sairia de
-  // enfeite.
+  // Com uma conta só, "Geral" e ela são a mesma coisa: a aba sairia de
+  // enfeite — a tela mostra direto a conta (pedido dele, 03/10/2026).
   $('subabas').hidden = contas.length < 2;
-  $('subabas').innerHTML = [{ id: 'todas', nome: 'Todas' }, ...contas]
+  $('subabas').innerHTML = [{ id: 'todas', nome: 'Geral' }, ...contas]
     .map(
       (c) => `<button type="button" data-conta="${escapar(c.id)}" aria-pressed="${c.id === vista.conta}">${escapar(c.nome)}</button>`
     )
@@ -377,9 +390,13 @@ function pintarPeriodo() {
  * sozinho não é crível (08-telas §6). O previsto é sempre o de hoje até o fim
  * do mês corrente, qualquer que seja o período da lista.
  */
+/**
+ * Uma conta: o bloco dela. Geral (várias): só a soma — a conta específica se
+ * vê na aba dela (pedido dele, 03/10/2026).
+ */
 function pintarResumoDeCaixa(contas) {
   const previstos = contas.map((c) => ({ conta: c, p: saldoPrevisto(app, c.id) }));
-  const blocos = previstos.map(({ conta, p }) => blocoDeCaixa(conta.nome, p, false, conta));
+  const blocos = previstos.length === 1 ? [blocoDeCaixa(previstos[0].conta.nome, previstos[0].p, false, previstos[0].conta)] : [];
 
   if (previstos.length > 1) {
     const soma = {
@@ -391,7 +408,7 @@ function pintarResumoDeCaixa(contas) {
       estimado: previstos.some((x) => x.p.estimado),
       previsto: previstos.reduce((t, x) => t + x.p.previsto, 0),
     };
-    blocos.unshift(blocoDeCaixa('em caixa', soma, true));
+    blocos.unshift(blocoDeCaixa('geral', soma, true));
   }
   $('resumo').innerHTML = `<div class="blocos">${blocos.join('')}</div>`;
 }
@@ -432,20 +449,44 @@ const linhaDeResumo = (rotulo, valorHTML, classe = '') =>
 
 /** Cartões: nunca "saldo" — fatura aberta, fatura fechada e limite livre. */
 function pintarResumoDeCartoes(cartoes) {
-  $('resumo').innerHTML = `<div class="blocos">${cartoes.map(blocoDeCartao).join('')}</div>`;
+  const bloco = cartoes.length === 1 ? blocoDeCartao(cartoes[0]) : blocoDosCartoes(cartoes);
+  $('resumo').innerHTML = `<div class="blocos">${bloco}</div>`;
+}
+
+/** Geral dos cartões: as faturas somadas. Pagar é na aba de cada um. */
+function blocoDosCartoes(cartoes) {
+  let fechada = 0;
+  let aberta = 0;
+  let livre = 0;
+  let comLimite = false;
+  for (const c of cartoes) {
+    const r = resumoDoCartao(app, c.id);
+    if (!r) continue;
+    fechada += r.fechada?.aPagar ?? 0;
+    aberta += r.aberta?.aPagar ?? 0;
+    if (r.limiteLivre !== null) { livre += r.limiteLivre; comLimite = true; }
+  }
+  const linhas = [];
+  if (fechada) linhas.push(linhaDeResumo('faturas fechadas a pagar', dinheiroHTML(fechada), 'negativo'));
+  linhas.push(linhaDeResumo('faturas abertas', dinheiroHTML(aberta)));
+  if (comLimite) linhas.push(linhaDeResumo('limite livre', dinheiroHTML(livre), livre < 0 ? 'negativo' : ''));
+  return `<div class="bloco total">
+    <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>geral</p>
+    <dl>${linhas.join('')}</dl>
+  </div>`;
 }
 
 function blocoDeCartao(c) {
   const pagadora = app.contas[c.pagaCom];
   const rodape = pagadora
     ? `paga com ${escapar(pagadora.nome)}`
-    : 'sem conta que paga — <a href="#gestao">defina o “paga com”</a> pra fatura pesar no saldo previsto';
+    : `sem conta que paga — <button type="button" class="elo" data-editar-conta="${escapar(c.id)}">defina o “paga com”</button> pra fatura pesar no saldo previsto`;
 
   if (!temCiclo(c)) {
     return `<div class="bloco">
       <p class="nome-bloco">${escapar(c.nome)}</p>
       <p class="aviso-bloco">Sem dia de fechamento e de vencimento, o app não sabe a qual
-        fatura cada compra pertence. <a href="#gestao">Defina o ciclo em "Seus cartões"</a>.</p>
+        fatura cada compra pertence. <button type="button" class="elo" data-editar-conta="${escapar(c.id)}">Defina o ciclo</button>.</p>
       <dl>${linhaDeResumo('em aberto', dinheiroHTML(saldoReal(app, c.id)), saldoReal(app, c.id) < 0 ? 'negativo' : '')}</dl>
     </div>`;
   }
@@ -771,6 +812,10 @@ document.addEventListener('change', (e) => {
 
 /** Investimentos, dívidas e folha: o saldo, e na folha o aviso do zero (D25). */
 function pintarResumoDeSaldos(aba, contas) {
+  if (contas.length > 1) {
+    $('resumo').innerHTML = `<div class="blocos">${aba.id === 'folha' ? blocoDasFolhas(contas) : blocoDeTotal(aba, contas)}</div>`;
+    return;
+  }
   const blocos = contas.map((c) => {
     const saldo = saldoReal(app, c.id);
     const aviso =
@@ -779,19 +824,40 @@ function pintarResumoDeSaldos(aba, contas) {
         : '';
     return `<div class="bloco">
       <p class="nome-bloco">${escapar(c.nome)}</p>
-      <dl>${linhaDeResumo(aba.id === 'dividas' ? 'saldo devedor' : 'saldo', dinheiroHTML(saldo), saldo < 0 ? 'negativo' : '')}</dl>
+      <dl>${aba.id === 'folha' ? linhasDeRenda([c]) : ''}${linhaDeResumo(aba.id === 'folha' ? 'na folha agora' : 'saldo', dinheiroHTML(saldo), saldo < 0 ? 'negativo' : '')}</dl>
       ${aviso}
       ${aba.id === 'folha' ? peDaFolha(c) : ''}
     </div>`;
   });
-  if (contas.length > 1 && aba.id !== 'folha') {
-    const soma = contas.reduce((t, c) => t + saldoReal(app, c.id), 0);
-    blocos.unshift(`<div class="bloco total">
-      <p class="nome-bloco">${escapar(aba.titulo.toLowerCase())}</p>
-      <dl>${linhaDeResumo('total', dinheiroHTML(soma), soma < 0 ? 'negativo' : '')}</dl>
-    </div>`);
-  }
   $('resumo').innerHTML = `<div class="blocos">${blocos.join('')}</div>`;
+}
+
+function blocoDeTotal(aba, contas) {
+  const soma = contas.reduce((t, c) => t + saldoReal(app, c.id), 0);
+  return `<div class="bloco total">
+    <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>geral</p>
+    <dl>${linhaDeResumo('total', dinheiroHTML(soma), soma < 0 ? 'negativo' : '')}</dl>
+  </div>`;
+}
+
+/** O que entrou nas folhas no mês da tela, e o que sobra disso tirando o obrigatório (D25). */
+function linhasDeRenda(folhas) {
+  const ids = new Set(folhas.map((c) => c.id));
+  const doMes = visiveis(app).filter((l) => ids.has(l.contaId) && l.dataCompetencia.slice(0, 7) === vista.mes);
+  const bruta = doMes.filter((l) => l.tipo === 'receita').reduce((t, l) => t + l.valor, 0);
+  const nome = nomeDoMes(vista.mes).split(' ')[0];
+  return linhaDeResumo(`renda de ${nome}`, dinheiroHTML(bruta)) +
+    linhaDeResumo('renda disponível', dinheiroHTML(rendaDisponivel(app, doMes)), 'abate');
+}
+
+/** Geral da renda: a soma das fontes no mês, e quantas folhas ainda não fecharam. */
+function blocoDasFolhas(folhas) {
+  const abertas = folhas.filter((c) => saldoReal(app, c.id) !== 0).length;
+  return `<div class="bloco total">
+    <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>geral</p>
+    <dl>${linhasDeRenda(folhas)}</dl>
+    ${abertas ? `<p class="aviso-bloco">${abertas} folha${abertas > 1 ? 's' : ''} sem fechar: abra a aba de cada uma para lançar o holerite.</p>` : ''}
+  </div>`;
 }
 
 // ── a lista: caixa, investimentos, dívidas, folha ─────────────────────────
@@ -1240,6 +1306,11 @@ document.addEventListener('click', async (e) => {
     confirmar.disabled = true;
     amortizando = null;
     await amortizar(app, { ...pedido, modo: confirmar.dataset.amConfirmar });
+    return;
+  }
+  const editarConta = e.target.closest('[data-editar-conta]');
+  if (editarConta) {
+    document.dispatchEvent(new CustomEvent('conta:editar', { detail: editarConta.dataset.editarConta }));
     return;
   }
   const corrigirDivida = e.target.closest('[data-corrigir-divida]');

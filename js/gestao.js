@@ -25,7 +25,7 @@ import { deTexto } from './core/dinheiro.js';
 import { hoje, saldoReal } from './core/lancamentos.js';
 import { usos, podeRemover, podeArquivarConta, acharPorNome } from './core/listas.js';
 import { dinheiroHTML } from './app/dinheiro-html.js';
-import { NOVA_CONTA, CICLO, CONTRATO } from './app/marcacao-gestao.js';
+import { NOVA_CONTA, CICLO, CONTRATO, EDITAR_CONTA } from './app/marcacao-gestao.js';
 import { AREAS, areaDaConta, AREAS_COM_CATEGORIA, opcoesDeConta } from './app/areas.js';
 import { salvarContrato, fotografar, excluirDivida } from './app/contrato.js';
 import { situacao, saldoDevedor } from './core/divida.js';
@@ -53,7 +53,7 @@ const TEXTOS = {
 
 // As janelas de criar, de ciclo e de contrato existem uma vez; cada área
 // ajusta a de criar para o que ela cria.
-document.body.insertAdjacentHTML('beforeend', NOVA_CONTA + CICLO + CONTRATO);
+document.body.insertAdjacentHTML('beforeend', NOVA_CONTA + CICLO + CONTRATO + EDITAR_CONTA);
 $('f-conta').insertAdjacentHTML('beforeend', '<p class="aviso erro" id="aviso-nova-conta" hidden></p>');
 const TODOS_OS_TIPOS = [...$('f-conta').elements.tipo.options].map((o) => ({ valor: o.value, texto: o.text }));
 
@@ -63,9 +63,10 @@ function montarArea(area) {
   confirmando = null;
   fundindo = null;
   $('b-nova-conta')?.remove();
-  // Em Dívidas, cada contrato já é um cartão com as ações dele (corrigir,
-  // arquivar, excluir) — a lista "Seus empréstimos" repetiria a tela.
-  $('gestao').hidden = !area || area === 'dividas';
+  // A lista "Suas contas" de baixo saiu de todas as áreas (pedido dele,
+  // 03/10/2026): cada conta se edita pelo "editar" do canto de cima, e cada
+  // contrato de dívida pelo "corrigir" dele. Fica só o botão de criar.
+  $('gestao').hidden = true;
   if (!area) return;
 
   const t = TEXTOS[area];
@@ -968,6 +969,132 @@ $('b-excluir-sim')?.addEventListener('click', async () => {
   $('dialogo-contrato').close();
   contratoDe = null;
   await recarregar();
+});
+
+// ── editar uma conta: nome, saldo inicial, ciclo do cartão, arquivar, excluir ──
+
+let editandoConta = null;
+
+function abrirEditarConta(id) {
+  const c = app.contas[id];
+  if (!c) return;
+  editandoConta = id;
+  const f = $('f-editar-conta').elements;
+  const cartao = c.tipo === 'cartao';
+  const folha = c.tipo === 'folha';
+  $('f-editar-conta').dataset.area = areaDaConta(c);
+  $('titulo-editar-conta').textContent = NOME_DO_TIPO[c.tipo] ?? 'conta';
+  f.nome.value = c.nome;
+  $('ec-cartao').hidden = !cartao;
+  if (cartao) {
+    f.fechamento.value = c.diaFechamento ?? '';
+    f.vencimento.value = c.diaVencimento ?? '';
+    f.limite.value = c.limite ? formatarSimples(c.limite).replace('R$ ', '') : '';
+    pintarPagadoras();
+    f.pagaCom.value = c.pagaCom ?? '';
+  }
+  // A folha não tem saldo inicial: é passagem, zera a cada holerite (D25).
+  $('ec-campo-saldo').hidden = folha;
+  $('ec-campo-data').hidden = folha;
+  $('ec-rotulo-saldo').textContent = cartao ? 'Já na fatura aberta quando entrou no app' : 'Saldo inicial';
+  const mostrado = cartao ? -(c.saldoInicial ?? 0) : c.saldoInicial ?? 0;
+  f.saldo.value = formatarSimples(mostrado).replace('R$ ', '');
+  f.data.value = c.dataInicial ?? '';
+  $('ec-dica').innerHTML = folha
+    ? ''
+    : '<strong>O saldo inicial é o marco zero</strong>: mudar ele muda todo saldo calculado dali pra frente.';
+  $('aviso-editar-conta').hidden = true;
+  pintarFimDaConta();
+  $('dialogo-editar-conta').showModal();
+  f.nome.focus();
+}
+
+function avisoDaEdicao(texto) {
+  $('aviso-editar-conta').textContent = texto;
+  $('aviso-editar-conta').hidden = !texto;
+}
+
+function pintarFimDaConta() {
+  const c = app.contas[editandoConta];
+  if (!c) return;
+  $('b-arquivar-conta').textContent = c.arquivada ? 'desarquivar' : 'arquivar';
+  $('b-excluir-conta').hidden = false;
+  $('confirma-exclusao-conta').hidden = true;
+}
+
+$('f-editar-conta')?.addEventListener('submit', async (e) => {
+  if (e.submitter?.value !== 'salvar') return;
+  e.preventDefault();
+  const id = editandoConta;
+  const c = app.contas[id];
+  const f = $('f-editar-conta').elements;
+  const nome = f.nome.value.trim();
+  if (!nome) return avisoDaEdicao('A conta precisa de um nome.');
+
+  const mudou = {};
+  if (nome !== c.nome) mudou.nome = nome;
+  if (c.tipo === 'cartao') {
+    const novo = {
+      diaFechamento: Number(f.fechamento.value) || null,
+      diaVencimento: Number(f.vencimento.value) || null,
+      limite: deTexto(f.limite.value) || null,
+      pagaCom: f.pagaCom.value || null,
+    };
+    for (const [k, v] of Object.entries(novo)) if ((c[k] ?? null) !== v) mudou[k] = v;
+  }
+  if (Object.keys(mudou).length) await estado.aplicarEvento('conta.alterada', { id, ...mudou });
+
+  if (c.tipo !== 'folha') {
+    // Saldo inicial tem evento próprio: ele move todo saldo dali pra frente.
+    const digitado = deTexto(f.saldo.value);
+    const saldoInicial = c.tipo === 'cartao' ? -Math.abs(digitado) : digitado;
+    const dataInicial = f.data.value || c.dataInicial;
+    const corrigido = {};
+    if (saldoInicial !== (c.saldoInicial ?? 0)) corrigido.saldoInicial = saldoInicial;
+    if (dataInicial && dataInicial !== c.dataInicial) corrigido.dataInicial = dataInicial;
+    if (Object.keys(corrigido).length) await estado.aplicarEvento('conta.saldoInicialCorrigido', { id, ...corrigido });
+  }
+  $('dialogo-editar-conta').close();
+  editandoConta = null;
+  await recarregar();
+});
+
+$('b-arquivar-conta')?.addEventListener('click', async () => {
+  const c = app.contas[editandoConta];
+  if (!c.arquivada) {
+    const resposta = podeArquivarConta(app, c.id);
+    if (!resposta.pode) {
+      return avisoDaEdicao(`${c.nome} ainda tem ${formatarSimples(resposta.saldo)}. Transfira ou ajuste o saldo antes de arquivar — conta guardada com dinheiro dentro faz o total do app mentir.`);
+    }
+  }
+  await estado.aplicarEvento('conta.arquivada', { id: c.id, arquivada: !c.arquivada });
+  $('dialogo-editar-conta').close();
+  editandoConta = null;
+  await recarregar();
+});
+
+$('b-excluir-conta')?.addEventListener('click', () => {
+  const c = app.contas[editandoConta];
+  const resposta = podeRemover(app, 'contas', c.id);
+  if (!resposta.pode) {
+    return avisoDaEdicao(`${c.nome} tem ${resposta.usos} lançamento${resposta.usos > 1 ? 's' : ''}. Conta com passado não se apaga — arquive: ela sai das telas de lançamento e o extrato dela continua existindo.`);
+  }
+  $('texto-exclusao-conta').textContent = `Excluir ${c.nome}?${c.saldoInicial ? ` Leva junto o saldo inicial de ${formatarSimples(c.saldoInicial)}.` : ''}`;
+  $('b-excluir-conta').hidden = true;
+  $('confirma-exclusao-conta').hidden = false;
+});
+$('b-excluir-conta-nao')?.addEventListener('click', pintarFimDaConta);
+$('b-excluir-conta-sim')?.addEventListener('click', async () => {
+  await estado.aplicarEvento('conta.removida', { id: editandoConta });
+  $('dialogo-editar-conta').close();
+  editandoConta = null;
+  await recarregar();
+});
+
+document.addEventListener('conta:editar', async (e) => {
+  app = await estado.calcular();
+  contagem = usos(app);
+  abrirEditarConta(e.detail);
 });
 
 // O cartão do contrato, na tela de Dívidas, pede a janela por aqui.

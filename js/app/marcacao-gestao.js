@@ -212,3 +212,59 @@ export const CONTRATO = `
     </p>
   </form>
 </dialog>`;
+
+// Editar uma conta que já existe: o que era a lista "Suas contas" embaixo de
+// cada tela (pedido dele, 03/10/2026). Abre pelo "editar" do canto de cima.
+export const EDITAR_CONTA = `
+<dialog id="dialogo-editar-conta" class="dialogo-ciclo" aria-labelledby="titulo-editar-conta">
+  <form class="formulario" id="f-editar-conta" method="dialog">
+    <p class="titulo-bloco" id="titulo-editar-conta">conta</p>
+    <div class="campo largo">
+      <label for="ec-nome">Nome</label>
+      <input type="text" id="ec-nome" name="nome" autocomplete="off">
+    </div>
+    <div class="so-cartao" id="ec-cartao" hidden>
+      <div class="campo estreito">
+        <label for="ec-fechamento">Fecha dia</label>
+        <input type="number" id="ec-fechamento" name="fechamento" min="1" max="31">
+      </div>
+      <div class="campo estreito">
+        <label for="ec-vencimento">Vence dia</label>
+        <input type="number" id="ec-vencimento" name="vencimento" min="1" max="31">
+      </div>
+      <div class="campo">
+        <label for="ec-limite">Limite</label>
+        <input type="text" id="ec-limite" name="limite" inputmode="decimal" autocomplete="off" placeholder="0,00">
+      </div>
+      <div class="campo">
+        <label for="ec-paga-com">Paga com</label>
+        <select id="ec-paga-com" name="pagaCom" data-papel="paga-com"></select>
+      </div>
+    </div>
+    <div class="campo" id="ec-campo-saldo">
+      <label for="ec-saldo" id="ec-rotulo-saldo">Saldo inicial</label>
+      <input type="text" id="ec-saldo" name="saldo" inputmode="decimal" autocomplete="off" placeholder="0,00">
+    </div>
+    <div class="campo" id="ec-campo-data">
+      <label for="ec-data">Conferido em</label>
+      <input type="date" id="ec-data" name="data">
+    </div>
+    <p class="dica" id="ec-dica"></p>
+    <p class="aviso erro" id="aviso-editar-conta" hidden></p>
+    <div class="campo acao">
+      <button type="submit" class="principal" value="salvar">Salvar</button>
+    </div>
+    <div class="campo acao">
+      <button type="submit" value="cancelar" formnovalidate>Cancelar</button>
+    </div>
+    <p class="zona-perigo fim-contrato">
+      <button type="button" class="elo" id="b-arquivar-conta"></button>
+      <button type="button" class="elo perigo" id="b-excluir-conta">excluir</button>
+      <span id="confirma-exclusao-conta" hidden>
+        <span id="texto-exclusao-conta"></span>
+        <button type="button" class="perigo" id="b-excluir-conta-sim">excluir</button>
+        <button type="button" class="elo" id="b-excluir-conta-nao">não</button>
+      </span>
+    </p>
+  </form>
+</dialog>`;

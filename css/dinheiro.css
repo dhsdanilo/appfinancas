@@ -462,9 +462,10 @@ button.linha.vencido { border-left: 3px solid var(--alerta); background: var(--a
   color: var(--tinta-fraca);
   font-size: var(--t-miudo);
 }
-.linha-nova { display: grid; grid-template-columns: 1fr 100px auto auto; gap: var(--e2); }
-.linha-nova select,
-.linha-nova input,
+/* O que já está na folha: só leitura, para conferir antes de lançar. */
+.lancados-holerite .linha-holerite { grid-template-columns: 22px 1fr auto; }
+.lancados-holerite .valor-lancado { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--tinta-fraca); }
+.titulo-linhas { margin: var(--e3) 0 0; color: var(--tinta-fraca); }
 .liquido-holerite select {
   font: inherit;
   font-size: var(--t-apoio);
@@ -490,7 +491,7 @@ button.linha.vencido { border-left: 3px solid var(--alerta); background: var(--a
 @media (max-width: 600px) {
   .linha-holerite { grid-template-columns: 22px 1fr 96px; }
   .linha-holerite [data-fora] { grid-column: 2 / -1; justify-self: end; }
-  .linha-nova { grid-template-columns: 1fr 1fr; }
+  .lancados-holerite .linha-holerite { grid-template-columns: 22px 1fr auto; }
 }
 
 /* ── dívidas ────────────────────────────────────────────────────────────── */
@@ -692,3 +693,9 @@ body[data-pagina="dividas"] .bloco { min-width: 0; }
 .linha-detalhe span:last-child { white-space: nowrap; text-align: right; }
 .pe-contrato { margin-top: var(--e3); padding-top: var(--e2); border-top: 1px solid var(--borda); }
 .detalhes-contrato .acoes-contrato { border-top: 0; padding-top: 0; }
+
+/* O "editar" da conta à vista, no canto de cima do painel (pedido dele,
+   03/10/2026) — substitui a lista "Suas contas" que ficava embaixo. */
+.topo-conta { display: flex; justify-content: flex-start; margin: calc(-1 * var(--e2)) 0 var(--e2); }
+.topo-conta .elo { font-size: var(--t-miudo); color: var(--tinta-fraca); }
+.arquivadas-area { margin: 0 0 var(--e4); color: var(--tinta-fraca); font-size: var(--t-miudo); }

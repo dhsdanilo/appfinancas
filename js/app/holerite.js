@@ -1,10 +1,10 @@
 // "Lançar o holerite do mês" — numa conta de folha (design/10 §2, D25).
 //
-// Traz todas as linhas previstas — salário base, auxílio, IR, previdência,
-// consignado —, cada uma editável, e calcula o líquido que vai para a conta
-// corrente. Confirma-se tudo de uma vez, ou ajusta-se a linha que veio
-// diferente. Linha a mais (hora extra, 13º) se acrescenta ali mesmo; linha que
-// não veio este mês sai com um toque, sem mexer na série.
+// É um resumo para conferir (pedido dele, 03/10/2026): as linhas previstas do
+// mês — editáveis, e "não veio" para a que faltou —, o que já foi lançado na
+// folha, e o líquido que vai para a conta corrente. Lança-se, ou volta-se: se
+// falta alguma linha, ela se lança na folha como qualquer lançamento (marcando
+// "repete" para o mês que vem já nascer pronto), e o holerite se abre de novo.
 
 import * as estado from '../core/estado.js';
 import * as log from '../core/log.js';
@@ -13,7 +13,7 @@ import { deTexto, formatar } from '../core/dinheiro.js';
 import { hoje, diaNoMes, nomeDoMes } from '../core/datas.js';
 import { nomeDaCategoria } from '../core/lancamentos.js';
 import { linhasDoHolerite, lancadosNoMes, liquido } from '../core/holerite.js';
-import { opcoesDeConta, categoriaNaArea } from './areas.js';
+import { opcoesDeConta } from './areas.js';
 
 const MARCACAO = `
   <p class="nota" data-papel="cabeca"></p>
@@ -21,24 +21,20 @@ const MARCACAO = `
     <span class="miudo">dia do crédito</span>
     <input type="date" data-papel="data" aria-label="Dia do crédito">
   </label>
+  <p class="miudo titulo-linhas" data-papel="titulo-previstas" hidden>a lançar agora</p>
   <ol class="linhas-holerite" data-papel="linhas"></ol>
-  <div class="linha-nova">
-    <select data-papel="nova-categoria" aria-label="Categoria da linha nova"></select>
-    <input type="text" inputmode="decimal" data-papel="novo-valor" placeholder="0,00" aria-label="Valor da linha nova" autocomplete="off">
-    <select data-papel="nova-repete" aria-label="Se repete">
-      <option value="nao">só este mês</option>
-      <option value="fixa">todo mês, fixo</option>
-      <option value="variavel">todo mês, estimado</option>
-    </select>
-    <button type="button" data-papel="b-acrescentar">acrescentar</button>
-  </div>
+  <p class="miudo titulo-linhas" data-papel="titulo-lancados" hidden>já lançado no mês</p>
+  <ol class="linhas-holerite lancados-holerite" data-papel="lancados"></ol>
   <div class="liquido-holerite">
     <span>→ líquido para</span>
     <select data-papel="destino" aria-label="Para onde vai o líquido"></select>
     <strong data-papel="valor-liquido"></strong>
   </div>
   <p class="recado" data-papel="recado" hidden></p>
-  <div class="acoes"><button type="button" class="principal" data-papel="b-lancar">Lançar holerite</button></div>
+  <div class="acoes">
+    <button type="button" class="principal" data-papel="b-lancar">Lançar holerite</button>
+    <button type="button" data-papel="b-voltar">Voltar</button>
+  </div>
 `;
 
 export function criarHolerite({ janela, raiz, aoSalvar }) {
@@ -48,9 +44,11 @@ export function criarHolerite({ janela, raiz, aoSalvar }) {
   let app = null;
   let folha = null;
   let mes = null;
-  // Cada linha: { chave, ocorrencia?, tipo, categoriaId, contaDestinoId, valor, estimado, fora, repete }
+  // Cada linha: { chave, ocorrencia, tipo, categoriaId, contaDestinoId, valor, estimado, automatico, fora }
   let linhas = [];
   let jaLancado = 0;
+  // Os lançamentos que já estão na folha no mês — mostrados para conferir.
+  let jaLancados = [];
 
   function recadar(texto) {
     el('recado').textContent = texto;
@@ -78,7 +76,9 @@ export function criarHolerite({ janela, raiz, aoSalvar }) {
             </li>`;
           })
           .join('')
-      : '<li class="vazio">Nenhuma linha prevista. Acrescente abaixo o que entrou e o que foi descontado — marcando "todo mês", o holerite do mês que vem já nasce pronto.</li>';
+      : '';
+    el('titulo-previstas').hidden = !linhas.length;
+    pintarLancados();
     pintarLiquido();
   }
 
@@ -99,16 +99,27 @@ export function criarHolerite({ janela, raiz, aoSalvar }) {
     el('valor-liquido').classList.toggle('negativo', v < 0);
   }
 
-  function pintarCategoriasNovas() {
-    const daFolha = Object.values(app.categorias).filter((c) => !c.arquivada && categoriaNaArea(c, folha));
-    const grupo = (natureza, rotulo) => {
-      const lista = daFolha.filter((c) => (c.natureza ?? 'despesa') === natureza).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
-      return lista.length
-        ? `<optgroup label="${rotulo}">${lista.map((c) => `<option value="${escapar(c.id)}">${escapar(c.nome)}</option>`).join('')}</optgroup>`
-        : '';
-    };
-    el('nova-categoria').innerHTML =
-      '<option value="">linha nova…</option>' + grupo('receita', '↑ entra') + grupo('despesa', '↓ desconto');
+  /** O que já está na folha no mês: só para conferir, cada linha com o seu sinal. */
+  function pintarLancados() {
+    const ordem = { receita: 0, despesa: 1 };
+    const lista = [...jaLancados].sort((a, b) => (ordem[a.tipo] ?? 2) - (ordem[b.tipo] ?? 2));
+    el('titulo-lancados').hidden = !lista.length;
+    el('lancados').innerHTML = lista
+      .map((l) => {
+        const entra = l.tipo === 'receita' || l.contaDestinoId === folha.id;
+        const outra = app.contas[l.contaId === folha.id ? l.contaDestinoId : l.contaId];
+        const nome = l.tipo === 'transferencia'
+          ? outra?.nome ?? '—'
+          : nomeDaCategoria(app, l.categoriaId) || l.tipo;
+        const tom = l.tipo === 'receita' ? 'receita' : l.tipo === 'despesa' ? 'despesa' : 'transferencia';
+        const marca = l.tipo === 'receita' ? '↑' : l.tipo === 'despesa' ? '↓' : '→';
+        return `<li class="linha-holerite ${tom}">
+          <span class="marca" aria-hidden="true">${marca}</span>
+          <span class="nome-linha">${escapar(nome)}${l.automatico ? ' <span class="selo">caiu sozinha</span>' : ''}</span>
+          <span class="valor-lancado">${entra ? '+' : '−'} ${escapar(formatar(l.valor))}</span>
+        </li>`;
+      })
+      .join('');
   }
 
   /**
@@ -140,44 +151,20 @@ export function criarHolerite({ janela, raiz, aoSalvar }) {
     // líquido já transferido: o holerite fecha a folha do mês inteira, então o
     // líquido novo é só o que falta para ela zerar.
     const ja = lancadosNoMes(app, folha.id, mes);
+    jaLancados = ja;
     jaLancado = liquido(ja.filter((l) => l.contaId === folha.id)) + ja.filter((l) => l.contaDestinoId === folha.id).reduce((t, l) => t + l.valor, 0);
 
     const [ano, m] = mes.split('-').map(Number);
     const dia = previstas[0] ? previstas[0].dataCompetencia : mes === hoje().slice(0, 7) ? hoje() : diaNoMes(ano, m, 1);
     el('data').value = dia;
-    el('cabeca').innerHTML = `<strong>${escapar(folha.nome)}</strong> · holerite de ${escapar(nomeDoMes(mes))}${ja.length ? ` · ${ja.length} linha${ja.length > 1 ? 's' : ''} já lançada${ja.length > 1 ? 's' : ''} entra${ja.length > 1 ? 'm' : ''} no líquido` : ''}`;
+    el('cabeca').innerHTML = `<strong>${escapar(folha.nome)}</strong> · holerite de ${escapar(nomeDoMes(mes))} · confira: falta alguma linha? Volte, lance na folha e abra de novo.`;
 
     const caixa = Object.values(app.contas).filter((c) => !c.arquivada && (c.tipo === 'corrente' || c.tipo === 'especie'));
     el('destino').innerHTML = opcoesDeConta(caixa, folha.liquidoPara ?? caixa[0]?.id);
-    pintarCategoriasNovas();
-    el('novo-valor').value = '';
     recadar('');
     pintar();
     janela.dataset.area = 'folha';
     janela.showModal();
-  }
-
-  function acrescentar() {
-    const categoriaId = el('nova-categoria').value;
-    const valor = Math.abs(deTexto(el('novo-valor').value));
-    if (!categoriaId) return recadar('Escolha a categoria da linha nova.');
-    if (!valor) return recadar('Falta o valor da linha nova.');
-    const c = app.categorias[categoriaId];
-    linhas.push({
-      chave: novoId('nova'),
-      tipo: c.natureza === 'receita' ? 'receita' : 'despesa',
-      categoriaId,
-      contaDestinoId: null,
-      valor,
-      estimado: false,
-      fora: false,
-      repete: el('nova-repete').value,
-    });
-    el('nova-categoria').value = '';
-    el('novo-valor').value = '';
-    el('nova-repete').value = 'nao';
-    recadar('');
-    pintar();
   }
 
   async function lancar() {
@@ -199,22 +186,7 @@ export function criarHolerite({ janela, raiz, aoSalvar }) {
         if (l.ocorrencia) await estado.aplicarEvento('recorrencia.pulada', { id: l.ocorrencia.recorrenciaId, mes });
         continue;
       }
-      let recorrenciaId = l.ocorrencia?.recorrenciaId ?? null;
-      if (!recorrenciaId && l.repete && l.repete !== 'nao') {
-        recorrenciaId = novoId('rec');
-        await estado.aplicarEvento('recorrencia.criada', {
-          id: recorrenciaId,
-          nome: nomeDaCategoria(app, l.categoriaId),
-          tipo: l.tipo,
-          contaId: folha.id,
-          categoriaId: l.categoriaId,
-          tipoValor: l.repete,
-          valor: l.repete === 'fixa' ? l.valor : null,
-          periodicidade: 'mensal',
-          dia: Number(data.slice(8, 10)),
-          inicio: data,
-        });
-      }
+      const recorrenciaId = l.ocorrencia?.recorrenciaId ?? null;
       const o = l.ocorrencia;
       await estado.aplicarEvento('lancamento.registrado', {
         id: novoId('lan'),
@@ -277,20 +249,12 @@ export function criarHolerite({ janela, raiz, aoSalvar }) {
     if (!b) return;
     const l = linhas.find((x) => x.chave === b.closest('[data-chave]').dataset.chave);
     if (!l) return;
-    if (!l.ocorrencia && !l.fora) {
-      // Linha acrescentada agora: "não veio" é simplesmente tirá-la.
-      linhas = linhas.filter((x) => x !== l);
-    } else {
-      l.fora = !l.fora;
-    }
+    l.fora = !l.fora;
     pintar();
   });
 
-  el('b-acrescentar').addEventListener('click', acrescentar);
-  el('novo-valor').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); acrescentar(); }
-  });
   el('b-lancar').addEventListener('click', lancar);
+  el('b-voltar').addEventListener('click', () => janela.close());
 
   return { abrir };
 }
