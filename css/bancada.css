@@ -298,3 +298,36 @@
 
 /* O "criar conta" veste a cor do tipo escolhido: cartão de crédito, mostarda. */
 #f-conta [type="submit"] { transition: background-color 120ms, border-color 120ms; }
+
+/* ── onde a categoria aparece (D26) ─────────────────────────────────────── */
+/* Cada área com a sua bolinha: ligada, na cor dela; desligada, apagada. */
+
+.chips-area { display: inline-flex; flex-wrap: wrap; gap: var(--e1); }
+.chips-area button {
+  min-height: 28px;
+  padding: 0 var(--e2);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-pilula);
+  background: none;
+  color: var(--tinta-fraca);
+  font-size: var(--t-miudo);
+  white-space: nowrap;
+  opacity: 0.55;
+}
+.chips-area button .ponto-area { width: 7px; height: 7px; margin-right: var(--e1); }
+.chips-area button[aria-pressed="true"] {
+  border-color: var(--area, var(--borda-forte));
+  background: var(--area-fundo, transparent);
+  color: var(--tinta);
+  opacity: 1;
+}
+.chips-area button.obrigatoria[aria-pressed="true"] {
+  border-color: var(--alerta);
+  background: var(--alerta-fundo);
+  color: var(--alerta);
+}
+#f-categoria .chips-area button { min-height: 34px; font-size: var(--t-apoio); }
+.obrigatoria-nova { display: flex; gap: var(--e2); align-items: center; margin-top: var(--e2); font-size: var(--t-apoio); color: var(--tinta-fraca); }
+#lista-categorias .meta { overflow: visible; white-space: normal; }
+/* É frase, não rótulo: sem as maiúsculas dos rótulos de campo. */
+.campo label.obrigatoria-nova { text-transform: none; letter-spacing: 0; font-weight: 400; }

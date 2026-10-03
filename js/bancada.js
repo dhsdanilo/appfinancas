@@ -22,7 +22,7 @@ import { usos, podeRemover, podeArquivarConta, acharPorNome } from './core/lista
 import { dinheiroHTML } from './app/dinheiro-html.js';
 import { instalarServiceWorker } from './app/instalar.js';
 import { iniciarSincronia } from './app/sincronia-viva.js';
-import { AREAS, areaDaConta } from './app/areas.js';
+import { AREAS, areaDaConta, AREAS_COM_CATEGORIA } from './app/areas.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -230,18 +230,55 @@ function pintarCategorias() {
           especie: 'categorias',
           id: c.id,
           nome: c.nome,
+          meta: chipsDeArea(c),
           uso: contarUso('categorias', c.id),
           arquivada: c.arquivada,
-          simples: true,
         })
       )
     );
   };
 
   $('lista-categorias').innerHTML =
-    cabecalhoDeColunas(['categoria', 'uso']) +
+    cabecalhoDeColunas(['categoria', 'aparece em', '', 'uso']) +
     bloco('despesa', 'despesa') +
     bloco('receita', 'receita');
+}
+
+const TITULO_DA_AREA = { caixa: 'em caixa', cartoes: 'cartões', folha: 'folha' };
+
+/**
+ * Onde a categoria aparece, editável num toque (D26, design/10 §1). Despesa
+ * que aparece na folha pode ser obrigatória: IR, previdência.
+ */
+function chipsDeArea(c) {
+  const areas = c.areas ?? ['caixa', 'cartoes'];
+  return (
+    `<span class="chips-area">` +
+    AREAS_COM_CATEGORIA.map(
+      (a) =>
+        `<button type="button" data-acao="area" data-alvo="${a}" data-area="${a}" aria-pressed="${areas.includes(a)}"><span class="ponto-area" aria-hidden="true"></span>${TITULO_DA_AREA[a]}</button>`
+    ).join('') +
+    ((c.natureza ?? 'despesa') === 'despesa' && areas.includes('folha')
+      ? `<button type="button" class="obrigatoria" data-acao="obrigatoria" aria-pressed="${Boolean(c.obrigatoria)}" title="Fica fora de gasto, como IR e previdência">obrigatória</button>`
+      : '') +
+    `</span>`
+  );
+}
+
+async function alternarArea(id, area) {
+  const c = app.categorias[id];
+  const atuais = c.areas ?? ['caixa', 'cartoes'];
+  const novas = atuais.includes(area) ? atuais.filter((a) => a !== area) : [...atuais, area];
+  if (!novas.length) {
+    // A recusa diz o que resolve.
+    return avisar(`${c.nome} precisa aparecer em algum lugar. Para tirá-la de uso, arquive.`);
+  }
+  const mudancas = { id, areas: AREAS_COM_CATEGORIA.filter((a) => novas.includes(a)) };
+  // Saiu da folha, deixa de ser obrigatória: a marca só existe lá.
+  if (!novas.includes('folha') && c.obrigatoria) mudancas.obrigatoria = false;
+  await estado.aplicarEvento('categoria.alterada', mudancas);
+  avisar('');
+  await recarregar();
 }
 
 function pintarEtiquetas() {
@@ -421,6 +458,10 @@ function ligarLista(idDaLista, especie) {
       case 'apagar-sim': return apagar(especie, id);
       case 'apagar-nao': confirmando = null; avisar(''); return pintar();
       case 'saldo-inicial': return corrigirSaldoInicial(id, item);
+      case 'area': return alternarArea(id, botao.dataset.alvo);
+      case 'obrigatoria':
+        await estado.aplicarEvento('categoria.alterada', { id, obrigatoria: !app.categorias[id].obrigatoria });
+        return recarregar();
       case 'fundir': fundindo = `${especie}:${id}`; confirmando = null; return pintar();
       case 'fundir-nao': fundindo = null; return pintar();
       case 'fundir-sim': return fundirItem(especie, id, item);
@@ -554,7 +595,11 @@ function corrigirSaldoInicial(id, item) {
 $('f-categoria').addEventListener('submit', (e) =>
   criar(e, 'categorias', (nome, campos) => [
     'categoria.criada',
-    { id: novoId('cat'), nome, pai: null, natureza: campos.natureza.value },
+    {
+      id: novoId('cat'), nome, pai: null, natureza: campos.natureza.value,
+      areas: areasDaNova(),
+      obrigatoria: campos.natureza.value === 'despesa' && areasDaNova().includes('folha') && campos.obrigatoria.checked,
+    },
   ])
 );
 
@@ -716,6 +761,25 @@ $('dialogo-ciclo').addEventListener('close', async () => {
 
 $('f-conta').elements.tipo.addEventListener('change', mostrarCamposDeCartao);
 
+/** As áreas escolhidas no formulário de criar. */
+const areasDaNova = () =>
+  [...document.querySelectorAll('[data-area-nova][aria-pressed="true"]')].map((b) => b.dataset.areaNova);
+
+function pintarObrigatoriaNova() {
+  const despesa = $('f-categoria').elements.natureza.value === 'despesa';
+  $('obrigatoria-nova').hidden = !(despesa && areasDaNova().includes('folha'));
+}
+
+$('areas-nova').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-area-nova]');
+  if (!b) return;
+  const ligado = b.getAttribute('aria-pressed') === 'true';
+  // Pelo menos uma: categoria que não aparece em lugar nenhum não serve.
+  if (ligado && areasDaNova().length === 1) return;
+  b.setAttribute('aria-pressed', String(!ligado));
+  pintarObrigatoriaNova();
+});
+
 // Natureza em pílulas, como na captura — select para duas opções é pesado, e
 // as duas telas falando a mesma língua valem mais que a economia de código.
 function pintarPilulas(natureza) {
@@ -723,6 +787,7 @@ function pintarPilulas(natureza) {
   for (const b of $('f-categoria').querySelectorAll('[data-natureza]')) {
     b.setAttribute('aria-pressed', String(b.dataset.natureza === natureza));
   }
+  pintarObrigatoriaNova();
 }
 
 $('f-categoria').querySelector('.pilulas').addEventListener('click', (e) => {

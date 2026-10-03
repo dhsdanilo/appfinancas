@@ -22,7 +22,7 @@ import {
 import { somarDias, somarMeses } from '../core/datas.js';
 import { MARCACAO_CAMPO_VALOR, ligarCampoValor } from './campo-valor.js';
 import { ligarZonaDePerigo } from './zona-perigo.js';
-import { areaDaConta, opcoesDeConta } from './areas.js';
+import { areaDaConta, opcoesDeConta, categoriaNaArea, areasParaConta } from './areas.js';
 
 const MARCACAO = `
   ${MARCACAO_CAMPO_VALOR}
@@ -198,10 +198,20 @@ export async function criarFormulario({
       usos.set(l.categoriaId, (usos.get(l.categoriaId) || 0) + 1);
     }
     const ehGrupo = (c) => Object.values(app.categorias).some((o) => o.pai === c.id);
-    return Object.values(app.categorias)
-      .filter((c) => !c.arquivada && c.natureza === tipo && !ehGrupo(c))
+    return categoriasDaVez(ehGrupo)
       .sort((a, b) => (usos.get(b.id) || 0) - (usos.get(a.id) || 0) || (a.nome < b.nome ? -1 : 1))
       .slice(0, limite);
+  }
+
+  /**
+   * As categorias que cabem aqui: do tipo escolhido e da área da conta (D26).
+   * Lançando na corrente, IR não existe; lançando na folha, Supermercado não.
+   */
+  function categoriasDaVez(ehGrupo = () => false) {
+    const conta = app.contas[contaId];
+    return Object.values(app.categorias).filter(
+      (c) => !c.arquivada && c.natureza === tipo && !ehGrupo(c) && categoriaNaArea(c, conta)
+    );
   }
 
   /** "+ todas": a lista inteira do tipo, e criar uma nova ali mesmo (03 §10). */
@@ -211,9 +221,7 @@ export async function criarFormulario({
     el('todas-categorias').hidden = !todasCategorias;
     if (!todasCategorias) return;
     const ehGrupo = (c) => Object.values(app.categorias).some((o) => o.pai === c.id);
-    const todas = Object.values(app.categorias)
-      .filter((c) => !c.arquivada && c.natureza === tipo && !ehGrupo(c))
-      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    const todas = categoriasDaVez(ehGrupo).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
     el('lista-todas-cat').innerHTML = todas.length
       ? todas
           .map(
@@ -237,13 +245,22 @@ export async function criarFormulario({
     }
     if (!existente) {
       const id = novoId('cat');
-      await estado.aplicarEvento('categoria.criada', { id, nome, pai: null, natureza: tipo });
+      await estado.aplicarEvento('categoria.criada', {
+        id, nome, pai: null, natureza: tipo,
+        // Criada lançando na folha, é da folha; no resto, do dia a dia (D26).
+        areas: areasParaConta(app.contas[contaId]),
+      });
       existente = { id };
     }
     categoriaId = existente.id;
     detalheId = null;
     await recarregar();
     valor.pintar();
+  }
+
+  function nomeDaArea() {
+    const area = areaDaConta(app.contas[contaId]);
+    return { caixa: 'em caixa', cartoes: 'nos cartões', folha: 'na folha', investimentos: 'em investimentos', dividas: 'em dívidas' }[area] ?? '';
   }
 
   function pintarCategorias() {
@@ -262,7 +279,7 @@ export async function criarFormulario({
               `<button type="button" data-id="${c.id}" aria-pressed="${c.id === categoriaId}">${escapar(c.nome)}</button>`
           )
           .join('')
-      : `<p class="vazio">Nenhuma categoria de ${tipo}. Crie na <a href="bancada.html">bancada</a>.</p>`;
+      : `<p class="vazio">Nenhuma categoria de ${tipo} ${nomeDaArea()}. Crie em "+ todas" ou na <a href="bancada.html#categorias">bancada</a>.</p>`;
   }
 
   /**
@@ -967,6 +984,16 @@ export async function criarFormulario({
     contaId = el('conta').value || null;
     contaTocada = true;
     pintarArea();
+    // Outra área, outras categorias (D26). A escolhida que não cabe aqui sai —
+    // a não ser na correção, onde sumir com o dado pareceria perda.
+    const escolhida = app.categorias[categoriaId];
+    if (escolhida && !editando && !categoriaNaArea(escolhida, app.contas[contaId])) {
+      categoriaId = null;
+      detalheId = null;
+      pintarRefino();
+    }
+    pintarCategorias();
+    valor.pintar();
     // Cada conta tem o seu marco zero: trocar de conta pode mudar o piso da data.
     pintarData();
   });

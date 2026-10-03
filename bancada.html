@@ -154,6 +154,17 @@
       </div>
       <input type="hidden" name="natureza" value="despesa">
     </div>
+    <div class="campo largo">
+      <span class="rotulo">Aparece em</span>
+      <div class="chips-area" id="areas-nova" role="group" aria-label="Onde a categoria aparece">
+        <button type="button" data-area-nova="caixa" data-area="caixa" aria-pressed="true"><span class="ponto-area" aria-hidden="true"></span>em caixa</button>
+        <button type="button" data-area-nova="cartoes" data-area="cartoes" aria-pressed="true"><span class="ponto-area" aria-hidden="true"></span>cartões</button>
+        <button type="button" data-area-nova="folha" data-area="folha" aria-pressed="false"><span class="ponto-area" aria-hidden="true"></span>folha</button>
+      </div>
+      <label class="obrigatoria-nova" id="obrigatoria-nova" hidden>
+        <input type="checkbox" name="obrigatoria"> obrigatória — IR, previdência: fica fora de "gasto"
+      </label>
+    </div>
     <div class="campo acao">
       <button type="submit" class="principal">Criar categoria</button>
     </div>
@@ -161,10 +172,12 @@
     <p class="dica">
       A categoria responde <em>o que é</em>. <em>De quem é</em> — carro, casa, cachorro — é
       etiqueta, porque atravessa categorias. E loja é detalhe, não categoria.
+      <strong>Aparece em</strong> decide em que lançamentos ela é oferecida: salário base e
+      IR só na folha, supermercado só no dia a dia, saúde nos três.
     </p>
   </form>
 
-  <ul class="itens simples" id="lista-categorias"></ul>
+  <ul class="itens" id="lista-categorias"></ul>
   <p class="proximo" id="proximo-categorias" hidden></p>
 </section>
 

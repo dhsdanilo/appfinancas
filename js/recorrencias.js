@@ -12,7 +12,7 @@ import { hoje, diaCurto, fimDoMes, somarMeses } from './core/datas.js';
 import { visiveis, nomeDaCategoria } from './core/lancamentos.js';
 import { ocorrenciasPrevistas, valorDaSerie } from './core/previsto.js';
 import { dinheiroHTML } from './app/dinheiro-html.js';
-import { opcoesDeConta, areaDaConta } from './app/areas.js';
+import { opcoesDeConta, areaDaConta, categoriaNaArea } from './app/areas.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -97,8 +97,9 @@ function pintarTipo(tipo) {
   $('campo-destino').hidden = !transf;
   $('campo-categoria').hidden = transf;
   const atual = f().categoria.value;
+  const conta = app.contas[f().conta.value];
   const categorias = Object.values(app.categorias)
-    .filter((c) => !c.arquivada && (c.natureza ?? 'despesa') === tipo)
+    .filter((c) => !c.arquivada && (c.natureza ?? 'despesa') === tipo && categoriaNaArea(c, conta))
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   f().categoria.innerHTML =
     '<option value="">—</option>' +
@@ -202,7 +203,8 @@ $('f-recorrencia').querySelector('.pilulas').addEventListener('click', (e) => {
   if (b) pintarTipo(b.dataset.tipoRec);
 });
 f().tipoValor.addEventListener('change', pintarValor);
-f().conta.addEventListener('change', pintarValor);
+// Outra conta pode ser outra área, e outras categorias (D26).
+f().conta.addEventListener('change', () => pintarTipo(tipoEscolhido()));
 f().periodicidade.addEventListener('change', () => {
   $('campo-dia').hidden = f().periodicidade.value === 'anual';
 });

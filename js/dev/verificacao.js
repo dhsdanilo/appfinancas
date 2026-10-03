@@ -21,6 +21,7 @@ import * as cartao from '../core/cartao.js';
 import * as previsto from '../core/previsto.js';
 import * as datas from '../core/datas.js';
 import * as pendencias from '../core/pendencias.js';
+import { categoriaNaArea, areasParaConta } from '../app/areas.js';
 
 const BANCO_DE_TESTE = 'appfinancas-teste';
 
@@ -1316,6 +1317,30 @@ caso('pendências', 'a fila junta vencidos, ocorrências esquecidas, fatura venc
   fila = pendencias.pendencias(e, dia);
   igual(fila, [], 'nada mais a fazer');
   igual(e.contas.k1.conferidaEm, dia, 'conferida em');
+});
+
+
+caso('categoria', 'a categoria aparece só nas áreas dela (D26)', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('categoria.criada', { id: 'mer', nome: 'Supermercado' });
+  await estado.aplicarEvento('categoria.criada', {
+    id: 'ir', nome: 'IR', natureza: 'despesa', areas: ['folha'], obrigatoria: true,
+  });
+  await estado.aplicarEvento('categoria.criada', { id: 'sau', nome: 'Saúde', areas: ['caixa', 'cartoes', 'folha'] });
+  const e = await estado.calcular();
+  const corrente = { tipo: 'corrente' };
+  const folha = { tipo: 'folha' };
+  igual(e.categorias.mer.areas, ['caixa', 'cartoes'], 'categoria antiga, ou criada sem dizer, é do dia a dia');
+  igual(['mer', 'ir', 'sau'].filter((id) => categoriaNaArea(e.categorias[id], corrente)), ['mer', 'sau'],
+    'na corrente, IR não existe');
+  igual(['mer', 'ir', 'sau'].filter((id) => categoriaNaArea(e.categorias[id], folha)), ['ir', 'sau'],
+    'na folha, supermercado não existe');
+  verdade(e.categorias.ir.obrigatoria, 'IR é obrigatória: fora de gasto');
+  igual(areasParaConta(folha), ['folha'], 'criada lançando na folha, é da folha');
+
+  await estado.aplicarEvento('categoria.alterada', { id: 'mer', areas: ['caixa'] });
+  igual((await estado.calcular()).categorias.mer.areas, ['caixa'], 'e muda quando se muda');
 });
 
 // ── apoio ─────────────────────────────────────────────────────────────────

@@ -12,6 +12,25 @@ export const AREAS = [
 
 export const areaDaConta = (conta) => AREAS.find((a) => a.tipos.includes(conta?.tipo))?.id ?? '';
 
+/** As áreas que aceitam categoria: investimento e dívida não têm (design/10 §3). */
+export const AREAS_COM_CATEGORIA = ['caixa', 'cartoes', 'folha'];
+
+/**
+ * A categoria aparece na área desta conta? (D26, design/10 §1). Sem conta
+ * escolhida, vale tudo.
+ */
+export function categoriaNaArea(categoria, conta) {
+  if (!conta) return true;
+  return (categoria.areas ?? ['caixa', 'cartoes']).includes(areaDaConta(conta));
+}
+
+/** As áreas de uma categoria criada na hora, a partir da conta escolhida. */
+export function areasParaConta(conta) {
+  const area = areaDaConta(conta);
+  if (area === 'folha') return ['folha'];
+  return ['caixa', 'cartoes'];
+}
+
 /**
  * As opções de um <select> de contas, agrupadas por área. Agrupar é o que faz
  * "Banco cartão" e "Banco corrente" deixarem de ser vizinhos parecidos.

@@ -9,6 +9,9 @@
 
 import { datarNoCartao, temCiclo } from './cartao.js';
 
+/** As áreas de uma categoria nova, quando ninguém disse outra coisa. */
+export const AREAS_PADRAO = ['caixa', 'cartoes'];
+
 /**
  * Versão da FORMA do estado derivado — diferente da versão do formato dos
  * eventos (formato.js).
@@ -22,7 +25,7 @@ import { datarNoCartao, temCiclo } from './cartao.js';
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 7;
+export const VERSAO_ESTADO = 8;
 
 export function estadoVazio() {
   return {
@@ -153,6 +156,12 @@ export const redutores = {
       nome: d.nome,
       pai: d.pai ?? null,          // nulo = é grupo (04-categorias §2)
       natureza: d.natureza ?? 'despesa',
+      // Onde a categoria aparece (D26, design/10 §1). Categoria antiga, de
+      // antes disto existir, vale para o dia a dia: em caixa e cartões.
+      areas: d.areas ?? AREAS_PADRAO,
+      // Só em despesa de folha: IR, previdência oficial. Fica fora de "gasto",
+      // e a renda disponível desconta só ela (D25).
+      obrigatoria: d.obrigatoria ?? false,
       arquivada: false,
       ordem: d.ordem ?? 0,
     };
@@ -161,7 +170,7 @@ export const redutores = {
   'categoria.alterada'(e, d) {
     const c = e.categorias[d.id];
     if (!c) return;
-    for (const campo of ['nome', 'pai', 'ordem']) {
+    for (const campo of ['nome', 'pai', 'ordem', 'areas', 'obrigatoria']) {
       if (d[campo] !== undefined) c[campo] = d[campo];
     }
   },
