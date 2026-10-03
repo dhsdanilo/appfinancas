@@ -720,6 +720,33 @@ caso('lançamento', 'as três datas existem mesmo quando são iguais', async () 
     'as três sempre preenchidas: é o que faz a visão dupla do cartão não ter caso especial');
 });
 
+caso('lançamento', 'o detalhe é sugerido pela categoria, do mais usado ao menos', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('categoria.criada', { id: 'k1', nome: 'Supermercado', pai: null });
+  await estado.aplicarEvento('categoria.criada', { id: 'k2', nome: 'Combustível', pai: null });
+  await estado.aplicarEvento('detalhe.criado', { id: 'd1', nome: 'Mercado do bairro' });
+  await estado.aplicarEvento('detalhe.criado', { id: 'd2', nome: 'Atacadão' });
+  await estado.aplicarEvento('detalhe.criado', { id: 'd3', nome: 'Posto da estrada' });
+
+  const compra = (id, categoriaId, detalheId) =>
+    estado.aplicarEvento('lancamento.registrado', {
+      id, tipo: 'despesa', valor: 1000, contaId: 'c1', categoriaId, detalheId,
+      dataCompetencia: '2027-03-10', dataCaixa: '2027-03-10', confirmado: true,
+    });
+
+  await compra('l1', 'k1', 'd2');
+  await compra('l2', 'k1', 'd1');
+  await compra('l3', 'k1', 'd1');
+  await compra('l4', 'k2', 'd3');
+
+  const e = await estado.calcular();
+  igual(lanc.detalhesDaCategoria(e, 'k1').map((d) => d.nome), ['Mercado do bairro', 'Atacadão'],
+    'em Supermercado aparecem os mercados, o mais usado na frente');
+  igual(lanc.detalhesDaCategoria(e, 'k2').map((d) => d.nome), ['Posto da estrada'],
+    'e o posto não polui a lista do supermercado — é isso que a E3 pede');
+});
+
 caso('lançamento', 'categoria com grupo mostra o caminho', async () => {
   await limpar();
   await log.registrarAparelho('meu-pc');

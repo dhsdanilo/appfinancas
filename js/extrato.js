@@ -66,7 +66,10 @@ async function pintar() {
           // aparece como origem → destino, nunca como despesa numa conta mais
           // receita na outra — duas linhas dobrariam o gasto do mês.
           const destino = app.contas[l.contaDestinoId];
-          const oque = transferencia ? 'Transferência' : nomeDaCategoria(app, l.categoriaId) || l.tipo;
+          const detalhe = l.detalheId ? app.detalhes?.[l.detalheId]?.nome : null;
+          const oque = transferencia
+            ? 'Transferência'
+            : [nomeDaCategoria(app, l.categoriaId) || l.tipo, detalhe].filter(Boolean).join(' · ');
           const onde = transferencia
             ? `${conta?.nome ?? '—'} → ${destino?.nome ?? '—'}`
             : conta?.nome ?? '—';
@@ -99,6 +102,8 @@ const dialogo = $('dialogo');
 
 const formulario = await criarFormulario({
   raiz: $('formulario'),
+  // No PC se lança sentado: a etiqueta cabe já na captura. No celular, não.
+  comEtiquetas: true,
   acoes: [
     { id: 'nova', rotulo: 'Salvar e nova', principal: true, fecha: false },
     { id: 'fechar', rotulo: 'Salvar e fechar', fecha: true },

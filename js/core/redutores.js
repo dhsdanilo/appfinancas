@@ -20,7 +20,7 @@
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 3;
+export const VERSAO_ESTADO = 4;
 
 export function estadoVazio() {
   return {
@@ -28,6 +28,7 @@ export function estadoVazio() {
     contas: {},
     categorias: {},
     etiquetas: {},
+    detalhes: {},
     lancamentos: {},
     // Tipos de evento que este app não conhece. Não é erro fatal (um aparelho
     // mais novo pode ter emitido algo), mas precisa ficar VISÍVEL — dado
@@ -170,6 +171,31 @@ export const redutores = {
     // Só chega aqui o que nunca foi usado (js/core/listas.js). Remoção é
     // evento, nunca ausência de dado (design/06 §5).
     delete e.etiquetas[d.id];
+  },
+
+  // ── detalhe ─────────────────────────────────────────────────────────────
+  //
+  // O detalhe é o que distingue um lançamento dos outros DA MESMA categoria:
+  // em supermercado é o mercado, em manutenção é o serviço (04-categorias §3).
+  // A frequência por categoria não se guarda — calcula-se dos lançamentos, e é
+  // por isso que a sugestão da E3 está sempre certa sem ninguém manter nada.
+
+  'detalhe.criado'(e, d) {
+    e.detalhes[d.id] = { id: d.id, nome: d.nome, arquivado: false };
+  },
+
+  'detalhe.alterado'(e, d) {
+    const x = e.detalhes[d.id];
+    if (x && d.nome !== undefined) x.nome = d.nome;
+  },
+
+  'detalhe.arquivado'(e, d) {
+    const x = e.detalhes[d.id];
+    if (x) x.arquivado = d.arquivado !== false;
+  },
+
+  'detalhe.removido'(e, d) {
+    delete e.detalhes[d.id];
   },
 
   // ── lançamento ──────────────────────────────────────────────────────────

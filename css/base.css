@@ -78,6 +78,14 @@
 
 * { box-sizing: border-box; }
 
+/* O atributo `hidden` esconde — ponto.
+   Qualquer regra de `display` numa folha de estilo vence o `hidden` do HTML,
+   porque o estilo do navegador para `[hidden]` tem a menor força que existe.
+   Isso já escondeu mal três coisas neste app (o apagar na captura, os campos
+   de cartão, o painel de etiquetas), e cada vez o sintoma foi diferente. Uma
+   linha aqui acaba com a família inteira de defeitos. */
+[hidden] { display: none !important; }
+
 html { -webkit-text-size-adjust: 100%; }
 
 body {

@@ -294,3 +294,83 @@ input[type="text"].nova-etiqueta {
   letter-spacing: 0.06em;
   color: var(--tinta-fraca);
 }
+
+/* ── a conta em lista ───────────────────────────────────────────────────── */
+/* Ciclar entre contas funcionava com duas; com seis, vira caça ao tesouro. */
+
+.escolha-conta { display: flex; align-items: center; gap: var(--e2); min-width: 0; }
+.escolha-conta .miudo { white-space: nowrap; }
+.escolha-conta select {
+  font: inherit;
+  font-size: var(--t-apoio);
+  max-width: 100%;
+  min-height: 34px;
+  padding: var(--e1) var(--e2);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-controle);
+  background: var(--superficie);
+  color: var(--tinta);
+}
+
+/* ── o detalhe ──────────────────────────────────────────────────────────── */
+/* Mesma língua das etiquetas: fichas do mais usado e um campo que cria. */
+
+.detalhes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--e2);
+  padding-top: var(--e3);
+}
+.detalhes[hidden] { display: none; }
+.detalhes .chips { display: flex; flex-wrap: wrap; gap: var(--e1); }
+.detalhes .chips button {
+  min-height: 30px;
+  padding: var(--e1) var(--e2);
+  border-radius: var(--raio-pilula);
+  font-size: var(--t-miudo);
+}
+.detalhes .chips button[aria-pressed="true"] {
+  border-color: var(--acento);
+  background: var(--acento-fundo);
+  font-weight: 600;
+}
+.detalhes .vazio { color: var(--tinta-fraca); font-size: var(--t-miudo); }
+
+/* ── a busca de etiquetas ───────────────────────────────────────────────── */
+/* Com dezenas de etiquetas, mostrar todas é uma parede de fichas. Então à
+   vista ficam só as aplicadas; o resto se acha digitando, e "ver todas" abre
+   a lista inteira pra quem quiser garimpar. */
+
+.etiquetas .busca { position: relative; flex: 1 1 180px; min-width: 150px; }
+.etiquetas .busca input { width: 100%; }
+
+.etiquetas .sugestoes {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  right: 0;
+  top: calc(100% + 2px);
+  margin: 0;
+  padding: var(--e1);
+  list-style: none;
+  border: 1px solid var(--borda-forte);
+  border-radius: var(--raio-controle);
+  background: var(--superficie);
+  box-shadow: 0 2px 0 var(--borda);
+  max-height: 220px;
+  overflow-y: auto;
+}
+.etiquetas .sugestoes[hidden] { display: none; }
+.etiquetas .sugestoes li {
+  padding: var(--e2) var(--e2);
+  border-radius: var(--raio-controle);
+  font-size: var(--t-apoio);
+  cursor: pointer;
+}
+.etiquetas .sugestoes li.realcada { background: var(--acento-fundo); }
+.etiquetas .sugestoes li.criar { color: var(--tinta-fraca); }
+
+/* A ficha aplicada carrega o × de tirar: aplicar e remover no mesmo lugar. */
+.etiquetas .chips button .tirar { margin-left: var(--e1); color: var(--tinta-fraca); }
+.etiquetas .chips.todas { flex: 1 1 100%; }

@@ -21,9 +21,11 @@ import { hoje, nasceConfirmado, correcao } from '../core/lancamentos.js';
 import { MARCACAO_CAMPO_VALOR, ligarCampoValor } from './campo-valor.js';
 import { ligarZonaDePerigo } from './zona-perigo.js';
 
-// Cartão fica de fora: corrente → cartão é pagamento de fatura, que é tipo
-// próprio (§6). Dívida e folha têm mecanismo próprio também.
-const TIPOS_QUE_TRANSFEREM = ['corrente', 'especie', 'investimento'];
+// Todas as contas que não estão arquivadas. Cartão, dívida e folha entram
+// porque o dinheiro passa por elas de verdade: pagar a fatura é corrente →
+// cartão, e o líquido do holerite é folha → corrente. Os tipos próprios dessas
+// operações (pagamento de fatura, §6; holerite, D25) ainda não existem, e até
+// lá a transferência faz o essencial — mexe em saldo, sem virar gasto.
 
 const MARCACAO = `
   ${MARCACAO_CAMPO_VALOR}
@@ -95,7 +97,7 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar }) {
 
   function contasDisponiveis() {
     return Object.values(app.contas)
-      .filter((c) => !c.arquivada && TIPOS_QUE_TRANSFEREM.includes(c.tipo))
+      .filter((c) => !c.arquivada)
       .sort((a, b) => (a.nome < b.nome ? -1 : 1));
   }
 

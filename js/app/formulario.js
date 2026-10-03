@@ -16,7 +16,9 @@ import { valorLancavel, formatar } from '../core/dinheiro.js';
 import { novoId } from '../core/id.js';
 import * as log from '../core/log.js';
 import * as estado from '../core/estado.js';
-import { hoje, nasceConfirmado, nomeDaCategoria, correcao } from '../core/lancamentos.js';
+import {
+  hoje, nasceConfirmado, nomeDaCategoria, correcao, detalhesDaCategoria,
+} from '../core/lancamentos.js';
 import { MARCACAO_CAMPO_VALOR, ligarCampoValor } from './campo-valor.js';
 import { ligarZonaDePerigo } from './zona-perigo.js';
 
@@ -41,16 +43,31 @@ const MARCACAO = `
   <div class="categorias" data-papel="categorias" role="group" aria-label="Categoria"></div>
 
   <div class="linha-conta">
-    <button type="button" class="elo" data-papel="conta">conta</button>
-    <button type="button" class="elo" data-papel="detalhe">+ detalhe</button>
+    <label class="escolha-conta">
+      <span class="miudo">conta</span>
+      <select data-papel="conta" aria-label="Conta do lançamento"></select>
+    </label>
+    <button type="button" class="elo" data-papel="b-detalhe">+ detalhe</button>
+  </div>
+
+  <div class="detalhes" data-papel="detalhes" hidden>
+    <span class="rotulo-etiquetas">detalhe</span>
+    <div class="chips" data-papel="chips-detalhe" role="group" aria-label="Detalhe"></div>
+    <input type="text" class="nova-etiqueta" data-papel="novo-detalhe" autocomplete="off"
+           placeholder="qual?" aria-label="Qual, dentro desta categoria">
   </div>
 
   <div class="etiquetas" data-papel="etiquetas" hidden>
     <span class="rotulo-etiquetas">etiquetas</span>
-    <div class="chips" data-papel="chips" role="group" aria-label="Etiquetas"></div>
-    <input type="text" class="nova-etiqueta" data-papel="nova-etiqueta" autocomplete="off"
-           placeholder="+ etiqueta" aria-label="Acrescentar etiqueta">
-    <datalist data-papel="sugestoes"></datalist>
+    <div class="chips" data-papel="chips" role="group" aria-label="Etiquetas aplicadas"></div>
+    <div class="busca">
+      <input type="text" class="nova-etiqueta" data-papel="nova-etiqueta" autocomplete="off"
+             placeholder="digite para achar ou criar" aria-label="Procurar ou criar etiqueta"
+             role="combobox" aria-expanded="false" aria-autocomplete="list">
+      <ul class="sugestoes" data-papel="sugestoes" role="listbox" hidden></ul>
+    </div>
+    <button type="button" class="elo" data-papel="b-todas">ver todas</button>
+    <div class="chips todas" data-papel="todas" role="group" aria-label="Todas as etiquetas" hidden></div>
   </div>
 
   <p class="desfazer" data-papel="desfazer" hidden></p>
@@ -67,7 +84,7 @@ const MARCACAO = `
  * @param {Function} [opcoes.aoSalvar]   chamado depois de cada mudança gravada
  * @param {Function} [opcoes.aoFechar]   chamado quando uma ação pede pra fechar
  */
-export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar }) {
+export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiquetas = false }) {
   raiz.innerHTML = MARCACAO;
   const el = (papel) => raiz.querySelector(`[data-papel="${papel}"]`);
 
@@ -83,6 +100,10 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar }) {
   let tipo = 'despesa';
   let data = hoje();
   let etiquetas = [];
+  let detalheId = null;
+  let detalheAberto = false;
+  let todasAbertas = false;
+  let realcada = 0;
   let ultimo = null;
   let sumir = null;
   // O lançamento que está sendo corrigido, ou null — é só isso que separa as
@@ -144,14 +165,24 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar }) {
       : `<p class="vazio">Nenhuma categoria de ${tipo}. Crie na <a href="bancada.html">bancada</a>.</p>`;
   }
 
-  const contasUtilizaveis = () =>
-    Object.values(app.contas).filter(
-      (c) => !c.arquivada && ['corrente', 'cartao', 'especie'].includes(c.tipo)
-    );
+  /**
+   * Todas as contas que não estão arquivadas. Folha, dívida e investimento
+   * entram porque a vida passa por elas — e enquanto o mecanismo próprio do
+   * holerite (D25) não existe, é por aqui que o desconto da folha é lançado.
+   * Esconder conta que o dono criou é decidir por ele.
+   */
+  const contasUtilizaveis = () => Object.values(app.contas).filter((c) => !c.arquivada);
 
   function pintarConta() {
-    const conta = app.contas[contaId];
-    el('conta').textContent = conta ? `conta: ${conta.nome}` : 'escolher conta';
+    const contas = contasUtilizaveis();
+    el('conta').innerHTML = contas.length
+      ? contas
+          .map(
+            (c) =>
+              `<option value="${escapar(c.id)}"${c.id === contaId ? ' selected' : ''}>${escapar(c.nome)}</option>`
+          )
+          .join('')
+      : '<option value="">nenhuma conta</option>';
   }
 
   /**
@@ -217,23 +248,98 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar }) {
   // ela é múltipla, opcional, e não aparece na captura.
 
   function pintarEtiquetas() {
-    el('etiquetas').hidden = !editando;
-    if (!editando) return;
+    // No térreo, não: etiquetar é refino, e ninguém pensa em "de qual objeto é
+    // isso" na fila do mercado (03-alimentacao §2). No PC, onde se lança
+    // sentado, a etiqueta cabe já na captura.
+    const mostrar = Boolean(editando) || comEtiquetas;
+    el('etiquetas').hidden = !mostrar;
+    if (!mostrar) return;
 
-    const todas = Object.values(app.etiquetas ?? {})
-      .filter((t) => !t.arquivada || etiquetas.includes(t.id))
-      .sort((a, b) => (a.nome < b.nome ? -1 : 1));
+    // Só as APLICADAS ficam à vista, com o × de tirar. A lista inteira cresce
+    // pra dezenas com o uso; mostrá-la sempre seria uma parede de fichas.
+    el('chips').innerHTML = etiquetas
+      .map((id) => app.etiquetas[id])
+      .filter(Boolean)
+      .map(
+        (t) =>
+          `<button type="button" data-etiqueta="${escapar(t.id)}" aria-pressed="true">${escapar(t.nome)}<span class="tirar" aria-hidden="true">×</span></button>`
+      )
+      .join('');
 
-    el('chips').innerHTML = todas.length
-      ? todas
-          .map(
-            (t) =>
-              `<button type="button" data-etiqueta="${escapar(t.id)}" aria-pressed="${etiquetas.includes(t.id)}">${escapar(t.nome)}</button>`
-          )
-          .join('')
-      : '<span class="vazio">Nenhuma etiqueta ainda — digite abaixo para criar.</span>';
+    el('b-todas').textContent = todasAbertas ? 'esconder' : 'ver todas';
+    el('todas').hidden = !todasAbertas;
+    if (todasAbertas) {
+      const todas = Object.values(app.etiquetas ?? {})
+        .filter((t) => !t.arquivada || etiquetas.includes(t.id))
+        .sort((a, b) => (a.nome.toLocaleLowerCase('pt-BR') < b.nome.toLocaleLowerCase('pt-BR') ? -1 : 1));
+      el('todas').innerHTML = todas.length
+        ? todas
+            .map(
+              (t) =>
+                `<button type="button" data-etiqueta="${escapar(t.id)}" aria-pressed="${etiquetas.includes(t.id)}">${escapar(t.nome)}</button>`
+            )
+            .join('')
+        : '<span class="vazio">nenhuma etiqueta ainda</span>';
+    }
+  }
 
-    el('sugestoes').innerHTML = todas.map((t) => `<option value="${escapar(t.nome)}">`).join('');
+  /**
+   * A busca: digitou, o app oferece o que já existe. Começo da palavra primeiro,
+   * depois o meio — é a ordem em que a cabeça procura.
+   */
+  function sugerir() {
+    const texto = el('nova-etiqueta').value.trim();
+    const chave = texto.toLocaleLowerCase('pt-BR');
+    const lista = el('sugestoes');
+
+    if (!chave) {
+      lista.hidden = true;
+      lista.innerHTML = '';
+      el('nova-etiqueta').setAttribute('aria-expanded', 'false');
+      return;
+    }
+
+    const candidatas = Object.values(app.etiquetas ?? {})
+      .filter((t) => !t.arquivada && !etiquetas.includes(t.id))
+      .map((t) => ({ t, onde: t.nome.toLocaleLowerCase('pt-BR').indexOf(chave) }))
+      .filter((x) => x.onde >= 0)
+      .sort((a, b) => a.onde - b.onde || (a.t.nome < b.t.nome ? -1 : 1))
+      .slice(0, 6)
+      .map((x) => x.t);
+
+    const exata = candidatas.some((t) => t.nome.toLocaleLowerCase('pt-BR') === chave);
+    const jaAplicada = etiquetas.some(
+      (id) => app.etiquetas[id]?.nome.toLocaleLowerCase('pt-BR') === chave
+    );
+
+    realcada = Math.min(realcada, candidatas.length);
+    lista.innerHTML =
+      candidatas
+        .map(
+          (t, i) =>
+            `<li role="option" aria-selected="${i === realcada}" class="${i === realcada ? 'realcada' : ''}" data-etiqueta="${escapar(t.id)}">${escapar(t.nome)}</li>`
+        )
+        .join('') +
+      (exata || jaAplicada
+        ? ''
+        : `<li role="option" aria-selected="${realcada === candidatas.length}" class="criar ${realcada === candidatas.length ? 'realcada' : ''}" data-criar="1">criar “${escapar(texto)}”</li>`);
+
+    lista.hidden = !lista.innerHTML;
+    el('nova-etiqueta').setAttribute('aria-expanded', String(!lista.hidden));
+  }
+
+  function fecharSugestoes() {
+    el('sugestoes').hidden = true;
+    el('sugestoes').innerHTML = '';
+    realcada = 0;
+    el('nova-etiqueta').setAttribute('aria-expanded', 'false');
+  }
+
+  function aplicarEtiqueta(id) {
+    if (!etiquetas.includes(id)) etiquetas.push(id);
+    el('nova-etiqueta').value = '';
+    fecharSugestoes();
+    pintarEtiquetas();
   }
 
   /** Digitar um nome novo cria a etiqueta e já aplica (03-alimentacao §10). */
@@ -250,8 +356,54 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar }) {
       app = await estado.calcular();
       etiqueta = app.etiquetas[id];
     }
-    if (!etiquetas.includes(etiqueta.id)) etiquetas.push(etiqueta.id);
-    pintarEtiquetas();
+    aplicarEtiqueta(etiqueta.id);
+  }
+
+  // ── detalhe ─────────────────────────────────────────────────────────────
+  //
+  // O que distingue um lançamento dos outros da MESMA categoria: em
+  // supermercado é o mercado; em manutenção, o serviço. A lista vem escopada
+  // pela categoria e ordenada pelo mais usado (E3) — depois de duas semanas,
+  // é um toque na primeira opção.
+
+  function pintarDetalhes() {
+    el('detalhes').hidden = !detalheAberto;
+    el('b-detalhe').textContent = nomeDoDetalhe() ?? '+ detalhe';
+    if (!detalheAberto) return;
+
+    const sugeridos = detalhesDaCategoria(app, categoriaId);
+    if (detalheId && app.detalhes[detalheId] && !sugeridos.some((d) => d.id === detalheId)) {
+      sugeridos.unshift(app.detalhes[detalheId]);
+    }
+
+    el('chips-detalhe').innerHTML = sugeridos.length
+      ? sugeridos
+          .map(
+            (d) =>
+              `<button type="button" data-detalhe="${escapar(d.id)}" aria-pressed="${d.id === detalheId}">${escapar(d.nome)}</button>`
+          )
+          .join('')
+      : '<span class="vazio">digite o primeiro ao lado</span>';
+  }
+
+  const nomeDoDetalhe = () => (detalheId ? app.detalhes[detalheId]?.nome : null);
+
+  /** Nome novo cria o detalhe e já aplica (03-alimentacao §10). */
+  async function escolherDetalhe(texto) {
+    const nome = texto.trim();
+    if (!nome) return;
+    const chave = nome.toLocaleLowerCase('pt-BR');
+    let detalhe = Object.values(app.detalhes ?? {}).find(
+      (d) => d.nome.toLocaleLowerCase('pt-BR') === chave
+    );
+    if (!detalhe) {
+      const id = novoId('det');
+      await estado.aplicarEvento('detalhe.criado', { id, nome });
+      app = await estado.calcular();
+      detalhe = app.detalhes[id];
+    }
+    detalheId = detalhe.id;
+    pintarDetalhes();
   }
 
   // ── apagar ──────────────────────────────────────────────────────────────
@@ -283,6 +435,7 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar }) {
       tipo,
       categoriaId,
       contaId,
+      detalheId,
       etiquetas: [...etiquetas],
       dataCaixa: data,
     });
@@ -310,6 +463,8 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar }) {
       dataCaixa: data,
       contaId,
       categoriaId,
+      detalheId,
+      etiquetas: [...etiquetas],
       // Não é escolha de ninguém: vem da origem e da data (D2).
       confirmado: nasceConfirmado({ manual: true, dataCaixa: data }),
       lancadoPor: ap?.id ?? null,
@@ -367,6 +522,9 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar }) {
     for (const b of el('categorias').querySelectorAll('button')) {
       b.setAttribute('aria-pressed', String(b.dataset.id === categoriaId));
     }
+    // O detalhe é escopado pela categoria: trocar de categoria recomeça a lista.
+    detalheId = null;
+    pintarDetalhes();
     // Tocar na categoria fecha o teclado do celular — e é esse toque que revela
     // o botão de lançar, sem precisar de um passo só pra dispensar.
     valor.desfocar();
@@ -381,24 +539,96 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar }) {
     pintarEtiquetas();
   });
 
+  el('nova-etiqueta').addEventListener('input', () => {
+    realcada = 0;
+    sugerir();
+  });
+
   el('nova-etiqueta').addEventListener('keydown', async (e) => {
+    const itens = [...el('sugestoes').querySelectorAll('li')];
+
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (!itens.length) return;
+      e.preventDefault();
+      realcada = (realcada + (e.key === 'ArrowDown' ? 1 : itens.length - 1)) % itens.length;
+      sugerir();
+      return;
+    }
+    if (e.key === 'Escape' && !el('sugestoes').hidden) {
+      e.preventDefault();
+      e.stopPropagation();
+      fecharSugestoes();
+      return;
+    }
     if (e.key !== 'Enter') return;
-    // Enter aqui é "acrescenta a etiqueta", nunca "salva o lançamento".
+
+    // Enter aqui resolve a etiqueta, nunca salva o lançamento.
     e.preventDefault();
     e.stopPropagation();
+    const escolhida = itens[realcada];
+    if (escolhida?.dataset.etiqueta) return aplicarEtiqueta(escolhida.dataset.etiqueta);
+
     const campo = el('nova-etiqueta');
     const texto = campo.value;
     campo.value = '';
     await acrescentarEtiqueta(texto);
   });
 
-  el('conta').addEventListener('click', () => {
-    const contas = contasUtilizaveis();
-    if (contas.length < 2) return;
-    const i = contas.findIndex((c) => c.id === contaId);
-    contaId = contas[(i + 1) % contas.length].id;
-    pintarConta();
+  el('sugestoes').addEventListener('mousedown', async (e) => {
+    // mousedown, não click: o blur do campo fecharia a lista antes do clique.
+    const item = e.target.closest('li');
+    if (!item) return;
+    e.preventDefault();
+    if (item.dataset.etiqueta) return aplicarEtiqueta(item.dataset.etiqueta);
+    const campo = el('nova-etiqueta');
+    const texto = campo.value;
+    campo.value = '';
+    await acrescentarEtiqueta(texto);
+  });
+
+  el('nova-etiqueta').addEventListener('blur', () => setTimeout(fecharSugestoes, 120));
+
+  el('b-todas').addEventListener('click', () => {
+    todasAbertas = !todasAbertas;
+    pintarEtiquetas();
+  });
+
+  el('todas').addEventListener('click', (e) => {
+    const botao = e.target.closest('[data-etiqueta]');
+    if (!botao) return;
+    const id = botao.dataset.etiqueta;
+    etiquetas = etiquetas.includes(id) ? etiquetas.filter((t) => t !== id) : [...etiquetas, id];
+    pintarEtiquetas();
+  });
+
+  el('conta').addEventListener('change', () => {
+    contaId = el('conta').value || null;
+    // Cada conta tem o seu marco zero: trocar de conta pode mudar o piso da data.
     pintarData();
+  });
+
+  el('b-detalhe').addEventListener('click', () => {
+    detalheAberto = !detalheAberto;
+    pintarDetalhes();
+    if (detalheAberto) el('novo-detalhe').focus();
+  });
+
+  el('chips-detalhe').addEventListener('click', (e) => {
+    const botao = e.target.closest('[data-detalhe]');
+    if (!botao) return;
+    detalheId = botao.dataset.detalhe === detalheId ? null : botao.dataset.detalhe;
+    pintarDetalhes();
+  });
+
+  el('novo-detalhe').addEventListener('keydown', async (e) => {
+    if (e.key !== 'Enter') return;
+    // Enter aqui acrescenta o detalhe, nunca salva o lançamento.
+    e.preventDefault();
+    e.stopPropagation();
+    const campo = el('novo-detalhe');
+    const texto = campo.value;
+    campo.value = '';
+    await escolherDetalhe(texto);
   });
 
   el('dia-menos').addEventListener('click', () => irPara(somarDias(data, -1)));
@@ -446,6 +676,7 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar }) {
     pintarConta();
     pintarData();
     pintarTipo();
+    pintarDetalhes();
     pintarEtiquetas();
     perigo.mostrar(Boolean(editando));
     valor.pintar();
@@ -467,6 +698,8 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar }) {
       data = l.dataCaixa;
       contaId = l.contaId;
       categoriaId = l.categoriaId;
+      detalheId = l.detalheId ?? null;
+      detalheAberto = Boolean(detalheId);
       etiquetas = [...(l.etiquetas ?? [])];
       valor.definir(l.valor);
       el('desfazer').hidden = true;
