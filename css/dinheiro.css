@@ -787,6 +787,11 @@ body[data-pagina="investimentos"] .acoes-topo .atalho { display: none; }
 .dialogo-ativo .linha-operacao { display: grid; grid-template-columns: 1fr 1fr; gap: var(--e3); }
 .dialogo-ativo .nota { margin: 0; }
 .operacoes-lista .linha-holerite { grid-template-columns: 48px 1fr auto auto; }
+.operacoes-lista .acoes-op { display: inline-flex; flex-wrap: wrap; gap: 0 var(--e2); justify-content: flex-end; }
+.operacoes-lista .antes-do-app { color: var(--atencao); }
+.dialogo-ativo .inicio-ativo { display: flex; flex-direction: column; gap: var(--e2); }
+.dialogo-ativo .inicio-ativo[hidden] { display: none; }
+.dialogo-ativo .pilulas[hidden] { display: none; }
 .operacoes-lista .quando { color: var(--tinta-fraca); font-size: var(--t-apoio); }
 .dialogo-ativo .linha-operacao { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
 .dialogo-ativo .linha-operacao [hidden] { display: none; }

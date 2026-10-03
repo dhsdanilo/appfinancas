@@ -38,6 +38,21 @@ export function ativosDaConta(estado, contaId) {
 export const contaDoDinheiro = (conta) => conta.caixaEm ?? conta.id;
 
 /**
+ * Operação de antes de a conta do dinheiro entrar no app não sai de conta
+ * nenhuma: o saldo informado no cadastro dela já não tinha esse dinheiro. É a
+ * regra do empréstimo antigo (design/10 §4.4), aplicada ao investimento.
+ * Devolve a conta que a operação deve mexer, ou null.
+ */
+export function contaDaOperacao(estado, contaInvestimento, data) {
+  const id = contaDoDinheiro(contaInvestimento);
+  const marco = estado.contas[id]?.dataInicial ?? null;
+  return marco && data < marco ? null : id;
+}
+
+/** Meses entre dois dias, com fração (30,4375 dias por mês). */
+const mesesEntre = (de, ate) => (new Date(`${ate}T12:00:00`) - new Date(`${de}T12:00:00`)) / 86400000 / 30.4375;
+
+/**
  * A posição de um ativo no dia.
  * { aplicado, resgatado, proventos, valorAtual, investido, rendeu, pct,
  *   avaliacao, estimado, encerrado }
@@ -80,6 +95,7 @@ export function posicao(estado, ativoId, dia = hoje()) {
   const rendeu = valorAtual + resgatado + proventos - aplicado;
   return {
     ativo,
+    ...periodo(ops, dia, rendeu, aplicado),
     aplicado,
     resgatado,
     proventos,
@@ -144,6 +160,7 @@ function posicaoPorCotas(ativo, ops, dia) {
   const rendeu = valorAtual + resgatado + proventos - aplicado;
   return {
     ativo,
+    ...periodo(ops, dia, rendeu, aplicado),
     porCotas: true,
     quantidade,
     precoMedio: quantidade ? custo / quantidade : 0,
@@ -166,6 +183,20 @@ function posicaoPorCotas(ativo, ops, dia) {
     estimado: !cotacao,
     encerrado: quantidade === 0 && resgatado > 0,
   };
+}
+
+/**
+ * Desde quando o ativo existe (a primeira aplicação) e o rendimento no
+ * período, com o equivalente ao ano — aproximado: considera o dinheiro todo
+ * aplicado desde o começo, que é o caso comum de uma aplicação só.
+ */
+function periodo(ops, dia, rendeu, aplicado) {
+  const primeiras = ops.filter((l) => l.tipo === 'aplicacao').map((l) => l.dataCompetencia).sort();
+  const desde = primeiras[0] ?? null;
+  const meses = desde ? mesesEntre(desde, dia) : 0;
+  const fator = aplicado ? (aplicado + rendeu) / aplicado : 1;
+  const aoAno = meses >= 1 && fator > 0 ? fator ** (12 / meses) - 1 : null;
+  return { desde, meses, aoAno };
 }
 
 /** O saldo de uma conta até um dia (o que se moveu até ali). */

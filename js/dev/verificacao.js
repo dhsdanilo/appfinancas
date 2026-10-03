@@ -1783,6 +1783,24 @@ caso('investimento', 'ação: preço médio da B3, venda pelas compras mais anti
   igual(lanc.saldoReal(e, 'cc'), 2000000 - 300500 - 400000 + 225000, 'compra e venda pela corrente');
 });
 
+caso('investimento', 'aplicação de antes de a conta entrar no app não mexe nela, e o período aparece', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const ev = (t, d) => estado.aplicarEvento(t, d);
+  await ev('conta.criada', { id: 'cc', nome: 'Corrente', tipo: 'corrente', saldoInicial: 1000000, dataInicial: '2026-09-01' });
+  await ev('conta.criada', { id: 'inv', nome: 'Banco', tipo: 'investimento', caixaEm: 'cc' });
+  let e = await estado.calcular();
+  igual(investimentos.contaDaOperacao(e, e.contas.inv, '2025-03-01'), null, 'antes do marco da corrente: conta nenhuma');
+  igual(investimentos.contaDaOperacao(e, e.contas.inv, '2026-09-15'), 'cc', 'depois: a corrente');
+  await ev('ativo.criado', { id: 'cdb', contaId: 'inv', nome: 'CDB', classe: 'renda_fixa' });
+  await ev('lancamento.registrado', { id: 'a0', tipo: 'aplicacao', valor: 1000000, contaId: null, ativoId: 'cdb', dataCompetencia: '2025-09-01', confirmado: true });
+  await ev('ativo.avaliado', { id: 'cdb', data: '2026-09-01', valor: 1120000 });
+  e = await estado.calcular();
+  igual(lanc.saldoReal(e, 'cc'), 1000000, 'a corrente não perdeu nada');
+  const p = investimentos.posicao(e, 'cdb', '2026-09-01');
+  igual([p.desde, p.rendeu, Math.round(p.aoAno * 1000)], ['2025-09-01', 120000, 120], 'um ano: rendeu 12%, 12% ao ano');
+});
+
 // ── apoio ─────────────────────────────────────────────────────────────────
 
 async function limpar() {

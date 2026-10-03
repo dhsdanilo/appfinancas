@@ -11,7 +11,7 @@ import { novoId } from '../core/id.js';
 import { deTexto, formatar } from '../core/dinheiro.js';
 import { hoje, diaCurto } from '../core/datas.js';
 import { visiveis } from '../core/lancamentos.js';
-import { CLASSES, CLASSES_POR_COTAS, nomeDaClasse, posicao, contaDoDinheiro } from '../core/investimentos.js';
+import { CLASSES, CLASSES_POR_COTAS, nomeDaClasse, posicao, contaDoDinheiro, contaDaOperacao } from '../core/investimentos.js';
 
 const MARCACAO = `
 <dialog id="dialogo-ativo" class="dialogo-captura dialogo-ativo" data-area="investimentos" aria-labelledby="titulo-ativo">
@@ -35,6 +35,23 @@ const MARCACAO = `
         </select></label>
       <label class="campo-simples"><span class="miudo">vencimento · opcional</span>
         <input type="date" data-ativo="vencimento"></label>
+
+      <!-- Como começou: a primeira aplicação (ou compra). Se for de antes de
+           a conta do dinheiro entrar no app, não sai de conta nenhuma. -->
+      <div class="inicio-ativo" data-ativo="inicio">
+        <p class="miudo titulo-linhas">como começou · opcional</p>
+        <div class="linha-operacao">
+          <label class="campo-simples"><span class="miudo" data-ativo="rotulo-inicio">aplicado em</span>
+            <input type="date" data-ativo="inicio-data"></label>
+          <label class="campo-simples" data-ativo="inicio-campo-valor"><span class="miudo">valor aplicado</span>
+            <input type="text" inputmode="decimal" data-ativo="inicio-valor" autocomplete="off" placeholder="0,00"></label>
+          <label class="campo-simples" data-ativo="inicio-campo-quantidade" hidden><span class="miudo">quantidade</span>
+            <input type="text" inputmode="decimal" data-ativo="inicio-quantidade" autocomplete="off" placeholder="100"></label>
+          <label class="campo-simples" data-ativo="inicio-campo-preco" hidden><span class="miudo">preço de cada</span>
+            <input type="text" inputmode="decimal" data-ativo="inicio-preco" autocomplete="off" placeholder="0,00"></label>
+        </div>
+        <p class="nota" data-ativo="inicio-pista"></p>
+      </div>
       <div class="acoes"><button type="button" class="principal" data-ativo="b-ficha">Criar</button></div>
     </div>
 
@@ -104,6 +121,8 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
   let contaId = null;   // a conta de investimento
   let op = 'aplicacao';
   let editandoFicha = false;
+  // A operação sendo corrigida (o id do lançamento), ou null.
+  let corrigindo = null;
 
   const recadar = (t) => { el('recado').textContent = t; el('recado').hidden = !t; };
 
@@ -116,6 +135,8 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
       el('ficha').hidden = false;
       el('operacoes').hidden = true;
       el('b-ficha').textContent = ativo ? 'Salvar' : 'Criar';
+      el('inicio').hidden = Boolean(ativo);
+      pintarInicio();
       return;
     }
     document.getElementById('titulo-ativo').textContent = ativo.nome;
@@ -154,26 +175,35 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
     } else {
       el('parte-lotes').hidden = true;
     }
-    if (!cotas) el('numeros').innerHTML =
+    const desde = p.desde
+      ? n(`desde ${diaCurto(p.desde)}/${p.desde.slice(0, 4)}`, p.aoAno == null ? `${Math.max(0, Math.round(p.meses))} ${Math.round(p.meses) === 1 ? 'mês' : 'meses'}` : `≈ ${(p.aoAno * 100).toFixed(1).replace('.', ',')}% ao ano`)
+      : '';
+    if (cotas) el('numeros').insertAdjacentHTML('beforeend', desde);
+    if (!cotas) el('numeros').innerHTML = desde +
       n(p.avaliacao ? `valor em ${diaCurto(p.avaliacao.data)}${p.estimado ? ' + movimentos' : ''}` : 'valor (sem informar)', `${p.estimado ? '~' : ''}${formatar(p.valorAtual)}`) +
       n('investido', formatar(p.investido)) +
       n('rendeu', `${p.rendeu >= 0 ? '+' : '−'}${formatar(Math.abs(p.rendeu))}${p.aplicado ? ` · ${(p.pct * 100).toFixed(1).replace('.', ',')}%` : ''}`);
 
     for (const b of el('tipos').querySelectorAll('[data-op]')) b.setAttribute('aria-pressed', String(b.dataset.op === op));
     el('rotulo-valor').textContent = op === 'avaliacao' ? 'quanto vale hoje' : 'valor';
-    el('pista').textContent =
-      op === 'aplicacao' ? `sai de ${dinheiro.nome}`
+    const antesDoApp = op !== 'avaliacao' && !contaDaOperacao(app, conta, el('data').value || hoje());
+    el('pista').textContent = antesDoApp
+      ? `antes de ${dinheiro.nome} entrar no app: conta para o ativo, mas não mexe em conta nenhuma`
+      : op === 'aplicacao' ? `sai de ${dinheiro.nome}`
         : op === 'resgate' ? `volta para ${dinheiro.nome}${cotas ? ' — o preço médio não muda' : ''}`
           : op === 'provento' ? `entra em ${dinheiro.nome} — conta como rendimento, não como receita`
             : cotas ? 'o preço de uma unidade hoje; o valor é quantidade × cotação' : 'o que o banco mostra: o rendimento sai da diferença';
-    el('b-op').textContent = cotas
-      ? { aplicacao: 'Comprar', resgate: 'Vender', provento: 'Registrar provento', avaliacao: 'Informar cotação' }[op]
-      : { aplicacao: 'Aplicar', resgate: 'Resgatar', provento: 'Registrar provento', avaliacao: 'Informar valor' }[op];
+    el('b-op').textContent = corrigindo
+      ? 'Salvar correção'
+      : cotas
+        ? { aplicacao: 'Comprar', resgate: 'Vender', provento: 'Registrar provento', avaliacao: 'Informar cotação' }[op]
+        : { aplicacao: 'Aplicar', resgate: 'Resgatar', provento: 'Registrar provento', avaliacao: 'Informar valor' }[op];
+    el('tipos').hidden = Boolean(corrigindo);
 
     // As operações do ativo, da mais nova para a mais antiga.
     const ops = visiveis(app)
       .filter((l) => l.ativoId === ativo.id)
-      .map((l) => ({ id: l.id, data: l.dataCompetencia, tipo: l.tipo, valor: l.valor, quantidade: l.quantidade, preco: l.preco }));
+      .map((l) => ({ id: l.id, data: l.dataCompetencia, tipo: l.tipo, valor: l.valor, quantidade: l.quantidade, preco: l.preco, semConta: !l.contaId }));
     const avs = ativo.avaliacoes.map((a) => ({ id: `av:${a.data}`, data: a.data, tipo: 'avaliacao', valor: a.valor ?? a.preco, preco: a.preco }));
     const todas = [...ops, ...avs].sort((a, b) => (a.data < b.data ? 1 : -1));
     el('lista').innerHTML = todas.length
@@ -181,7 +211,11 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
           <span class="quando">${diaCurto(o.data)}</span>
           <span class="nome-linha">${nomes[o.tipo]}${o.quantidade ? ` · ${quantos(o.quantidade)} × ${formatar(o.preco ?? 0)}` : ''}</span>
           <span class="valor-lancado">${o.tipo === 'aplicacao' ? '−' : o.tipo === 'avaliacao' ? '=' : '+'} ${formatar(o.valor)}</span>
-          ${o.tipo === 'avaliacao' ? '' : `<button type="button" class="elo" data-apagar-op="${o.id}">apagar</button>`}
+          ${o.tipo === 'avaliacao' ? '<span></span>' : `<span class="acoes-op">
+            <button type="button" class="elo ${o.semConta ? 'antes-do-app' : ''}" data-alternar-conta="${o.id}" title="${o.semConta ? 'Não mexe em conta nenhuma: foi antes de a conta entrar no app. Tocar faz mexer.' : 'Mexe na conta. Tocar marca como de antes do app.'}">${o.semConta ? 'antes do app' : 'mexe na conta'}</button>
+            <button type="button" class="elo" data-corrigir-op="${o.id}">corrigir</button>
+            <button type="button" class="elo" data-apagar-op="${o.id}">apagar</button>
+          </span>`}
         </li>`).join('')
       : '<li class="vazio">Nenhuma ainda. Comece pela aplicação.</li>';
 
@@ -217,14 +251,64 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
     if (ativo) {
       await estado.aplicarEvento('ativo.alterado', { id: ativo.id, ...dados });
     } else {
+      const inicio = lerInicio(dados.unidade);
+      if (inicio.erro) { el('inicio-pista').textContent = inicio.erro; return; }
       const id = novoId('atv');
       await estado.aplicarEvento('ativo.criado', { id, contaId, ...dados });
       ativo = { id };
+      if (inicio.valor) {
+        const ap = await log.aparelho();
+        await estado.aplicarEvento('lancamento.registrado', {
+          id: novoId('lan'),
+          tipo: 'aplicacao',
+          valor: inicio.valor,
+          contaId: contaDaOperacao(app, app.contas[contaId], inicio.data),
+          ativoId: id,
+          ...inicio.extra,
+          categoriaId: null,
+          dataCompetencia: inicio.data,
+          dataCaixa: inicio.data,
+          confirmado: inicio.data <= hoje(),
+          lancadoPor: ap?.id ?? null,
+        });
+      }
     }
     editandoFicha = false;
     await recarregar();
     if (aoSalvar) await aoSalvar();
     focarPrimeiro();
+  }
+
+  /** "Como começou": data e valor (ou quantidade e preço). Tudo vazio vale. */
+  function lerInicio(unidade) {
+    const data = el('inicio-data').value;
+    if (unidade === 'cotas') {
+      const quantidade = lerQuantidade(el('inicio-quantidade').value);
+      const preco = Math.abs(deTexto(el('inicio-preco').value));
+      if (!quantidade && !preco) return {};
+      if (!quantidade || !preco || !data) return { erro: 'Para registrar como começou: data, quantidade e preço.' };
+      return { data, valor: Math.round(quantidade * preco), extra: { quantidade, preco } };
+    }
+    const valor = Math.abs(deTexto(el('inicio-valor').value));
+    if (!valor) return {};
+    if (!data) return { erro: 'Falta a data em que foi aplicado.' };
+    return { data, valor, extra: {} };
+  }
+
+  /** O "como começou" acompanha o jeito de acompanhar, e avisa se é de antes do app. */
+  function pintarInicio() {
+    const cotas = el('unidade').value === 'cotas';
+    el('rotulo-inicio').textContent = cotas ? 'comprado em' : 'aplicado em';
+    el('inicio-campo-valor').hidden = cotas;
+    el('inicio-campo-quantidade').hidden = !cotas;
+    el('inicio-campo-preco').hidden = !cotas;
+    const data = el('inicio-data').value;
+    const conta = app?.contas[contaId];
+    if (!data || !conta) { el('inicio-pista').textContent = 'Já existia antes? Informe quando começou e quanto foi: o app mostra quanto rendeu no período.'; return; }
+    const dinheiro = app.contas[contaDoDinheiro(conta)];
+    el('inicio-pista').textContent = contaDaOperacao(app, conta, data)
+      ? `Sai de ${dinheiro.nome} em ${diaCurto(data)}.`
+      : `De antes de ${dinheiro.nome} entrar no app: conta para o ativo, mas não mexe em conta nenhuma.`;
   }
 
   async function registrar() {
@@ -238,7 +322,7 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
       const taxas = Math.abs(deTexto(el('taxas').value));
       if (!quantidade) { recadar('Falta a quantidade.'); return; }
       if (!preco) { recadar('Falta o preço de cada.'); return; }
-      if (op === 'resgate') {
+      if (op === 'resgate' && !corrigindo) {
         const tem = posicao(app, ativo.id).quantidade;
         if (quantidade > tem + 1e-9) { recadar(`Só há ${quantos(tem)} na mão.`); return; }
       }
@@ -263,11 +347,28 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
     } else {
       const conta = app.contas[contaId];
       const ap = await log.aparelho();
+      if (corrigindo) {
+        // A conta segue a data: corrigida para antes do app, deixa de mexer.
+        await estado.aplicarEvento('lancamento.alterado', {
+          id: corrigindo,
+          valor,
+          ...extra,
+          contaId: contaDaOperacao(app, conta, data),
+          dataCompetencia: data,
+          dataCaixa: data,
+          confirmado: data <= hoje(),
+        });
+        corrigindo = null;
+        for (const campo of ['valor', 'quantidade', 'preco', 'taxas']) el(campo).value = '';
+        await recarregar();
+        if (aoSalvar) await aoSalvar();
+        return;
+      }
       await estado.aplicarEvento('lancamento.registrado', {
         id: novoId('lan'),
         tipo: op,
         valor,
-        contaId: contaDoDinheiro(conta),
+        contaId: contaDaOperacao(app, conta, data),
         ativoId: ativo.id,
         ...extra,
         categoriaId: null,
@@ -296,16 +397,47 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
   // sugere: a pessoa pode trocar.
   el('classe').addEventListener('change', () => {
     el('unidade').value = CLASSES_POR_COTAS.has(el('classe').value) ? 'cotas' : 'valor';
+    pintarInicio();
   });
+  el('unidade').addEventListener('change', pintarInicio);
+  el('inicio-data').addEventListener('input', pintarInicio);
+  el('data').addEventListener('input', () => { if (ativo && !editandoFicha) pintar(); });
   el('tipos').addEventListener('click', (e) => {
     const b = e.target.closest('[data-op]');
     if (!b) return;
     op = b.dataset.op;
+    corrigindo = null;
     recadar('');
     pintar();
     focarPrimeiro();
   });
   el('lista').addEventListener('click', async (e) => {
+    const alternar = e.target.closest('[data-alternar-conta]');
+    if (alternar) {
+      const l = app.lancamentos[alternar.dataset.alternarConta];
+      if (!l) return;
+      const conta = app.contas[contaId];
+      await estado.aplicarEvento('lancamento.alterado', { id: l.id, contaId: l.contaId ? null : contaDoDinheiro(conta) });
+      await recarregar();
+      if (aoSalvar) await aoSalvar();
+      return;
+    }
+    const corrigir = e.target.closest('[data-corrigir-op]');
+    if (corrigir) {
+      const l = app.lancamentos[corrigir.dataset.corrigirOp];
+      if (!l) return;
+      corrigindo = l.id;
+      op = l.tipo;
+      el('data').value = l.dataCompetencia;
+      el('valor').value = formatar(l.valor, { comPrefixo: false });
+      el('quantidade').value = l.quantidade ? String(l.quantidade).replace('.', ',') : '';
+      el('preco').value = l.preco ? formatar(l.preco, { comPrefixo: false }) : '';
+      el('taxas').value = l.taxas ? formatar(l.taxas, { comPrefixo: false }) : '';
+      recadar('');
+      pintar();
+      el('data').focus();
+      return;
+    }
     const b = e.target.closest('[data-apagar-op]');
     if (!b) return;
     if (b.dataset.confirmar !== '1') {
@@ -354,6 +486,9 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
       el('nome').value = '';
       el('classe').value = 'renda_fixa';
       el('unidade').value = 'valor';
+      for (const campo of ['inicio-data', 'inicio-valor', 'inicio-quantidade', 'inicio-preco']) el(campo).value = '';
+      el('data').value = hoje();
+      corrigindo = null;
       el('vencimento').value = '';
       pintar();
       janela.showModal();
@@ -368,6 +503,7 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
       contaId = ativo.contaId;
       op = opInicial;
       editandoFicha = false;
+      corrigindo = null;
       for (const campo of ['valor', 'quantidade', 'preco', 'taxas']) el(campo).value = '';
       el('data').value = hoje();
       recadar('');

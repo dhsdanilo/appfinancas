@@ -1259,7 +1259,8 @@ function linhaHTML(l, ids, saldoApos = null) {
     const cotas = ativo?.unidade === 'cotas';
     const nomeDaOp = (cotas ? { aplicacao: 'compra', resgate: 'venda', provento: 'provento' } : { aplicacao: 'aplicação', resgate: 'resgate', provento: 'provento' })[l.tipo];
     oque = `${ativo?.nome ?? 'Investimento'} · ${nomeDaOp}`;
-    onde = conta?.nome ?? '—';
+    // Sem conta: de antes de a conta do dinheiro entrar no app.
+    onde = conta?.nome ?? 'antes do app';
     if (l.quantidade) onde += ` · ${Number(l.quantidade).toLocaleString('pt-BR', { maximumFractionDigits: 8 })} × ${formatar(l.preco ?? 0)}`;
   } else if (l.fatura) {
     oque = `Fatura ${destino?.nome ?? ''}`;
