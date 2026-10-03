@@ -823,13 +823,19 @@ function pintarResumoDeSaldos(aba, contas) {
       aba.id === 'folha' && saldo !== 0
         ? '<p class="aviso-bloco">Depois do contracheque completo, a folha volta a zero. Diferente de zero é desconto esquecido.</p>'
         : '';
-    // Na folha: "EBTTIFSP · Outubro", bruto, líquido e saldo atual (pedido dele).
-    const titulo = aba.id === 'folha' ? `${c.nome} · ${nomeDoMes(vista.mes).split(' ')[0]}` : c.nome;
+    // Na folha: "EBTTIFSP · Outubro" e bruto, líquido e saldo atual lado a
+    // lado, na largura toda — como a faixa das dívidas (pedido dele).
+    if (aba.id === 'folha') {
+      return `<div class="bloco largo">
+        <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(`${c.nome} · ${nomeDoMes(vista.mes).split(' ')[0]}`)}</p>
+        <div class="numeros-renda">${numerosDeRenda([c])}${numeroDaFaixa('saldo atual', formatar(saldo))}</div>
+        ${aviso}
+        ${peDaFolha(c)}
+      </div>`;
+    }
     return `<div class="bloco">
       <p class="nome-bloco">${escapar(titulo)}</p>
-      <dl>${aba.id === 'folha' ? linhasDeRenda([c]) : ''}${linhaDeResumo(aba.id === 'folha' ? 'saldo atual' : 'saldo', dinheiroHTML(saldo), saldo < 0 ? 'negativo' : '')}</dl>
-      ${aviso}
-      ${aba.id === 'folha' ? peDaFolha(c) : ''}
+      <dl>${linhaDeResumo('saldo', dinheiroHTML(saldo), saldo < 0 ? 'negativo' : '')}</dl>
     </div>`;
   });
   $('resumo').innerHTML = `<div class="blocos">${blocos.join('')}</div>`;
@@ -844,20 +850,19 @@ function blocoDeTotal(aba, contas) {
 }
 
 /** A renda das folhas no mês da tela: bruta, e líquida (descontos e consignados fora). */
-function linhasDeRenda(folhas) {
+function numerosDeRenda(folhas) {
   const ids = new Set(folhas.map((c) => c.id));
   const doMes = visiveis(app).filter((l) => ids.has(l.contaId) && l.dataCompetencia.slice(0, 7) === vista.mes);
   const { bruta, liquida } = rendaDaFolha(app, doMes, ids);
-  return linhaDeResumo('bruto', dinheiroHTML(bruta)) +
-    linhaDeResumo('líquido', dinheiroHTML(liquida));
+  return numeroDaFaixa('bruto', formatar(bruta)) + numeroDaFaixa('líquido', formatar(liquida));
 }
 
 /** Geral da renda: a soma das fontes no mês, e quantas folhas ainda não fecharam. */
 function blocoDasFolhas(folhas) {
   const abertas = folhas.filter((c) => saldoReal(app, c.id) !== 0).length;
-  return `<div class="bloco total">
+  return `<div class="bloco total largo">
     <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>geral · ${escapar(nomeDoMes(vista.mes).split(' ')[0])}</p>
-    <dl>${linhasDeRenda(folhas)}${linhaDeResumo('saldo atual', dinheiroHTML(folhas.reduce((t, c) => t + saldoReal(app, c.id), 0)))}</dl>
+    <div class="numeros-renda">${numerosDeRenda(folhas)}${numeroDaFaixa('saldo atual', formatar(folhas.reduce((t, c) => t + saldoReal(app, c.id), 0)))}</div>
     ${abertas ? `<p class="aviso-bloco">${abertas} folha${abertas > 1 ? 's' : ''} sem fechar: abra a aba de cada uma para lançar o contracheque.</p>` : ''}
   </div>`;
 }

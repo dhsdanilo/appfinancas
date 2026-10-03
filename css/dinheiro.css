@@ -699,3 +699,7 @@ body[data-pagina="dividas"] .bloco { min-width: 0; }
 .topo-conta { display: flex; justify-content: flex-start; margin: calc(-1 * var(--e2)) 0 var(--e2); }
 .topo-conta .elo { font-size: var(--t-miudo); color: var(--tinta-fraca); }
 .arquivadas-area { margin: 0 0 var(--e4); color: var(--tinta-fraca); font-size: var(--t-miudo); }
+
+/* Renda: bruto, líquido e saldo atual lado a lado, na largura toda — o mesmo
+   desenho da faixa das dívidas (pedido dele, 03/10/2026). */
+.numeros-renda { display: flex; flex-wrap: wrap; gap: var(--e3) var(--e6); }
