@@ -16,6 +16,7 @@ import {
   sinalDeSaida, ehTransferencia, dataVista,
 } from './core/lancamentos.js';
 import { temCiclo } from './core/cartao.js';
+import { AREAS as ABAS } from './app/areas.js';
 import {
   faturas, resumoDoCartao, saldoPrevisto, ocorrenciasPrevistas,
 } from './core/previsto.js';
@@ -24,14 +25,6 @@ import {
 } from './core/datas.js';
 
 const $ = (id) => document.getElementById(id);
-
-const ABAS = [
-  { id: 'caixa', titulo: 'Em caixa', tipos: ['corrente', 'especie'] },
-  { id: 'cartoes', titulo: 'Cartões', tipos: ['cartao'] },
-  { id: 'investimentos', titulo: 'Investimentos', tipos: ['investimento'] },
-  { id: 'dividas', titulo: 'Dívidas', tipos: ['divida'] },
-  { id: 'folha', titulo: 'Folha', tipos: ['folha'] },
-];
 
 function escapar(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -104,6 +97,8 @@ async function pintar() {
   const contas = contasDaAba(aba);
   if (vista.conta !== 'todas' && !contas.some((c) => c.id === vista.conta)) vista.conta = 'todas';
 
+  // A tela inteira veste a cor da área (09-identidade §3).
+  $('painel').dataset.area = aba.id;
   pintarAbas(abas);
   pintarSubabas(contas);
   pintarPeriodo();
@@ -141,8 +136,8 @@ function contasDaAba(aba) {
 function pintarAbas(abas) {
   $('abas').innerHTML = abas
     .map(
-      (a) => `<button type="button" role="tab" data-aba="${a.id}" aria-selected="${a.id === vista.aba}"
-        tabindex="${a.id === vista.aba ? 0 : -1}">${escapar(a.titulo)}</button>`
+      (a) => `<button type="button" role="tab" data-aba="${a.id}" data-area="${a.id}" aria-selected="${a.id === vista.aba}"
+        tabindex="${a.id === vista.aba ? 0 : -1}"><span class="ponto-area" aria-hidden="true"></span>${escapar(a.titulo)}</button>`
     )
     .join('');
 }
@@ -217,7 +212,7 @@ function blocoDeCaixa(nome, p, total = false) {
     );
   }
   return `<div class="bloco ${total ? 'total' : ''}">
-    <p class="nome-bloco">${escapar(nome)}</p>
+    <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(nome)}</p>
     <dl>${linhas.join('')}</dl>
   </div>`;
 }
@@ -252,7 +247,7 @@ function blocoDeCartao(c) {
       linhaDeResumo(
         r.fechada.atrasada ? `fatura fechada · venceu ${diaCurto(r.fechada.vencimento)}` : `fatura fechada · vence ${diaCurto(r.fechada.vencimento)}`,
         dinheiroHTML(r.fechada.aPagar),
-        r.fechada.atrasada ? 'negativo' : 'devido'
+        'negativo'
       )
     );
   }

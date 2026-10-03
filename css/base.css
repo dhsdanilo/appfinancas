@@ -26,6 +26,14 @@
   --transferencia: #3f5d8a;
   --transferencia-fundo: #3f5d8a14;
 
+  /* A área de cada conta (09-identidade §3): estrutura, nunca valor. As cinco
+     ficam fora do vermelho, do verde e do azul, que são dos tipos. */
+  --area-caixa: #0f6e56;
+  --area-cartoes: #9a7710;
+  --area-investimentos: #6a62d0;
+  --area-dividas: #993c1d;
+  --area-folha: #5f5e5a;
+
   /* ── tipografia ──────────────────────────────────────────────────────── */
   --fonte: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
@@ -73,8 +81,21 @@
     --atencao: #e0b263;
     --transferencia: #8fb3e0;
     --transferencia-fundo: #8fb3e01a;
+    --area-caixa: #5dcaa5;
+    --area-cartoes: #d9b23a;
+    --area-investimentos: #afa9ec;
+    --area-dividas: #f0997b;
+    --area-folha: #b4b2a9;
   }
 }
+
+/* Quem leva data-area herda a cor da sua área em --area e --area-fundo. */
+[data-area="caixa"] { --area: var(--area-caixa); }
+[data-area="cartoes"] { --area: var(--area-cartoes); }
+[data-area="investimentos"] { --area: var(--area-investimentos); }
+[data-area="dividas"] { --area: var(--area-dividas); }
+[data-area="folha"] { --area: var(--area-folha); }
+[data-area] { --area-fundo: color-mix(in srgb, var(--area) 14%, transparent); }
 
 * { box-sizing: border-box; }
 
@@ -405,3 +426,29 @@ code { font-family: var(--mono); font-size: 0.9em; }
   font-variant-numeric: tabular-nums;
 }
 .abas .contador:empty { display: none; }
+
+/* A bolinha da área: a cor com forma, para não ser a única informação. */
+.ponto-area {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: var(--e2);
+  border-radius: 50%;
+  background: var(--area, var(--borda-forte));
+  vertical-align: 1px;
+}
+
+/* Despesa e receita escolhidas levam a cor do tipo: o que se vê antes de
+   salvar é o que se verá na linha do extrato (09-identidade §3). */
+.pilulas button[data-tipo="despesa"][aria-pressed="true"],
+.pilulas button[data-natureza="despesa"][aria-pressed="true"] {
+  background: var(--alerta-fundo);
+  color: var(--alerta);
+  box-shadow: inset 0 0 0 1.5px var(--alerta);
+}
+.pilulas button[data-tipo="receita"][aria-pressed="true"],
+.pilulas button[data-natureza="receita"][aria-pressed="true"] {
+  background: var(--positivo-fundo);
+  color: var(--positivo);
+  box-shadow: inset 0 0 0 1.5px var(--positivo);
+}

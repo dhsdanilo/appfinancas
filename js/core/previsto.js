@@ -31,17 +31,25 @@ export function faturas(estado, cartaoId, dia = hoje()) {
   if (!temCiclo(conta)) return null;
 
   const porCiclo = new Map();
-  const ciclo = (fechamento) => {
+  // O vencimento de uma fatura é o que as compras dela guardaram: se o dia de
+  // vencimento mudou depois que ela fechou, ela continua vencendo quando o
+  // banco disse (03-alimentacao §6.2). Só a fatura sem compra calcula.
+  const ciclo = (fechamento, vencimento = null) => {
     if (!porCiclo.has(fechamento)) {
       porCiclo.set(fechamento, {
         fechamento,
-        vencimento: vencimentoDoCiclo(conta, fechamento),
+        vencimento: vencimento ?? vencimentoDoCiclo(conta, fechamento),
         total: 0,
         itens: [],
       });
     }
     return porCiclo.get(fechamento);
   };
+
+  const doCartao = visiveis(estado);
+  for (const l of doCartao) {
+    if (l.contaId === cartaoId && l.cicloFatura) ciclo(l.cicloFatura, l.dataVencimento);
+  }
 
   const aberta = cicloDaCompra(conta, dia).fechamento;
   ciclo(aberta);
@@ -52,7 +60,7 @@ export function faturas(estado, cartaoId, dia = hoje()) {
   }
 
   let pago = 0;
-  for (const l of visiveis(estado)) {
+  for (const l of doCartao) {
     if (l.contaId === cartaoId && l.cicloFatura) {
       const c = ciclo(l.cicloFatura);
       c.total += sinalDeSaida(l);

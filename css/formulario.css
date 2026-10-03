@@ -413,3 +413,11 @@ input[type="text"].observacao {
   padding: var(--e1) var(--e2);
   font-size: var(--t-apoio);
 }
+
+/* A conta escolhida veste a cor da sua área: lançar no cartão achando que é a
+   corrente fica visível antes de salvar (09-identidade §3). */
+.escolha-conta[data-area] select,
+.perna[data-area] select {
+  border: 1.5px solid var(--area);
+  background: var(--area-fundo);
+}

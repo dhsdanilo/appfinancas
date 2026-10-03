@@ -20,6 +20,7 @@ import * as estado from '../core/estado.js';
 import { hoje, nasceConfirmado, correcao, tipoDaTransferencia } from '../core/lancamentos.js';
 import { MARCACAO_CAMPO_VALOR, ligarCampoValor } from './campo-valor.js';
 import { ligarZonaDePerigo } from './zona-perigo.js';
+import { areaDaConta, opcoesDeConta } from './areas.js';
 
 // Todas as contas que não estão arquivadas. Cartão, dívida e folha entram
 // porque o dinheiro passa por elas de verdade: pagar a fatura é corrente →
@@ -87,7 +88,15 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
 
   const pagandoFatura = () => Boolean(app) && tipoDaTransferencia(app, destino()) === 'pagamento_fatura';
 
+  /** Cada perna veste a cor da área da sua conta (09-identidade §3). */
+  function pintarAreas() {
+    if (!app) return;
+    el('origem').closest('.perna').dataset.area = areaDaConta(app.contas[origem()]);
+    el('destino').closest('.perna').dataset.area = areaDaConta(app.contas[destino()]);
+  }
+
   function pintarAcao() {
+    pintarAreas();
     el('b-salvar').disabled = !pronto();
     el('b-salvar').textContent = editando ? 'Salvar' : pagandoFatura() ? 'Pagar fatura' : 'Transferir';
     if (aoMudarTitulo) aoMudarTitulo(pagandoFatura() ? 'Pagar fatura' : 'Transferência');
@@ -108,14 +117,7 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
 
   function pintarContas() {
     const contas = contasDisponiveis();
-    const opcoes = (escolhida) =>
-      '<option value="">—</option>' +
-      contas
-        .map(
-          (c) =>
-            `<option value="${escapar(c.id)}"${c.id === escolhida ? ' selected' : ''}>${escapar(c.nome)}</option>`
-        )
-        .join('');
+    const opcoes = (escolhida) => opcoesDeConta(contas, escolhida, { vazia: true });
 
     const antesOrigem = editando ? editando.contaId : origem();
     const antesDestino = editando ? editando.contaDestinoId : destino();

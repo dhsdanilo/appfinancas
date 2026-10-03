@@ -1038,6 +1038,8 @@ caso('cartão', 'mudar o fechamento refaz só as faturas que ainda não fecharam
   const e = await estado.calcular();
   igual(e.lancamentos.antiga.cicloFatura, '2020-02-03', 'fatura fechada é passado: o banco também não a refaz');
   igual(e.lancamentos.futura.cicloFatura, '2099-01-15', 'a que ainda não fechou segue o ciclo novo');
+  const antiga = previsto.faturas(e, 'c1', '2050-01-01').find((f) => f.fechamento === '2020-02-03');
+  igual(antiga.vencimento, '2020-02-10', 'e a fatura fechada continua vencendo quando vencia, não no dia novo');
 });
 
 caso('cartão', 'corrigir a data no cartão corrige a compra', () => {

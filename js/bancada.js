@@ -22,6 +22,7 @@ import { usos, podeRemover, podeArquivarConta, acharPorNome } from './core/lista
 import { dinheiroHTML } from './app/dinheiro-html.js';
 import { instalarServiceWorker } from './app/instalar.js';
 import { iniciarSincronia } from './app/sincronia-viva.js';
+import { AREAS } from './app/areas.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -135,13 +136,7 @@ function pintarDonos() {
  * "quanto eu tenho em caixa"; três blocos com subtotal respondem sem contar
  * nada na cabeça.
  */
-const BLOCOS_DE_CONTA = [
-  { titulo: 'em caixa', tipos: ['corrente', 'especie'] },
-  { titulo: 'cartões', tipos: ['cartao'] },
-  { titulo: 'investimentos', tipos: ['investimento'] },
-  { titulo: 'dívidas', tipos: ['divida'] },
-  { titulo: 'folha', tipos: ['folha'] },
-];
+const BLOCOS_DE_CONTA = AREAS.map((a) => ({ ...a, titulo: a.titulo.toLowerCase() }));
 
 function pintarContas() {
   const contas = Object.values(app.contas);
@@ -193,7 +188,7 @@ function pintarContas() {
   for (const bloco of BLOCOS_DE_CONTA) {
     const doBloco = ativas.filter((c) => bloco.tipos.includes(c.tipo));
     if (!doBloco.length) continue;
-    html += divisor(bloco.titulo, doBloco.length);
+    html += divisor(bloco.titulo, doBloco.length, bloco.id);
     html += doBloco.map(desenhar).join('');
     // Subtotal só quando há o que somar: com uma conta só, ele repetiria a linha.
     if (doBloco.length > 1) {
@@ -311,8 +306,8 @@ function contarUso(especie, id) {
 const porNome = (a, b) =>
   a.nome.toLocaleLowerCase('pt-BR') < b.nome.toLocaleLowerCase('pt-BR') ? -1 : 1;
 
-const divisor = (texto, quantos) =>
-  `<li class="divisor">${escapar(texto)}${quantos ? `<span class="quantos">${quantos}</span>` : ''}</li>`;
+const divisor = (texto, quantos, area = '') =>
+  `<li class="divisor"${area ? ` data-area="${area}"` : ''}>${area ? '<span class="ponto-area" aria-hidden="true"></span>' : ''}${escapar(texto)}${quantos ? `<span class="quantos">${quantos}</span>` : ''}</li>`;
 
 /** A última linha do bloco, separada por um fio — 09-identidade §7. */
 const subtotal = (titulo, centavos) =>

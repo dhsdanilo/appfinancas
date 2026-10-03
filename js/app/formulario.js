@@ -22,14 +22,15 @@ import {
 import { somarDias, somarMeses } from '../core/datas.js';
 import { MARCACAO_CAMPO_VALOR, ligarCampoValor } from './campo-valor.js';
 import { ligarZonaDePerigo } from './zona-perigo.js';
+import { areaDaConta, opcoesDeConta } from './areas.js';
 
 const MARCACAO = `
   ${MARCACAO_CAMPO_VALOR}
 
   <div class="contexto">
     <div class="pilulas" role="group" aria-label="Tipo de lançamento">
-      <button type="button" data-tipo="despesa" aria-pressed="true">despesa</button>
-      <button type="button" data-tipo="receita" aria-pressed="false">receita</button>
+      <button type="button" data-tipo="despesa" aria-pressed="true">↓ despesa</button>
+      <button type="button" data-tipo="receita" aria-pressed="false">↑ receita</button>
     </div>
     <div class="quando">
       <button type="button" class="passo" data-papel="dia-menos" aria-label="Um dia antes">−</button>
@@ -44,8 +45,8 @@ const MARCACAO = `
   <div class="categorias" data-papel="categorias" role="group" aria-label="Categoria"></div>
 
   <div class="linha-conta">
-    <label class="escolha-conta">
-      <span class="miudo">conta</span>
+    <label class="escolha-conta" data-papel="escolha-conta">
+      <span class="miudo"><span class="ponto-area" aria-hidden="true"></span>conta</span>
       <select data-papel="conta" aria-label="Conta do lançamento"></select>
     </label>
     <button type="button" class="elo" data-papel="b-refino" aria-expanded="false">detalhes</button>
@@ -209,13 +210,14 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
   function pintarConta() {
     const contas = contasUtilizaveis();
     el('conta').innerHTML = contas.length
-      ? contas
-          .map(
-            (c) =>
-              `<option value="${escapar(c.id)}"${c.id === contaId ? ' selected' : ''}>${escapar(c.nome)}</option>`
-          )
-          .join('')
+      ? opcoesDeConta(contas, contaId)
       : '<option value="">nenhuma conta</option>';
+    pintarArea();
+  }
+
+  /** A conta escolhida veste a cor da área dela (09-identidade §3). */
+  function pintarArea() {
+    el('escolha-conta').dataset.area = areaDaConta(app.contas[contaId]);
   }
 
   /**
@@ -761,6 +763,7 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
 
   el('conta').addEventListener('change', () => {
     contaId = el('conta').value || null;
+    pintarArea();
     // Cada conta tem o seu marco zero: trocar de conta pode mudar o piso da data.
     pintarData();
   });

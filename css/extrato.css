@@ -189,8 +189,8 @@ button.linha.vencido { border-left: 3px solid var(--alerta); background: var(--a
   font-size: var(--t-apoio);
 }
 .subabas button[aria-pressed="true"] {
-  border-color: var(--acento);
-  background: var(--acento-fundo);
+  border-color: var(--area, var(--acento));
+  background: var(--area-fundo, var(--acento-fundo));
   color: var(--tinta);
   font-weight: 600;
 }
@@ -281,9 +281,16 @@ button.linha.vencido { border-left: 3px solid var(--alerta); background: var(--a
   border-radius: var(--raio-controle);
   background: var(--alerta-fundo);
 }
-.linha-resumo.devido dd { color: var(--atencao); }
-
-.bloco .aviso-bloco { margin: var(--e2) 0 0; color: var(--atencao); font-size: var(--t-apoio); }
+/* O aviso fala vermelho com fundo: o amarelo se perdia na aba mostarda dos
+   cartões (09-identidade §3). */
+.bloco .aviso-bloco {
+  margin: var(--e2) 0 0;
+  padding: var(--e2) var(--e3);
+  border-radius: var(--raio-controle);
+  background: var(--alerta-fundo);
+  color: var(--alerta);
+  font-size: var(--t-apoio);
+}
 .bloco .pe-bloco {
   display: flex;
   justify-content: space-between;
@@ -333,3 +340,13 @@ button.linha.vencido { border-left: 3px solid var(--alerta); background: var(--a
   .periodo .rotulo-periodo { min-width: 0; flex: 1; }
 }
 .lista > li.grupo .valor-grupo .fino { display: inline; }
+
+/* ── a cor da área (09-identidade §3) ───────────────────────────────────── */
+
+.abas [role="tab"][data-area][aria-selected="true"] {
+  border-bottom: 3px solid var(--area);
+  background: var(--area-fundo);
+}
+.painel[data-area] { border-top: 3px solid var(--area); }
+.bloco { border-color: color-mix(in srgb, var(--area, var(--borda)) 40%, var(--borda)); }
+.bloco .nome-bloco .ponto-area { width: 8px; height: 8px; }

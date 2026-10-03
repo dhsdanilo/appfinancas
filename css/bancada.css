@@ -291,3 +291,6 @@
 .dialogo-ciclo::backdrop { background: #0006; }
 .dialogo-ciclo .formulario { padding-bottom: 0; border-bottom: 0; }
 .dialogo-ciclo .titulo-bloco { flex: 1 1 100%; margin: 0; }
+
+/* O bloco de contas leva a cor da área, a mesma do extrato. */
+.divisor[data-area] { color: var(--area); }
