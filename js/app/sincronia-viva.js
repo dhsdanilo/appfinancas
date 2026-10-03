@@ -12,6 +12,7 @@ import * as sincronia from '../core/sincronia.js';
 const ESPERA = 2500; // junta escritas seguidas num envio só
 
 let relogio = null;
+let iniciada = false;
 let ocupado = false;
 let sujo = false;
 let situacao = { estado: 'parado', texto: '', grave: false };
@@ -23,7 +24,7 @@ let botao = null;
  * @param {HTMLElement} [opcoes.raiz]  o bloco do carimbo e do botão, se a tela tiver
  */
 export async function iniciarSincronia({ raiz } = {}) {
-  if (raiz) {
+  if (raiz && !carimbo) {
     carimbo = raiz.querySelector('[data-papel="carimbo"]');
     botao = raiz.querySelector('[data-papel="b-nuvem"]');
     if (botao) botao.addEventListener('click', () => agora());
@@ -32,6 +33,10 @@ export async function iniciarSincronia({ raiz } = {}) {
   const config = await sincronia.configuracao();
   if (raiz) raiz.hidden = !config;
   if (!config) return;
+  // Uma página, uma sincronização: a moldura liga, e quem chamar de novo
+  // (o script da página) não cria um segundo relógio.
+  if (iniciada) return;
+  iniciada = true;
 
   // Toda alteração marca sujo: lançar, corrigir, apagar, criar conta. O núcleo
   // avisa sem saber que a sincronização existe.

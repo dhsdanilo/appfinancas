@@ -471,3 +471,125 @@ dialog[data-area] { border-top: 4px solid var(--area); }
   color: var(--transferencia);
   box-shadow: inset 0 0 0 1.5px var(--transferencia);
 }
+
+/* ── a moldura do andar de cima (js/app/pagina.js) ──────────────────────── */
+/* PC: barra lateral fixa, à esquerda. Celular: barra embaixo, ao alcance do
+   polegar (09-identidade §5). As cinco áreas levam a bolinha da sua cor. */
+
+.pagina.app { max-width: none; padding: 0 0 var(--e12) 240px; }
+.pagina.app > .conteudo { max-width: 1000px; margin: 0 auto; padding: 0 var(--e4); }
+
+.menu-lateral {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--e1);
+  padding: var(--e4) var(--e3);
+  border-right: 1px solid var(--borda);
+  background: var(--superficie);
+  overflow-y: auto;
+  z-index: 5;
+}
+.menu-lateral .marca-app {
+  padding: var(--e2) var(--e3) var(--e4);
+  color: var(--tinta);
+  font-size: var(--t-secao);
+  font-weight: 700;
+  text-decoration: none;
+}
+.menu-lateral .rotulo-menu {
+  margin: var(--e4) 0 var(--e1);
+  padding: 0 var(--e3);
+  color: var(--tinta-fraca);
+  font-size: var(--t-miudo);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.menu-lateral .grupo-menu { display: flex; flex-direction: column; gap: 2px; }
+.menu-lateral .pe-menu { margin-top: auto; padding-top: var(--e3); border-top: 1px solid var(--borda); }
+.menu-lateral a {
+  display: flex;
+  align-items: center;
+  gap: var(--e3);
+  min-height: 38px;
+  padding: 0 var(--e3);
+  border-radius: var(--raio-controle);
+  color: var(--tinta-fraca);
+  font-size: var(--t-apoio);
+  text-decoration: none;
+}
+.menu-lateral a:hover { color: var(--tinta); background: var(--acento-fundo); }
+.menu-lateral a[aria-current="page"] { color: var(--tinta); font-weight: 600; background: var(--acento-fundo); }
+.menu-lateral svg { width: 18px; height: 18px; flex: none; }
+.menu-lateral .ponto-area { width: 9px; height: 9px; margin: 0 4px 0 5px; }
+
+.menu-inferior { display: none; }
+
+@media (max-width: 899px) {
+  .pagina.app { padding: 0 0 calc(76px + env(safe-area-inset-bottom)); }
+  .menu-lateral { display: none; }
+  .menu-inferior {
+    position: fixed;
+    inset: auto 0 0 0;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    align-items: center;
+    padding: var(--e1) var(--e2) calc(var(--e1) + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--borda);
+    background: var(--superficie);
+    z-index: 5;
+  }
+  .menu-inferior > a,
+  .menu-inferior > button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-height: 54px;
+    padding: var(--e1) 0;
+    border: 0;
+    background: none;
+    color: var(--tinta-fraca);
+    font-size: 11px;
+    text-decoration: none;
+  }
+  .menu-inferior svg { width: 22px; height: 22px; }
+  .menu-inferior [aria-current="page"] { color: var(--tinta); font-weight: 600; }
+  .menu-inferior .bt-mais-lancar {
+    justify-self: center;
+    width: 52px;
+    height: 52px;
+    min-height: 0;
+    border-radius: 50%;
+    background: var(--area, var(--acento));
+    color: var(--fundo);
+    font-size: 28px;
+    line-height: 1;
+    justify-content: center;
+  }
+  .folha-menu {
+    position: absolute;
+    inset: auto var(--e3) calc(100% + var(--e2)) var(--e3);
+    display: flex;
+    flex-direction: column;
+    padding: var(--e2);
+    border: 1px solid var(--borda);
+    border-radius: var(--raio-cartao);
+    background: var(--superficie);
+    box-shadow: 0 8px 24px #0005;
+  }
+  .folha-menu a {
+    display: flex;
+    align-items: center;
+    gap: var(--e3);
+    min-height: var(--alvo);
+    padding: 0 var(--e3);
+    border-radius: var(--raio-controle);
+    color: var(--tinta);
+    text-decoration: none;
+  }
+  .folha-menu a[aria-current="page"] { background: var(--acento-fundo); font-weight: 600; }
+}

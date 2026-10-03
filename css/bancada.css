@@ -122,6 +122,9 @@
 }
 .item .uso { text-align: right; }
 .item .valor { text-align: right; font-weight: 600; white-space: nowrap; }
+/* O valor da lista não é o valor grande da captura: as duas folhas convivem
+   nas páginas de área, e sem isto o saldo herdava o tamanho de digitar. */
+.itens .item .valor { font-size: var(--t-corpo); padding: var(--e1) 0; letter-spacing: 0; line-height: inherit; }
 .item .sem-uso { opacity: 0.7; }
 
 /* As ações só aparecem quando a linha é alcançada: vinte linhas com três botões

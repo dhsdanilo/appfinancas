@@ -2,15 +2,14 @@
 //
 // Mostra o que a fundação está fazendo, roda a suíte em banco separado e deixa
 // recalcular o estado do zero — que é o teste que importa nesta arquitetura.
-// Quem cria contas, categorias e etiquetas é a bancada (js/bancada.js).
+// Quem cria contas é a página de cada área; categorias, etiquetas e detalhes,
+// as Configurações (js/gestao.js).
 
 import * as db from './core/db.js';
 import * as log from './core/log.js';
 import * as estado from './core/estado.js';
 import { VERSAO_ATUAL, ErroDeFormato } from './core/formato.js';
 import { formatar } from './core/dinheiro.js';
-import { instalarServiceWorker } from './app/instalar.js';
-import { iniciarSincronia } from './app/sincronia-viva.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -178,5 +177,3 @@ try {
   }
 }
 
-instalarServiceWorker();
-await iniciarSincronia({ raiz: $('nuvem') });

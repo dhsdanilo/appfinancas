@@ -1,5 +1,11 @@
-// A bancada: a tela de gerenciar, onde a estrutura do app se constrói.
+// A gestão: onde a estrutura do app se constrói — o que era a "bancada".
 // design/04-categorias.md §7 · design/03-alimentacao.md §10
+//
+// Desde 03/10/2026 ela não é uma tela: cada coisa nasce na tela dela. As contas
+// de cada área ficam na página da área ("Suas contas", "Seus cartões", "Seus
+// empréstimos"…), com o seu botão de criar; categorias, etiquetas e detalhes
+// ficam em Configurações. Este módulo serve às duas, conforme o que a página
+// tem.
 //
 // Três regras que vêm do design e governam tudo aqui:
 //   1. Nenhuma lista vem de fábrica. O que vem pronto é o mecanismo.
@@ -14,19 +20,64 @@
 // página de verificação.
 
 import * as estado from './core/estado.js';
-import * as log from './core/log.js';
 import { novoId } from './core/id.js';
 import { deTexto } from './core/dinheiro.js';
 import { hoje, saldoReal } from './core/lancamentos.js';
 import { usos, podeRemover, podeArquivarConta, acharPorNome } from './core/listas.js';
 import { dinheiroHTML } from './app/dinheiro-html.js';
-import { instalarServiceWorker } from './app/instalar.js';
-import { iniciarSincronia } from './app/sincronia-viva.js';
+import { NOVA_CONTA, CICLO, CONTRATO } from './app/marcacao-gestao.js';
 import { AREAS, areaDaConta, AREAS_COM_CATEGORIA, opcoesDeConta } from './app/areas.js';
 import { salvarContrato, fotografar } from './app/contrato.js';
 import { situacao, saldoDevedor } from './core/divida.js';
 
 const $ = (id) => document.getElementById(id);
+
+// ── a área desta página, quando é uma página de área ──────────────────────
+
+const AREA_DA_PAGINA = {
+  contas: 'caixa', cartoes: 'cartoes', renda: 'folha', investimentos: 'investimentos', dividas: 'dividas',
+};
+const AREA_GESTAO = AREA_DA_PAGINA[document.body.dataset.pagina] ?? null;
+
+const TEXTOS = {
+  caixa: { novo: 'Nova conta', lista: 'Suas contas', criar: 'Criar conta', titulo: 'nova conta', exemplo: 'Conta do dia a dia' },
+  cartoes: { novo: 'Novo cartão', lista: 'Seus cartões', criar: 'Criar cartão', titulo: 'novo cartão', exemplo: 'Cartão do banco' },
+  folha: { novo: 'Nova fonte de renda', lista: 'Suas fontes de renda', criar: 'Criar', titulo: 'nova fonte de renda', exemplo: 'Salário, contrato PJ, atendimentos' },
+  investimentos: { novo: 'Novo investimento', lista: 'Seus investimentos', criar: 'Criar', titulo: 'novo investimento', exemplo: 'Corretora, poupança' },
+  dividas: { novo: 'Novo empréstimo', lista: 'Seus empréstimos', criar: 'Criar empréstimo', titulo: 'novo empréstimo', exemplo: 'Consignado do banco' },
+};
+
+if (AREA_GESTAO && $('gestao')) {
+  const t = TEXTOS[AREA_GESTAO];
+  $('gestao').innerHTML = `<section class="cartao gestao" data-area="${AREA_GESTAO}">
+    <h2>${t.lista}</h2>
+    <p class="nota">Toque no nome para renomear. Arquivar tira das telas de lançamento sem apagar o passado.</p>
+    <p class="aviso" id="aviso" hidden></p>
+    <ul class="itens" id="lista-contas"></ul>
+  </section>`;
+  document.body.insertAdjacentHTML(
+    'beforeend',
+    NOVA_CONTA + (AREA_GESTAO === 'cartoes' ? CICLO : '') + (AREA_GESTAO === 'dividas' ? CONTRATO : '')
+  );
+  // O formulário só oferece os tipos desta área; com um tipo só, nem pergunta.
+  const tipos = AREAS.find((a) => a.id === AREA_GESTAO).tipos;
+  const select = $('f-conta').elements.tipo;
+  for (const op of [...select.options]) if (!tipos.includes(op.value)) op.remove();
+  select.closest('.campo').hidden = tipos.length < 2;
+  $('titulo-nova-conta').textContent = t.titulo;
+  $('f-conta').elements.nome.placeholder = t.exemplo;
+  // A fonte de renda não guarda saldo: é passagem, e zera a cada holerite (D25).
+  if (AREA_GESTAO === 'folha') {
+    for (const nome of ['saldo', 'data']) $('f-conta').elements[nome].closest('.campo').hidden = true;
+  }
+  $('b-criar-conta').textContent = t.criar;
+  $('f-conta').insertAdjacentHTML('beforeend', '<p class="aviso erro" id="aviso-nova-conta" hidden></p>');
+  // O botão de criar mora na barra da página, ao lado de lançar e transferir.
+  document.querySelector('.acoes-topo')?.insertAdjacentHTML(
+    'beforeend',
+    `<button type="button" id="b-nova-conta">${t.novo}</button>`
+  );
+}
 
 const SINGULAR = { contas: 'conta', categorias: 'categoria', etiquetas: 'etiqueta', detalhes: 'detalhe' };
 
@@ -51,7 +102,8 @@ let fundindo = null; // "especie:id" escolhendo em qual outro fundir
 // ── abas ──────────────────────────────────────────────────────────────────
 
 function mostrarAba(nome) {
-  for (const aba of document.querySelectorAll('[data-aba]')) {
+  if (!$('abas-config')) return;
+  for (const aba of $('abas-config').querySelectorAll('[data-aba]')) {
     const atual = aba.dataset.aba === nome;
     aba.setAttribute('aria-selected', String(atual));
     aba.tabIndex = atual ? 0 : -1;
@@ -62,14 +114,14 @@ function mostrarAba(nome) {
   if (location.hash !== `#${nome}`) history.replaceState(null, '', `#${nome}`);
 }
 
-for (const aba of document.querySelectorAll('[data-aba]')) {
+for (const aba of $('abas-config')?.querySelectorAll('[data-aba]') ?? []) {
   aba.addEventListener('click', () => mostrarAba(aba.dataset.aba));
 }
 
 // Seta anda entre abas, que é o que o teclado espera de uma tablist.
-document.querySelector('.abas').addEventListener('keydown', (e) => {
+$('abas-config')?.addEventListener('keydown', (e) => {
   if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
-  const abas = [...document.querySelectorAll('[data-aba]')];
+  const abas = [...$('abas-config').querySelectorAll('[data-aba]')];
   const atual = abas.findIndex((a) => a.getAttribute('aria-selected') === 'true');
   const proxima = abas[(atual + (e.key === 'ArrowRight' ? 1 : abas.length - 1)) % abas.length];
   mostrarAba(proxima.dataset.aba);
@@ -86,40 +138,13 @@ async function recarregar() {
 
 function pintar() {
   pintarPagadoras();
-  pintarContas();
-  pintarCategorias();
-  pintarEtiquetas();
-  pintarDetalhes();
-  pintarDonos();
+  if ($('lista-contas')) pintarContas();
+  if ($('lista-categorias')) pintarCategorias();
+  if ($('lista-etiquetas')) pintarEtiquetas();
+  if ($('lista-detalhes')) pintarDetalhes();
+  if ($('donos')) pintarDonos();
   pintarContadores();
-  pintarProximoPasso();
 }
-
-/**
- * O que falta pra começar a lançar, dito uma vez e no lugar certo. Não é
- * convite pra configurar coisa opcional (08-telas §2 proíbe isso) — conta e
- * categoria são o mínimo sem o qual a captura não funciona.
- */
-function pintarProximoPasso() {
-  const temConta = Object.values(app.contas).some((c) => !c.arquivada);
-  const temCategoria = Object.values(app.categorias).some((c) => !c.arquivada);
-
-  dizer($('proximo-contas'), temConta && !temCategoria,
-    'As contas estão de pé. Falta uma categoria pra poder lançar — <button type="button" class="elo" data-ir="categorias">criar categorias</button>.');
-
-  dizer($('proximo-categorias'), temCategoria && !temConta,
-    'As categorias estão de pé. Falta a conta de onde o dinheiro sai — <button type="button" class="elo" data-ir="contas">criar contas</button>.');
-}
-
-function dizer(elemento, mostrar, html) {
-  elemento.hidden = !mostrar;
-  if (mostrar) elemento.innerHTML = html;
-}
-
-document.addEventListener('click', (e) => {
-  const atalho = e.target.closest('[data-ir]');
-  if (atalho) mostrarAba(atalho.dataset.ir);
-});
 
 function pintarContadores() {
   const quantos = {
@@ -129,7 +154,8 @@ function pintarContadores() {
     detalhes: Object.values(app.detalhes ?? {}).filter((d) => !d.arquivado).length,
   };
   for (const [especie, n] of Object.entries(quantos)) {
-    document.querySelector(`[data-contador="${especie}"]`).textContent = n || '';
+    const contador = document.querySelector(`[data-contador="${especie}"]`);
+    if (contador) contador.textContent = n || '';
   }
 }
 
@@ -145,7 +171,8 @@ function pintarDonos() {
  * "quanto eu tenho em caixa"; três blocos com subtotal respondem sem contar
  * nada na cabeça.
  */
-const BLOCOS_DE_CONTA = AREAS.map((a) => ({ ...a, titulo: a.titulo.toLowerCase() }));
+const BLOCOS_DE_CONTA = AREAS.map((a) => ({ ...a, titulo: a.titulo.toLowerCase() }))
+  .filter((a) => !AREA_GESTAO || a.id === AREA_GESTAO);
 
 /**
  * O número da conta na lista. Na dívida é o saldo devedor (da foto ou estimado
@@ -160,9 +187,11 @@ function valorDaConta(c) {
 }
 
 function pintarContas() {
-  const contas = Object.values(app.contas);
+  // Na página de uma área, só as contas dela.
+  const tiposDaArea = AREA_GESTAO ? AREAS.find((a) => a.id === AREA_GESTAO).tipos : null;
+  const contas = Object.values(app.contas).filter((c) => !tiposDaArea || tiposDaArea.includes(c.tipo));
   if (!contas.length) {
-    $('lista-contas').innerHTML = vazio('Nenhuma conta ainda. Comece pelas que você olha toda semana.');
+    $('lista-contas').innerHTML = vazio(`Nenhuma ainda. Crie no botão "${TEXTOS[AREA_GESTAO]?.novo ?? 'Nova conta'}", lá em cima.`);
     return;
   }
 
@@ -213,12 +242,13 @@ function pintarContas() {
   const ativas = contas.filter((c) => !c.arquivada).sort(porNome);
   const arquivadas = contas.filter((c) => c.arquivada).sort(porNome);
 
-  let html = cabecalhoDeColunas(['conta', 'tipo e dono', 'saldo', 'uso']);
+  let html = cabecalhoDeColunas(['conta', 'tipo e dono', AREA_GESTAO === 'dividas' ? 'devedor' : 'saldo', 'uso']);
 
   for (const bloco of BLOCOS_DE_CONTA) {
     const doBloco = ativas.filter((c) => bloco.tipos.includes(c.tipo));
     if (!doBloco.length) continue;
-    html += divisor(bloco.titulo, doBloco.length, bloco.id);
+    // Na página da área o divisor repetiria o título da seção.
+    if (!AREA_GESTAO) html += divisor(bloco.titulo, doBloco.length, bloco.id);
     html += doBloco.map(desenhar).join('');
     // Subtotal só quando há o que somar: com uma conta só, ele repetiria a linha.
     if (doBloco.length > 1) {
@@ -616,7 +646,7 @@ function corrigirSaldoInicial(id, item) {
 
 // ── criar ─────────────────────────────────────────────────────────────────
 
-$('f-categoria').addEventListener('submit', (e) =>
+$('f-categoria')?.addEventListener('submit', (e) =>
   criar(e, 'categorias', (nome, campos) => [
     'categoria.criada',
     {
@@ -627,15 +657,15 @@ $('f-categoria').addEventListener('submit', (e) =>
   ])
 );
 
-$('f-etiqueta').addEventListener('submit', (e) =>
+$('f-etiqueta')?.addEventListener('submit', (e) =>
   criar(e, 'etiquetas', (nome) => ['etiqueta.criada', { id: novoId('etq'), nome }])
 );
 
-$('f-detalhe').addEventListener('submit', (e) =>
+$('f-detalhe')?.addEventListener('submit', (e) =>
   criar(e, 'detalhes', (nome) => ['detalhe.criado', { id: novoId('det'), nome }])
 );
 
-$('f-conta').addEventListener('submit', (e) =>
+$('f-conta')?.addEventListener('submit', (e) =>
   criar(e, 'contas', async (nome, campos) => {
     const tipo = campos.tipo.value;
     const dados = {
@@ -724,6 +754,8 @@ async function criar(e, especie, montar) {
     if (especie === 'contas') {
       campos.data.value = hoje();
       mostrarCamposDeCartao();
+      // Criada a conta, a janela fecha: a lista embaixo já mostra ela.
+      if ($('dialogo-nova-conta')?.open) $('dialogo-nova-conta').close();
     }
     if (natureza) pintarPilulas(natureza);
     avisar('');
@@ -746,7 +778,11 @@ function mostrarCamposDeCartao() {
   // A dica fala do campo que está na tela: no cartão, não existe "saldo".
   $('dica-conta').innerHTML = cartao
     ? '<strong>O valor é o que já está na fatura aberta hoje</strong>: as compras de antes de o cartão entrar no app. Dali pra frente, cada compra lançada cai na fatura certa sozinha.'
-    : DICA_DO_SALDO;
+    : tipo === 'divida'
+      ? '<strong>O saldo devedor é o que o banco mostra hoje</strong>, se você souber — é a foto que manda. Sem ele, o app estima pelo contrato.'
+      : tipo === 'folha'
+        ? '<strong>Uma fonte de renda por origem</strong>: o salário, o contrato PJ, os atendimentos. O holerite de cada uma se lança na tela de Renda.'
+        : DICA_DO_SALDO;
 }
 
 /**
@@ -803,7 +839,7 @@ function abrirContrato(id) {
   f.tomado.focus();
 }
 
-$('f-contrato').addEventListener('submit', async (e) => {
+$('f-contrato')?.addEventListener('submit', async (e) => {
   if (e.submitter?.value !== 'salvar') return;
   e.preventDefault();
   const id = contratoDe;
@@ -848,7 +884,7 @@ function pintarPagadoras() {
   }
 }
 
-const DICA_DO_SALDO = $('dica-conta').innerHTML;
+const DICA_DO_SALDO = $('dica-conta')?.innerHTML ?? '';
 
 // ── o ciclo de um cartão que já existe ────────────────────────────────────
 
@@ -868,7 +904,7 @@ function abrirCiclo(id) {
   f.fechamento.focus();
 }
 
-$('dialogo-ciclo').addEventListener('close', async () => {
+$('dialogo-ciclo')?.addEventListener('close', async () => {
   const id = cicloDe;
   cicloDe = null;
   if (!id || $('dialogo-ciclo').returnValue !== 'salvar') return;
@@ -889,7 +925,19 @@ $('dialogo-ciclo').addEventListener('close', async () => {
   await recarregar();
 });
 
-$('f-conta').elements.tipo.addEventListener('change', mostrarCamposDeCartao);
+$('f-conta')?.elements.tipo.addEventListener('change', mostrarCamposDeCartao);
+
+// "Nova conta", "Novo cartão", "Novo empréstimo"… — a janela de criar da área.
+$('b-nova-conta')?.addEventListener('click', () => {
+  $('f-conta').reset();
+  $('f-conta').elements.data.value = hoje();
+  avisar('');
+  mostrarCamposDeCartao();
+  pintarPagadoras();
+  $('dialogo-nova-conta').showModal();
+  $('f-conta').elements.nome.focus();
+});
+$('b-cancelar-conta')?.addEventListener('click', () => $('dialogo-nova-conta').close());
 
 /** As áreas escolhidas no formulário de criar. */
 const areasDaNova = () =>
@@ -900,7 +948,7 @@ function pintarObrigatoriaNova() {
   $('obrigatoria-nova').hidden = !(despesa && areasDaNova().includes('folha'));
 }
 
-$('areas-nova').addEventListener('click', (e) => {
+$('areas-nova')?.addEventListener('click', (e) => {
   const b = e.target.closest('[data-area-nova]');
   if (!b) return;
   const ligado = b.getAttribute('aria-pressed') === 'true';
@@ -920,7 +968,7 @@ function pintarPilulas(natureza) {
   pintarObrigatoriaNova();
 }
 
-$('f-categoria').querySelector('.pilulas').addEventListener('click', (e) => {
+$('f-categoria')?.querySelector('.pilulas').addEventListener('click', (e) => {
   const botao = e.target.closest('[data-natureza]');
   if (botao) pintarPilulas(botao.dataset.natureza);
 });
@@ -939,8 +987,10 @@ function formatarSimples(centavos) {
   return `${negativo ? '−' : ''}R$ ${reais},${String(abs % 100).padStart(2, '0')}`;
 }
 
+/** O aviso vai para onde se está olhando: a janela de criar, se aberta. */
 function avisar(mensagem) {
-  const el = $('aviso');
+  const el = $('dialogo-nova-conta')?.open ? $('aviso-nova-conta') : $('aviso');
+  if (!el) return;
   el.textContent = mensagem;
   el.hidden = !mensagem;
 }
@@ -952,7 +1002,7 @@ function avisarComAcao(mensagem, botaoHTML) {
   el.hidden = false;
 }
 
-$('aviso').addEventListener('click', async (e) => {
+$('aviso')?.addEventListener('click', async (e) => {
   const b = e.target.closest('[data-desfazer-fusao]');
   if (!b) return;
   await estado.aplicarEvento('fusao.desfeita', { id: b.dataset.desfazerFusao });
@@ -972,26 +1022,15 @@ for (const [lista, especie] of [
   ['lista-etiquetas', 'etiquetas'],
   ['lista-detalhes', 'detalhes'],
 ]) {
-  ligarLista(lista, especie);
+  if ($(lista)) ligarLista(lista, especie);
 }
 
-/**
- * O aparelho se registra sozinho: o id dele vai em cada evento, e pedir isso
- * numa tela de cadastro é burocracia — ninguém abre um app de finanças pra dar
- * nome ao computador. Renomear fica na página de verificação, e o pareamento
- * de verdade é da sincronização (Fase 4).
- */
-async function garantirAparelho() {
-  if (await log.aparelho()) return;
-  const toque = navigator.maxTouchPoints > 1;
-  await log.registrarAparelho(toque ? 'Celular' : 'PC');
+mostrarAba(location.hash.slice(1) || 'categorias');
+if ($('f-conta')) {
+  $('f-conta').elements.data.value = hoje();
+  mostrarCamposDeCartao();
 }
-
-mostrarAba(location.hash.slice(1) || 'contas');
-$('f-conta').elements.data.value = hoje();
-mostrarCamposDeCartao();
-await garantirAparelho();
 await recarregar();
-
-instalarServiceWorker();
-await iniciarSincronia({ raiz: $('nuvem') });
+// O que muda em outra parte da página (um lançamento, um contrato) muda o uso
+// e os saldos daqui.
+estado.aoAplicar(() => recarregar());

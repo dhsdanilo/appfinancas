@@ -1,9 +1,12 @@
-// Extrato — R1. A base de tudo: o que aconteceu, e o que ainda vai acontecer.
+// As telas de dinheiro: Início, Lançamentos e as cinco áreas (Contas, Cartões,
+// Renda, Investimentos, Dívidas). design/08-telas §1 e §4.1, reestruturado em
+// 03/10/2026.
 //
-// Em abas pela natureza da conta, sub-abas pela conta, e um período que vale
-// para todas (design/08-telas §4.1). Saldo de corrente, fatura de cartão,
-// investimento e folha são números diferentes: lado a lado, eles se somariam
-// na cabeça de quem lê.
+// Uma tela por natureza de dinheiro, cada uma com a sua cor: saldo de
+// corrente, fatura de cartão, investimento e folha são números diferentes, e
+// lado a lado eles se somariam na cabeça de quem lê. Lançamentos é a lista
+// única (R1), com busca e filtros; Início é o resumo e a fila do que precisa
+// de você.
 
 import * as estado from './core/estado.js';
 import { dinheiroHTML } from './app/dinheiro-html.js';
@@ -17,8 +20,9 @@ import { criarHolerite } from './app/holerite.js';
 import { linhasDoHolerite, lancadosNoMes } from './core/holerite.js';
 import { situacao, saldoDevedor, jurosDaParcela } from './core/divida.js';
 import { fotografar } from './app/contrato.js';
-import { instalarServiceWorker } from './app/instalar.js';
-import { iniciarSincronia } from './app/sincronia-viva.js';
+import { aoLancar } from './app/pagina.js';
+import { BARRA, PRINCIPAL, DIALOGOS } from './app/marcacao-dinheiro.js';
+import { rendaDisponivel } from './core/holerite.js';
 import {
   visiveis, porDataDecrescente, estadoDoLancamento, saldoReal, nomeDaCategoria,
   sinalDeSaida, ehTransferencia, dataVista, estornado,
@@ -34,6 +38,17 @@ import {
 
 const $ = (id) => document.getElementById(id);
 
+// Que tela é esta: a página diz no <body data-pagina>.
+const PAGINA = document.body.dataset.pagina ?? 'lancamentos';
+const AREA_DA_PAGINA = {
+  contas: 'caixa', cartoes: 'cartoes', renda: 'folha', investimentos: 'investimentos', dividas: 'dividas',
+};
+const PAGINA_DA_AREA = Object.fromEntries(Object.entries(AREA_DA_PAGINA).map(([p, a]) => [a, p]));
+const AREA = AREA_DA_PAGINA[PAGINA] ?? null;
+
+$('principal').innerHTML = BARRA + PRINCIPAL;
+document.body.insertAdjacentHTML('beforeend', DIALOGOS);
+
 function escapar(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
@@ -44,7 +59,7 @@ function escapar(s) {
 // volta pra ela. Guardada no aparelho, e só como conveniência — se o
 // navegador recusar, a tela abre no padrão e funciona igual.
 
-const CHAVE_VISTA = 'extrato.vista';
+const CHAVE_VISTA = `dinheiro.vista.${PAGINA}`;
 
 function lerVista() {
   try {
@@ -57,8 +72,12 @@ function lerVista() {
 }
 
 const vista = {
-  aba: 'caixa',
+  aba: AREA ?? 'caixa',
   conta: 'todas',
+  // Só em Lançamentos: os filtros da lista única (R1).
+  area: 'todas',
+  busca: '',
+  categoria: '',
   modo: 'mes',
   mes: hoje().slice(0, 7),
   de: inicioDoMes(hoje()),
@@ -73,6 +92,7 @@ function guardarVista() {
   try {
     localStorage.setItem(CHAVE_VISTA, JSON.stringify({
       aba: vista.aba, conta: vista.conta, modo: vista.modo, de: vista.de, ate: vista.ate,
+      area: vista.area, categoria: vista.categoria,
     }));
   } catch {
     // sem armazenamento: a vista só não sobrevive ao recarregar
@@ -97,12 +117,19 @@ const previstosNaTela = new Map();
 async function pintar() {
   app = await estado.calcular();
   previstosNaTela.clear();
-  fila?.pintar(app);
+  // A fila do que precisa de você mora no Início (08-telas §6).
+  if (PAGINA === 'inicio') fila?.pintar(app);
+  else $('pendencias').hidden = true;
 
-  const abas = ABAS.filter((a) => contasDaAba(a).length);
-  // O menu mostra só o que existe (08-telas §2).
-  if (abas.length && !abas.some((a) => a.id === vista.aba)) vista.aba = abas[0].id;
-  const aba = ABAS.find((a) => a.id === vista.aba) ?? ABAS[0];
+  if (PAGINA === 'inicio') return pintarInicio();
+  if (PAGINA === 'lancamentos') return pintarLancamentos();
+  return pintarArea();
+}
+
+/** Uma área: Contas, Cartões, Renda, Investimentos ou Dívidas. */
+function pintarArea() {
+  vista.aba = AREA;
+  const aba = ABAS.find((a) => a.id === AREA);
   const contas = contasDaAba(aba);
   if (vista.conta !== 'todas' && !contas.some((c) => c.id === vista.conta)) vista.conta = 'todas';
 
@@ -110,17 +137,20 @@ async function pintar() {
   // "novo lançamento", que por isso abre nela.
   $('painel').dataset.area = aba.id;
   $('barra-acoes').dataset.area = aba.id;
-  pintarAbas(abas);
+  document.body.dataset.area = aba.id;
   pintarSubabas(contas);
   pintarPeriodo();
 
   const foco = vista.conta === 'todas' ? contas : contas.filter((c) => c.id === vista.conta);
-  if (!abas.length) {
-    $('resumo').innerHTML = '<p class="vazio">Nenhuma conta. Crie na <a href="bancada.html">bancada</a>.</p>';
-    $('lista').innerHTML = '';
-    $('totais').textContent = '';
+  if (!contas.length) {
+    // A tela vazia ensina o próximo passo, sem culpa (08-telas §9).
+    $('resumo').innerHTML = `<p class="vazio">${escapar(VAZIO_DA_AREA[AREA])}</p>`;
+    $('parte-lista').hidden = true;
+    $('periodo').hidden = true;
     return;
   }
+  $('parte-lista').hidden = false;
+  $('periodo').hidden = false;
 
   if (aba.id === 'cartoes') {
     pintarResumoDeCartoes(foco);
@@ -134,6 +164,156 @@ async function pintar() {
   guardarVista();
 }
 
+const VAZIO_DA_AREA = {
+  caixa: 'Nenhuma conta ainda. Comece pela que você mais usa — o botão "Nova conta" fica aqui em cima.',
+  cartoes: 'Nenhum cartão ainda. Com o dia de fechamento e de vencimento, cada compra cai na fatura certa.',
+  folha: 'Nenhuma fonte de renda ainda. Uma para cada: o salário, o contrato PJ, os atendimentos.',
+  investimentos: 'Nenhum investimento ainda.',
+  dividas: 'Nenhum empréstimo ainda. Com o contrato, o app gera as parcelas e acompanha o saldo devedor.',
+};
+
+// ── Início: o resumo de cada área e o que precisa de você ─────────────────
+
+function pintarInicio() {
+  for (const parte of ['subabas', 'periodo', 'parte-lista', 'filtros']) $(parte).hidden = true;
+  delete $('painel').dataset.area;
+
+  const blocos = [];
+  for (const area of ABAS) {
+    const contas = contasDaAba(area);
+    if (!contas.length) continue;
+    blocos.push(cartaoDoInicio(area, contas));
+  }
+  $('resumo').innerHTML = blocos.length
+    ? `<div class="blocos">${blocos.join('')}</div>`
+    : '<p class="vazio">Nada por aqui ainda. Comece criando uma conta em <a href="contas.html">Contas</a> e as categorias em <a href="configuracoes.html">Configurações</a>.</p>';
+  guardarVista();
+}
+
+/** Um cartão por área, com o número que importa nela, levando à tela dela. */
+function cartaoDoInicio(area, contas) {
+  const linhas = [];
+  if (area.id === 'caixa') {
+    const ps = contas.map((c) => saldoPrevisto(app, c.id));
+    const real = ps.reduce((t, p) => t + p.real, 0);
+    const previsto = ps.reduce((t, p) => t + p.previsto, 0);
+    const estimado = ps.some((p) => p.estimado);
+    linhas.push(linhaDeResumo('saldo real', dinheiroHTML(real), real < 0 ? 'negativo' : ''));
+    linhas.push(linhaDeResumo(`previsto até ${diaCurto(ps[0].ate)}`, dinheiroHTML(previsto, { estimado }), previsto < 0 ? 'negativo' : ''));
+  }
+  if (area.id === 'cartoes') {
+    let aberta = 0;
+    let fechada = 0;
+    for (const c of contas) {
+      const r = resumoDoCartao(app, c.id);
+      if (!r) continue;
+      aberta += r.aberta?.aPagar ?? 0;
+      fechada += r.fechada?.aPagar ?? 0;
+    }
+    if (fechada) linhas.push(linhaDeResumo('faturas fechadas a pagar', dinheiroHTML(fechada), 'negativo'));
+    linhas.push(linhaDeResumo('faturas abertas', dinheiroHTML(aberta)));
+  }
+  if (area.id === 'folha') {
+    const mes = hoje().slice(0, 7);
+    const doMes = visiveis(app).filter(
+      (l) => contas.some((c) => c.id === l.contaId) && l.dataCompetencia.slice(0, 7) === mes
+    );
+    linhas.push(linhaDeResumo(`renda disponível de ${nomeDoMes(mes).split(' ')[0]}`, dinheiroHTML(rendaDisponivel(app, doMes))));
+    const faltam = contas.filter((c) => linhasDoHolerite(app, c.id, mes).length).length;
+    if (faltam) linhas.push(linhaDeResumo('holerites a lançar', String(faltam), 'abate'));
+  }
+  if (area.id === 'investimentos') {
+    const total = contas.reduce((t, c) => t + saldoReal(app, c.id), 0);
+    linhas.push(linhaDeResumo('total', dinheiroHTML(total)));
+  }
+  if (area.id === 'dividas') {
+    const total = contas.reduce((t, c) => t + (saldoDevedor(app, c.id) ?? 0), 0);
+    linhas.push(linhaDeResumo('saldo devedor', dinheiroHTML(total, { estimado: contas.some((c) => situacao(app, c.id)?.estimado) })));
+  }
+  const titulo = { caixa: 'Contas', cartoes: 'Cartões', folha: 'Renda', investimentos: 'Investimentos', dividas: 'Dívidas' }[area.id];
+  return `<a class="bloco bloco-link" href="${PAGINA_DA_AREA[area.id]}.html" data-area="${area.id}">
+    <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(titulo)}</p>
+    <dl>${linhas.join('')}</dl>
+  </a>`;
+}
+
+// ── Lançamentos: a lista única (R1), com busca e filtros ──────────────────
+
+function pintarLancamentos() {
+  $('subabas').hidden = true;
+  $('filtros').hidden = false;
+  $('parte-lista').hidden = false;
+  $('resumo').innerHTML = '';
+  delete $('painel').dataset.area;
+  pintarPeriodo();
+  pintarFiltros();
+
+  const { de, ate } = intervalo();
+  const noPeriodo = (dia) => dia >= de && dia <= ate;
+  const area = ABAS.find((a) => a.id === vista.area);
+  const contas = Object.values(app.contas).filter(
+    (c) => (!area || area.tipos.includes(c.tipo)) && (!vista.conta || vista.conta === 'todas' || c.id === vista.conta)
+  );
+  const ids = new Set(contas.map((c) => c.id));
+  const busca = vista.busca.trim().toLocaleLowerCase('pt-BR');
+
+  const candidatas = [
+    ...visiveis(app),
+    ...ocorrenciasPrevistas(app, de, ate),
+  ].filter((l) => (ids.has(l.contaId) || ids.has(l.contaDestinoId)) && noPeriodo(dataVista(l)));
+
+  const linhas = candidatas
+    .filter((l) => !vista.categoria || l.categoriaId === vista.categoria)
+    .filter((l) => !busca || textoDaLinha(l).includes(busca))
+    .sort((a, b) => {
+      const da = dataVista(a);
+      const db = dataVista(b);
+      return da !== db ? (da < db ? 1 : -1) : a.id < b.id ? 1 : -1;
+    });
+
+  // Com uma conta só, cada linha leva o saldo depois dela.
+  const umaConta = contas.length === 1 && contas[0].tipo !== 'cartao' ? contas[0] : null;
+  const saldoApos = umaConta ? saldosCorridos(umaConta) : null;
+  $('lista').innerHTML = linhas.length
+    ? linhas.map((l) => linhaHTML(l, ids, saldoApos)).join('')
+    : `<li class="vazio">Nada ${busca || vista.categoria ? 'com estes filtros' : vista.modo === 'mes' ? `em ${nomeDoMes(vista.mes)}` : 'neste período'}.</li>`;
+  pintarTotais(linhas, ids);
+  guardarVista();
+}
+
+/** O texto em que a busca procura: categoria, detalhe, contas, observação, valor. */
+function textoDaLinha(l) {
+  return [
+    nomeDaCategoria(app, l.categoriaId),
+    app.detalhes?.[l.detalheId]?.nome,
+    app.contas[l.contaId]?.nome,
+    app.contas[l.contaDestinoId]?.nome,
+    l.observacao,
+    formatar(l.valor),
+    ...(l.etiquetas ?? []).map((t) => app.etiquetas?.[t]?.nome),
+  ].filter(Boolean).join(' ').toLocaleLowerCase('pt-BR');
+}
+
+function pintarFiltros() {
+  const comContas = ABAS.filter((a) => contasDaAba(a).length);
+  $('filtro-area').innerHTML =
+    '<option value="todas">todas as áreas</option>' +
+    comContas.map((a) => `<option value="${a.id}"${a.id === vista.area ? ' selected' : ''}>${escapar(a.titulo)}</option>`).join('');
+  const area = ABAS.find((a) => a.id === vista.area);
+  const contas = Object.values(app.contas)
+    .filter((c) => !area || area.tipos.includes(c.tipo))
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  if (vista.conta !== 'todas' && !contas.some((c) => c.id === vista.conta)) vista.conta = 'todas';
+  $('filtro-conta').innerHTML =
+    '<option value="todas">todas as contas</option>' +
+    contas.map((c) => `<option value="${escapar(c.id)}"${c.id === vista.conta ? ' selected' : ''}>${escapar(c.nome)}</option>`).join('');
+  const categorias = Object.values(app.categorias).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  $('filtro-categoria').innerHTML =
+    '<option value="">todas as categorias</option>' +
+    categorias.map((c) => `<option value="${escapar(c.id)}"${c.id === vista.categoria ? ' selected' : ''}>${escapar(c.nome)}</option>`).join('');
+  if ($('filtro-busca').value !== vista.busca) $('filtro-busca').value = vista.busca;
+}
+
 /**
  * As contas de uma aba. Cartão arquivado continua aparecendo enquanto tiver
  * fatura a pagar: a última fatura do cartão velho ainda é dívida.
@@ -143,15 +323,6 @@ function contasDaAba(aba) {
     .filter((c) => aba.tipos.includes(c.tipo))
     .filter((c) => !c.arquivada || (c.tipo === 'cartao' && (resumoDoCartao(app, c.id)?.divida ?? 0) > 0))
     .sort((a, b) => (a.nome.toLocaleLowerCase('pt-BR') < b.nome.toLocaleLowerCase('pt-BR') ? -1 : 1));
-}
-
-function pintarAbas(abas) {
-  $('abas').innerHTML = abas
-    .map(
-      (a) => `<button type="button" role="tab" data-aba="${a.id}" data-area="${a.id}" aria-selected="${a.id === vista.aba}"
-        tabindex="${a.id === vista.aba ? 0 : -1}"><span class="ponto-area" aria-hidden="true"></span>${escapar(a.titulo)}</button>`
-    )
-    .join('');
 }
 
 function pintarSubabas(contas) {
@@ -247,13 +418,13 @@ function blocoDeCartao(c) {
   const pagadora = app.contas[c.pagaCom];
   const rodape = pagadora
     ? `paga com ${escapar(pagadora.nome)}`
-    : 'sem conta que paga — <a href="bancada.html#contas">defina o “paga com”</a> pra fatura pesar no saldo previsto';
+    : 'sem conta que paga — <a href="#gestao">defina o “paga com”</a> pra fatura pesar no saldo previsto';
 
   if (!temCiclo(c)) {
     return `<div class="bloco">
       <p class="nome-bloco">${escapar(c.nome)}</p>
       <p class="aviso-bloco">Sem dia de fechamento e de vencimento, o app não sabe a qual
-        fatura cada compra pertence. <a href="bancada.html#contas">Defina o ciclo na bancada</a>.</p>
+        fatura cada compra pertence. <a href="#gestao">Defina o ciclo em "Seus cartões"</a>.</p>
       <dl>${linhaDeResumo('em aberto', dinheiroHTML(saldoReal(app, c.id)), saldoReal(app, c.id) < 0 ? 'negativo' : '')}</dl>
     </div>`;
   }
@@ -339,7 +510,7 @@ function blocoDeDivida(c) {
       <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(c.nome)}</p>
       <dl>${linhaDeResumo('saldo devedor', devedor != null ? dinheiroHTML(devedor) : '—')}</dl>
       <p class="aviso-bloco">Sem contrato: o app não sabe as parcelas nem estima o saldo.
-        <a href="bancada.html#contas">Cadastre o contrato na bancada</a>.</p>
+        <a href="#gestao">Cadastre o contrato em "Seus empréstimos"</a>.</p>
       ${pe}
     </div>`;
   }
@@ -871,14 +1042,16 @@ async function abrir() {
 }
 
 /**
- * A conta em que o "novo lançamento" abre: a da sub-aba, se houver uma em
- * foco; em "Todas", a mais usada da área. Trocar continua livre na captura.
+ * A conta em que o "novo lançamento" abre: a da sub-aba (ou do filtro), se
+ * houver uma em foco; senão, a mais usada da área — ou de todas, no Início e
+ * em Lançamentos. Trocar continua livre na captura.
  */
 function contaDaVista() {
   if (!app) return null;
   if (vista.conta !== 'todas' && app.contas[vista.conta]) return vista.conta;
-  const aba = ABAS.find((a) => a.id === vista.aba);
-  const contas = aba ? contasDaAba(aba).filter((c) => !c.arquivada) : [];
+  const area = AREA ?? (PAGINA === 'lancamentos' && vista.area !== 'todas' ? vista.area : null);
+  const aba = ABAS.find((a) => a.id === area);
+  const contas = (aba ? contasDaAba(aba) : Object.values(app.contas)).filter((c) => !c.arquivada);
   if (!contas.length) return null;
   const usos = new Map();
   for (const l of visiveis(app)) usos.set(l.contaId, (usos.get(l.contaId) ?? 0) + 1);
@@ -888,25 +1061,26 @@ function contaDaVista() {
 $('b-novo').addEventListener('click', abrir);
 $('b-fechar').addEventListener('click', () => dialogo.close());
 
-// ── abas, sub-abas e período ──────────────────────────────────────────────
+// ── sub-abas, filtros e período ───────────────────────────────────────────
 
-$('abas').addEventListener('click', (e) => {
-  const aba = e.target.closest('[data-aba]');
-  if (!aba) return;
-  vista.aba = aba.dataset.aba;
+// Os filtros de Lançamentos: a busca pinta enquanto se digita; o resto, ao
+// escolher.
+$('filtro-busca').addEventListener('input', () => {
+  vista.busca = $('filtro-busca').value;
+  pintar();
+});
+$('filtro-area').addEventListener('change', () => {
+  vista.area = $('filtro-area').value;
   vista.conta = 'todas';
   pintar();
 });
-
-// Seta anda entre abas, que é o que o teclado espera de uma tablist.
-$('abas').addEventListener('keydown', (e) => {
-  if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
-  const abas = [...$('abas').querySelectorAll('[data-aba]')];
-  const atual = abas.findIndex((a) => a.dataset.aba === vista.aba);
-  const proxima = abas[(atual + (e.key === 'ArrowRight' ? 1 : abas.length - 1)) % abas.length];
-  vista.aba = proxima.dataset.aba;
-  vista.conta = 'todas';
-  pintar().then(() => $('abas').querySelector(`[data-aba="${vista.aba}"]`)?.focus());
+$('filtro-conta').addEventListener('change', () => {
+  vista.conta = $('filtro-conta').value;
+  pintar();
+});
+$('filtro-categoria').addEventListener('change', () => {
+  vista.categoria = $('filtro-categoria').value;
+  pintar();
 });
 
 $('subabas').addEventListener('click', (e) => {
@@ -970,9 +1144,8 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 't' || e.key === 'T') { e.preventDefault(); abrirTransferencia(); }
 });
 
-await pintar();
-instalarServiceWorker();
+// O "+" da barra de baixo do celular abre a captura desta tela.
+aoLancar(abrir);
 
-// Sincroniza ao abrir e a cada alteração, em segundo plano (design/06 §3).
-await iniciarSincronia({ raiz: $('nuvem') });
+await pintar();
 estado.aoAplicar(() => pintar());

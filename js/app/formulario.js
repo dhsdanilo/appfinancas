@@ -284,7 +284,7 @@ export async function criarFormulario({
               `<button type="button" data-id="${c.id}" aria-pressed="${c.id === categoriaId}">${escapar(c.nome)}</button>`
           )
           .join('')
-      : `<p class="vazio">Nenhuma categoria de ${tipo} ${nomeDaArea()}. Crie em "+ todas" ou na <a href="bancada.html#categorias">bancada</a>.</p>`;
+      : `<p class="vazio">Nenhuma categoria de ${tipo} ${nomeDaArea()}. Crie em "+ todas" ou em <a href="configuracoes.html#categorias">Configurações</a>.</p>`;
   }
 
   /**

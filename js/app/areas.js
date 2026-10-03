@@ -5,9 +5,10 @@
 export const AREAS = [
   { id: 'caixa', titulo: 'Em caixa', tipos: ['corrente', 'especie'] },
   { id: 'cartoes', titulo: 'Cartões', tipos: ['cartao'] },
+  // Renda é a área das contas de folha: uma por fonte (design/10 §2).
+  { id: 'folha', titulo: 'Renda', tipos: ['folha'] },
   { id: 'investimentos', titulo: 'Investimentos', tipos: ['investimento'] },
   { id: 'dividas', titulo: 'Dívidas', tipos: ['divida'] },
-  { id: 'folha', titulo: 'Folha', tipos: ['folha'] },
 ];
 
 export const areaDaConta = (conta) => AREAS.find((a) => a.tipos.includes(conta?.tipo))?.id ?? '';
