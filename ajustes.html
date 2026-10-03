@@ -58,25 +58,31 @@
     <div class="campo largo">
       <label for="p-repo">Repositório dos dados</label>
       <input type="text" id="p-repo" name="repo" autocomplete="off" spellcheck="false"
-             placeholder="pessoa/repositorio">
+             placeholder="usuario/financas-dados">
+      <small class="pista">O privado, no formato <code>dono/nome</code> — é o que vem depois
+        de <code>github.com/</code> na barra de endereços dele.</small>
     </div>
 
     <div class="campo largo">
       <label for="p-token">Token</label>
       <input type="password" id="p-token" name="token" autocomplete="off" spellcheck="false"
              placeholder="github_pat_…">
+      <small class="pista">Fica só neste aparelho. Nunca entra num lançamento, nunca sobe.</small>
     </div>
 
     <div class="campo largo">
       <label for="p-frase">Frase secreta da família</label>
       <input type="password" id="p-frase" name="frase" autocomplete="off" spellcheck="false"
              placeholder="a mesma em todos os aparelhos">
+      <small class="pista">Cifra os lançamentos antes de subirem. Guarde-a: perdida, a cópia
+        do GitHub vira ilegível.</small>
     </div>
 
     <div class="campo">
       <label for="p-aparelho">Nome deste aparelho</label>
       <input type="text" id="p-aparelho" name="aparelho" autocomplete="off"
              placeholder="PC, Celular…">
+      <small class="pista">Vira o nome do arquivo dele lá dentro.</small>
     </div>
 
     <div class="campo acao">

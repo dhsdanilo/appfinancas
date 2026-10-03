@@ -76,3 +76,16 @@
 .instrucoes ol { margin: var(--e2) 0 0; padding-left: 20px; }
 .instrucoes li { margin: var(--e2) 0; }
 .instrucoes p { margin: var(--e2) 0; max-width: var(--leitura); }
+
+/* A pista mora embaixo do campo, não no placeholder: placeholder some quando
+   se digita, e é justamente aí que a dúvida aparece. */
+.campo .pista {
+  color: var(--tinta-fraca);
+  font-size: var(--t-miudo);
+  line-height: 1.4;
+}
+.campo .pista code {
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--fundo);
+}
