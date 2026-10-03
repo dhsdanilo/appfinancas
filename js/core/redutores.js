@@ -25,7 +25,7 @@ export const AREAS_PADRAO = ['caixa', 'cartoes'];
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 17;
+export const VERSAO_ESTADO = 18;
 
 export function estadoVazio() {
   return {
@@ -236,6 +236,9 @@ export const redutores = {
       contaId: d.contaId,
       nome: d.nome,
       classe: d.classe ?? 'renda_fixa',
+      // 'valor' (CDB, Tesouro: acompanha-se o valor total) ou 'cotas' (ação,
+      // FII, cripto: quantidade e preço por unidade).
+      unidade: d.unidade ?? 'valor',
       vencimento: d.vencimento ?? null,
       avaliacoes: [],
       arquivado: false,
@@ -245,16 +248,17 @@ export const redutores = {
   'ativo.alterado'(e, d) {
     const a = e.ativos[d.id];
     if (!a) return;
-    for (const campo of ['nome', 'classe', 'vencimento', 'contaId']) {
+    for (const campo of ['nome', 'classe', 'vencimento', 'contaId', 'unidade']) {
       if (d[campo] !== undefined) a[campo] = d[campo];
     }
   },
 
   'ativo.avaliado'(e, d, evento) {
-    // O valor de hoje, informado: uma por dia, a mais nova substitui.
+    // O valor de hoje, informado: uma por dia, a mais nova substitui. No
+    // ativo por cotas vem o preço de uma unidade (a cotação), não o total.
     const a = e.ativos[d.id];
     if (!a) return;
-    a.avaliacoes = [...a.avaliacoes.filter((v) => v.data !== d.data), { data: d.data, valor: d.valor, lc: evento?.lc ?? null }]
+    a.avaliacoes = [...a.avaliacoes.filter((v) => v.data !== d.data), { data: d.data, valor: d.valor ?? null, preco: d.preco ?? null, lc: evento?.lc ?? null }]
       .sort((x, y) => (x.data < y.data ? -1 : 1));
   },
 
@@ -503,6 +507,11 @@ export const redutores = {
       parcelaDe: d.parcelaDe ?? null,
       // Aplicação, resgate e provento: o ativo de que se trata (design/10 §3.6).
       ativoId: d.ativoId ?? null,
+      // Compra e venda de um ativo por cotas: quantidade, preço de uma unidade
+      // (centavos) e taxas. O valor é o que mexeu na conta.
+      quantidade: d.quantidade ?? null,
+      preco: d.preco ?? null,
+      taxas: d.taxas ?? null,
       // No cartão: quantas faturas a compra anda para frente (+) ou para trás
       // (−) da que a data dela daria — o banco às vezes processa na vizinha.
       faturaDesloca: d.faturaDesloca ?? 0,

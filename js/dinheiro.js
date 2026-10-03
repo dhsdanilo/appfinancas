@@ -955,11 +955,18 @@ function listaDeAtivos(r) {
     return `<p class="classe-ativos"><span>${escapar(g.cl.nome)}</span><span>${formatar(total)}${aplicado ? ` · ${pctTexto(rendeu / aplicado)}` : ''}</span></p>
       ${g.ps.map((p) => {
         const a = p.ativo;
-        const sub = [
-          a.vencimento ? `vence ${diaCurto(a.vencimento)}/${a.vencimento.slice(0, 4)}` : '',
-          p.avaliacao ? `valor de ${diaCurto(p.avaliacao.data)}` : 'sem valor informado',
-          a.arquivado ? 'arquivado' : '',
-        ].filter(Boolean).join(' · ');
+        const sub = (p.porCotas
+          ? [
+            p.quantidade ? `${p.quantidade.toLocaleString('pt-BR', { maximumFractionDigits: 8 })} × ${p.cotacao ? formatar(p.cotacao.preco) : '—'}` : 'nenhuma na mão',
+            p.cotacao ? `cotação de ${diaCurto(p.cotacao.data)}` : 'sem cotação',
+            p.quantidade ? `médio ${formatar(Math.round(p.precoMedio))}` : '',
+            a.arquivado ? 'arquivado' : '',
+          ]
+          : [
+            a.vencimento ? `vence ${diaCurto(a.vencimento)}/${a.vencimento.slice(0, 4)}` : '',
+            p.avaliacao ? `valor de ${diaCurto(p.avaliacao.data)}` : 'sem valor informado',
+            a.arquivado ? 'arquivado' : '',
+          ]).filter(Boolean).join(' · ');
         return `<button type="button" class="linha-ativo ${a.arquivado ? 'arquivado' : ''}" data-ativo-abrir="${escapar(a.id)}">
           <span class="nome-ativo">${escapar(a.nome)}<span class="fino">${escapar(sub)}</span></span>
           <span class="valor-ativo">${p.estimado && p.valorAtual ? '~' : ''}${formatar(p.valorAtual)}</span>
@@ -1227,7 +1234,7 @@ function linhaHTML(l, ids, saldoApos = null) {
   const tom = transferencia ? 'transferencia' : ajuste ? 'ajuste' : devolucao ? 'receita' : entrada ? 'receita' : 'despesa';
   const marca = investimento ? (l.tipo === 'aplicacao' ? '→' : '←') : transferencia ? '→' : ajuste ? '≈' : devolucao ? '↩' : entrada ? '↑' : '↓';
   const nomeDoTom =
-    investimento ? { aplicacao: 'Aplicação', resgate: 'Resgate', provento: 'Provento' }[l.tipo]
+    investimento ? (app.ativos?.[l.ativoId]?.unidade === 'cotas' ? { aplicacao: 'Compra', resgate: 'Venda', provento: 'Provento' } : { aplicacao: 'Aplicação', resgate: 'Resgate', provento: 'Provento' })[l.tipo]
     : l.tipo === 'pagamento_fatura' ? 'Pagamento de fatura'
       : transferencia ? 'Transferência'
         : ajuste ? 'Ajuste de caixa'
@@ -1247,8 +1254,11 @@ function linhaHTML(l, ids, saldoApos = null) {
   if (investimento) {
     // "CDB Banco · aplicação", com a conta por onde o dinheiro passou.
     const ativo = app.ativos?.[l.ativoId];
-    oque = `${ativo?.nome ?? 'Investimento'} · ${{ aplicacao: 'aplicação', resgate: 'resgate', provento: 'provento' }[l.tipo]}`;
+    const cotas = ativo?.unidade === 'cotas';
+    const nomeDaOp = (cotas ? { aplicacao: 'compra', resgate: 'venda', provento: 'provento' } : { aplicacao: 'aplicação', resgate: 'resgate', provento: 'provento' })[l.tipo];
+    oque = `${ativo?.nome ?? 'Investimento'} · ${nomeDaOp}`;
     onde = conta?.nome ?? '—';
+    if (l.quantidade) onde += ` · ${Number(l.quantidade).toLocaleString('pt-BR', { maximumFractionDigits: 8 })} × ${formatar(l.preco ?? 0)}`;
   } else if (l.fatura) {
     oque = `Fatura ${destino?.nome ?? ''}`;
     onde = `${conta?.nome ?? '—'} · fecha ${diaCurto(l.fatura.fechamento)}`;

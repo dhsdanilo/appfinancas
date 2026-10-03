@@ -784,3 +784,13 @@ body[data-pagina="investimentos"] .acoes-topo .atalho { display: none; }
 .dialogo-ativo .nota { margin: 0; }
 .operacoes-lista .linha-holerite { grid-template-columns: 48px 1fr auto auto; }
 .operacoes-lista .quando { color: var(--tinta-fraca); font-size: var(--t-apoio); }
+.dialogo-ativo .linha-operacao { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+.dialogo-ativo .linha-operacao [hidden] { display: none; }
+.dialogo-ativo .total-operacao { margin: 0; font-weight: 600; }
+.dialogo-ativo .total-operacao[hidden] { display: none; }
+.operacoes-lista .valor-lancado.positivo { color: var(--positivo); }
+.operacoes-lista .valor-lancado.negativo { color: var(--alerta); }
+/* A base dá ao campo de texto min-width de 200px: na grade de 4 colunas ele
+   estourava a janela para os lados. */
+.dialogo-ativo input,
+.dialogo-ativo select { min-width: 0; width: 100%; }

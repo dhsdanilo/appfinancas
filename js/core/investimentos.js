@@ -24,6 +24,9 @@ export const CLASSES = [
 
 export const nomeDaClasse = (id) => CLASSES.find((c) => c.id === id)?.nome ?? 'Outros';
 
+/** As classes que, por padrão, se acompanham por quantidade e preço. */
+export const CLASSES_POR_COTAS = new Set(['acoes', 'fii', 'cripto']);
+
 /** Os ativos de uma conta de investimento, os arquivados por último. */
 export function ativosDaConta(estado, contaId) {
   return Object.values(estado.ativos ?? {})
@@ -43,6 +46,7 @@ export function posicao(estado, ativoId, dia = hoje()) {
   const ativo = estado.ativos?.[ativoId];
   if (!ativo) return null;
   const ops = visiveis(estado, dia).filter((l) => l.ativoId === ativoId && l.confirmado && l.dataCompetencia <= dia);
+  if (ativo.unidade === 'cotas') return posicaoPorCotas(ativo, ops, dia);
 
   let aplicado = 0;
   let resgatado = 0;
@@ -57,7 +61,7 @@ export function posicao(estado, ativoId, dia = hoje()) {
   // — o valor informado hoje já inclui a aplicação de hoje.
   const marcos = [
     ...ops.filter((l) => l.tipo !== 'provento').map((l) => ({ data: l.dataCompetencia, ordem: 0, delta: l.tipo === 'aplicacao' ? l.valor : -l.valor })),
-    ...ativo.avaliacoes.filter((a) => a.data <= dia).map((a) => ({ data: a.data, ordem: 1, valor: a.valor })),
+    ...ativo.avaliacoes.filter((a) => a.data <= dia && a.valor != null).map((a) => ({ data: a.data, ordem: 1, valor: a.valor })),
   ].sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : a.ordem - b.ordem));
   let valorAtual = 0;
   let avaliacao = null;
@@ -88,6 +92,79 @@ export function posicao(estado, ativoId, dia = hoje()) {
     avaliacao: avaliacao ? { data: avaliacao.data, valor: avaliacao.valor } : null,
     estimado: !avaliacao || mexeuDepois,
     encerrado: valorAtual === 0 && resgatado > 0,
+  };
+}
+
+/**
+ * O ativo por cotas (ação, FII, cripto): quantidade, preço médio, valor pela
+ * cotação e cada compra com a sua variação.
+ *
+ * O preço médio é o da B3 e da Receita: a compra o recalcula, a venda não —
+ * ela tira do custo a quantidade vendida ao preço médio. Para mostrar "compra
+ * a compra", a venda consome as compras mais antigas primeiro.
+ */
+function posicaoPorCotas(ativo, ops, dia) {
+  const ordem = (l) => (l.tipo === 'aplicacao' ? 0 : 1);
+  const emOrdem = [...ops].sort((a, b) => (a.dataCompetencia < b.dataCompetencia ? -1 : a.dataCompetencia > b.dataCompetencia ? 1 : ordem(a) - ordem(b)));
+  let quantidade = 0;
+  let custo = 0;
+  let aplicado = 0;
+  let resgatado = 0;
+  let proventos = 0;
+  const lotes = [];
+  for (const l of emOrdem) {
+    const q = Number(l.quantidade) || 0;
+    if (l.tipo === 'aplicacao') {
+      aplicado += l.valor;
+      quantidade += q;
+      custo += l.valor;
+      lotes.push({ id: l.id, data: l.dataCompetencia, quantidade: q, resta: q, preco: l.preco ?? (q ? l.valor / q : 0) });
+    } else if (l.tipo === 'resgate') {
+      resgatado += l.valor;
+      const medio = quantidade ? custo / quantidade : 0;
+      const vendida = Math.min(q, quantidade);
+      custo -= medio * vendida;
+      quantidade -= vendida;
+      let falta = vendida;
+      for (const lote of lotes) {
+        if (!falta) break;
+        const tira = Math.min(lote.resta, falta);
+        lote.resta -= tira;
+        falta -= tira;
+      }
+    } else if (l.tipo === 'provento') {
+      proventos += l.valor;
+    }
+  }
+  if (quantidade < 1e-9) { quantidade = 0; custo = 0; }
+
+  const cotacoes = ativo.avaliacoes.filter((a) => a.data <= dia && a.preco != null);
+  const cotacao = cotacoes[cotacoes.length - 1] ?? null;
+  const valorAtual = cotacao ? Math.round(quantidade * cotacao.preco) : Math.round(custo);
+  const rendeu = valorAtual + resgatado + proventos - aplicado;
+  return {
+    ativo,
+    porCotas: true,
+    quantidade,
+    precoMedio: quantidade ? custo / quantidade : 0,
+    custo: Math.round(custo),
+    cotacao: cotacao ? { data: cotacao.data, preco: cotacao.preco } : null,
+    lotes: lotes.filter((x) => x.resta > 1e-9).map((x) => ({
+      ...x,
+      variacao: cotacao && x.preco ? cotacao.preco / x.preco - 1 : null,
+    })),
+    aplicado,
+    resgatado,
+    proventos,
+    valorAtual,
+    investido: Math.round(custo),
+    rendeu,
+    pct: aplicado ? rendeu / aplicado : 0,
+    // A variação do que está na mão, contra o que custou (sem o que já foi vendido).
+    variacao: custo ? valorAtual / custo - 1 : 0,
+    avaliacao: cotacao ? { data: cotacao.data, valor: valorAtual } : null,
+    estimado: !cotacao,
+    encerrado: quantidade === 0 && resgatado > 0,
   };
 }
 

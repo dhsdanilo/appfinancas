@@ -1756,6 +1756,32 @@ caso('investimento', 'conta sem ativos: o valor informado mostra quanto rendeu',
   igual([r.valorAtual, r.investido, r.rendeu], [151000, 150000, 1000], 'o rendimento da foto acompanha o aporte de depois');
 });
 
+caso('investimento', 'ação: preço médio da B3, venda pelas compras mais antigas, valor pela cotação', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const ev = (t, d) => estado.aplicarEvento(t, d);
+  await ev('conta.criada', { id: 'cc', nome: 'Corrente', tipo: 'corrente', saldoInicial: 2000000 });
+  await ev('conta.criada', { id: 'inv', nome: 'Banco', tipo: 'investimento', caixaEm: 'cc' });
+  await ev('ativo.criado', { id: 'petr', contaId: 'inv', nome: 'PETR4', classe: 'acoes', unidade: 'cotas' });
+  const op = (id, tipo, data, quantidade, preco, taxas = 0) => ev('lancamento.registrado', {
+    id, tipo, contaId: 'cc', ativoId: 'petr', dataCompetencia: data, confirmado: true, quantidade, preco, taxas,
+    valor: tipo === 'aplicacao' ? Math.round(quantidade * preco) + taxas : Math.round(quantidade * preco) - taxas,
+  });
+  await op('c1', 'aplicacao', '2025-02-01', 100, 3000, 500);
+  await op('c2', 'aplicacao', '2025-03-01', 100, 4000);
+  await op('v1', 'resgate', '2025-04-01', 50, 4500);
+  await ev('ativo.avaliado', { id: 'petr', data: '2025-04-05', preco: 4200 });
+  const e = await estado.calcular();
+  const p = investimentos.posicao(e, 'petr', '2025-04-05');
+  igual([p.quantidade, Math.round(p.precoMedio * 10) / 10], [150, 3502.5], '150 na mão; médio (3.005 + 4.000) / 200');
+  igual(p.custo, 525375, 'a venda tira 50 ao preço médio, sem mudar o médio');
+  igual(p.valorAtual, 630000, '150 × R$ 42,00');
+  igual(p.rendeu, 630000 + 225000 - 700500, 'valor + o que voltou − o que foi pago');
+  igual(p.lotes.map((l) => [l.data, l.resta]), [['2025-02-01', 50], ['2025-03-01', 100]], 'a venda consumiu a compra mais antiga');
+  igual(Math.round(p.lotes[0].variacao * 100), 40, 'a primeira compra, de R$ 30, subiu 40%');
+  igual(lanc.saldoReal(e, 'cc'), 2000000 - 300500 - 400000 + 225000, 'compra e venda pela corrente');
+});
+
 // ── apoio ─────────────────────────────────────────────────────────────────
 
 async function limpar() {
