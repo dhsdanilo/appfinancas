@@ -17,7 +17,7 @@ import { novoId } from '../core/id.js';
 import * as log from '../core/log.js';
 import * as estado from '../core/estado.js';
 import {
-  hoje, nasceConfirmado, nomeDaCategoria, correcao, detalhesDaCategoria, dataVista,
+  hoje, nasceConfirmado, nomeDaCategoria, correcao, detalhesDaCategoria, dataVista, estornado,
 } from '../core/lancamentos.js';
 import { somarDias, somarMeses } from '../core/datas.js';
 import { MARCACAO_CAMPO_VALOR, ligarCampoValor } from './campo-valor.js';
@@ -42,7 +42,18 @@ const MARCACAO = `
 
   <p class="recado" data-papel="recado" hidden></p>
 
+  <div class="atalhos-captura" data-papel="atalhos" role="group" aria-label="Atalhos" hidden></div>
+
   <div class="categorias" data-papel="categorias" role="group" aria-label="Categoria"></div>
+
+  <div class="mais-categorias">
+    <button type="button" class="elo" data-papel="b-todas-cat" aria-expanded="false">+ todas</button>
+  </div>
+  <div class="todas-categorias" data-papel="todas-categorias" hidden>
+    <div class="chips" data-papel="lista-todas-cat" role="group" aria-label="Todas as categorias"></div>
+    <input type="text" class="nova-etiqueta" data-papel="nova-categoria" autocomplete="off"
+           placeholder="criar categoria" aria-label="Criar categoria nova">
+  </div>
 
   <div class="linha-conta">
     <label class="escolha-conta" data-papel="escolha-conta">
@@ -99,6 +110,8 @@ const MARCACAO = `
 
   <p class="desfazer" data-papel="desfazer" hidden></p>
 
+  <p class="devolucao" data-papel="devolucao" hidden></p>
+
   <div class="acoes" data-papel="acoes"></div>
 
   <p class="zona-perigo" data-papel="perigo" hidden></p>
@@ -111,7 +124,9 @@ const MARCACAO = `
  * @param {Function} [opcoes.aoSalvar]   chamado depois de cada mudança gravada
  * @param {Function} [opcoes.aoFechar]   chamado quando uma ação pede pra fechar
  */
-export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiquetas = false }) {
+export async function criarFormulario({
+  raiz, acoes, aoSalvar, aoFechar, comEtiquetas = false, lembrarConta = false, aoDevolver = null,
+}) {
   raiz.innerHTML = MARCACAO;
   const el = (papel) => raiz.querySelector(`[data-papel="${papel}"]`);
 
@@ -142,6 +157,14 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
   // A série de que este lançamento é a ocorrência do mês, quando ele nasceu
   // de um previsto do extrato. Lançado, o previsto some (03-alimentacao §4).
   let daSerie = null;
+  // A ocorrência que abriu o formulário, se foi um previsto: é dela que sai a
+  // estimativa original guardada ao lançar (02 §3.6, R18).
+  let previstoDe = null;
+  // Escolheu a conta à mão? Então o app não troca por cima (03 §1: a conta
+  // lembrada por categoria é sugestão, nunca teima).
+  let contaTocada = false;
+  let todasCategorias = false;
+  const aparelho = (await log.aparelho())?.id ?? null;
 
   // ── valor ───────────────────────────────────────────────────────────────
 
@@ -181,7 +204,50 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
       .slice(0, limite);
   }
 
+  /** "+ todas": a lista inteira do tipo, e criar uma nova ali mesmo (03 §10). */
+  function pintarTodasCategorias() {
+    el('b-todas-cat').textContent = todasCategorias ? 'menos' : '+ todas';
+    el('b-todas-cat').setAttribute('aria-expanded', String(todasCategorias));
+    el('todas-categorias').hidden = !todasCategorias;
+    if (!todasCategorias) return;
+    const ehGrupo = (c) => Object.values(app.categorias).some((o) => o.pai === c.id);
+    const todas = Object.values(app.categorias)
+      .filter((c) => !c.arquivada && c.natureza === tipo && !ehGrupo(c))
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    el('lista-todas-cat').innerHTML = todas.length
+      ? todas
+          .map(
+            (c) =>
+              `<button type="button" data-id="${escapar(c.id)}" aria-pressed="${c.id === categoriaId}">${escapar(c.nome)}</button>`
+          )
+          .join('')
+      : '<span class="vazio">nenhuma ainda</span>';
+  }
+
+  async function criarCategoria(texto) {
+    const nome = texto.trim();
+    if (!nome) return;
+    const chave = nome.toLocaleLowerCase('pt-BR');
+    let existente = Object.values(app.categorias).find(
+      (c) => c.nome.trim().toLocaleLowerCase('pt-BR') === chave && c.natureza === tipo
+    );
+    if (existente?.arquivada) {
+      // Nome de uma arquivada: volta a ela em vez de criar a gêmea.
+      await estado.aplicarEvento('categoria.arquivada', { id: existente.id, arquivada: false });
+    }
+    if (!existente) {
+      const id = novoId('cat');
+      await estado.aplicarEvento('categoria.criada', { id, nome, pai: null, natureza: tipo });
+      existente = { id };
+    }
+    categoriaId = existente.id;
+    detalheId = null;
+    await recarregar();
+    valor.pintar();
+  }
+
   function pintarCategorias() {
+    pintarTodasCategorias();
     const lista = maisUsadas();
     // A categoria de um lançamento antigo pode não estar mais entre as mais
     // usadas, e ela precisa aparecer marcada: edição que não mostra o que está
@@ -206,6 +272,102 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
    * Esconder conta que o dono criou é decidir por ele.
    */
   const contasUtilizaveis = () => Object.values(app.contas).filter((c) => !c.arquivada);
+
+  /** A conta mais usada: o caso dominante, sem pedir configuração. */
+  function contaPadrao() {
+    const usos = new Map();
+    for (const l of Object.values(app.lancamentos)) {
+      if (!l.removido) usos.set(l.contaId, (usos.get(l.contaId) ?? 0) + 1);
+    }
+    return contasUtilizaveis().sort((a, b) => (usos.get(b.id) ?? 0) - (usos.get(a.id) ?? 0))[0]?.id ?? null;
+  }
+
+  /** A última conta usada nesta categoria (03 §1: "o app lembra"). */
+  function contaDaCategoria(id) {
+    const daCategoria = Object.values(app.lancamentos).filter(
+      (l) => !l.removido && l.categoriaId === id && app.contas[l.contaId] && !app.contas[l.contaId].arquivada
+    );
+    return daCategoria.length ? daCategoria[daCategoria.length - 1].contaId : null;
+  }
+
+  // ── atalhos: repetir último e favoritos (03 §1) ─────────────────────────
+  //
+  // Os dois são aprendidos, não configurados: nada a cadastrar, nada
+  // convidando a ser configurado (08-telas §2).
+
+  /** O último lançamento feito neste aparelho, se for repetível. */
+  function ultimoDaqui() {
+    const meus = Object.values(app.lancamentos).filter(
+      (l) =>
+        !l.removido && l.lancadoPor === aparelho && !l.parcela && !l.recorrenciaId &&
+        (l.tipo === 'despesa' || l.tipo === 'receita') && app.categorias[l.categoriaId]
+    );
+    return meus[meus.length - 1] ?? null;
+  }
+
+  /**
+   * As combinações que se repetem: categoria + detalhe + conta, usadas três
+   * vezes ou mais nos últimos quatro meses. Só falta o valor.
+   */
+  function favoritos() {
+    const desde = somarDias(hoje(), -120);
+    const cont = new Map();
+    for (const l of Object.values(app.lancamentos)) {
+      if (l.removido || !l.detalheId || l.parcela || l.dataCompetencia < desde) continue;
+      if (l.tipo !== 'despesa' && l.tipo !== 'receita') continue;
+      if (!app.categorias[l.categoriaId] || !app.detalhes?.[l.detalheId] || !app.contas[l.contaId]) continue;
+      const chave = [l.tipo, l.categoriaId, l.detalheId, l.contaId].join('|');
+      cont.set(chave, (cont.get(chave) ?? 0) + 1);
+    }
+    return [...cont.entries()]
+      .filter(([, n]) => n >= 3)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([chave]) => {
+        const [t, categoria, detalhe, conta] = chave.split('|');
+        return { tipo: t, categoriaId: categoria, detalheId: detalhe, contaId: conta };
+      });
+  }
+
+  function pintarAtalhos() {
+    const mostrar = !editando && !daSerie;
+    const ultimo = mostrar ? ultimoDaqui() : null;
+    const favs = mostrar ? favoritos() : [];
+    el('atalhos').hidden = !ultimo && !favs.length;
+    if (el('atalhos').hidden) return;
+    const variasContas = contasUtilizaveis().length > 1;
+    el('atalhos').innerHTML =
+      (ultimo
+        ? `<button type="button" data-atalho="repetir" title="Repetir o último lançamento">↻ ${escapar(formatar(ultimo.valor))} · ${escapar(nomeDaCategoria(app, ultimo.categoriaId))}</button>`
+        : '') +
+      favs
+        .map(
+          (f, i) =>
+            `<button type="button" data-atalho="fav" data-i="${i}">★ ${escapar(nomeDaCategoria(app, f.categoriaId))} · ${escapar(app.detalhes[f.detalheId].nome)}${variasContas ? ` <span class="fino">${escapar(app.contas[f.contaId].nome)}</span>` : ''}</button>`
+        )
+        .join('');
+    atalhosNaTela = { ultimo, favs };
+  }
+  let atalhosNaTela = { ultimo: null, favs: [] };
+
+  async function usarAtalho(qual, i) {
+    const a = qual === 'repetir' ? atalhosNaTela.ultimo : atalhosNaTela.favs[i];
+    if (!a) return;
+    tipo = a.tipo;
+    categoriaId = a.categoriaId;
+    detalheId = a.detalheId ?? null;
+    contaId = a.contaId;
+    contaTocada = true;
+    await recarregar();
+    if (qual === 'repetir') {
+      // Mesmo valor: falta só o Lançar.
+      valor.definir(a.valor);
+      valor.desfocar();
+    } else {
+      valor.focar();
+    }
+    valor.pintar();
+  }
 
   function pintarConta() {
     const contas = contasUtilizaveis();
@@ -587,6 +749,7 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
       observacao: el('observacao').value.trim(),
       recorrenciaId,
       lancadoPor: ap?.id ?? null,
+      ...procedencia(),
     };
 
     const ids = [];
@@ -615,6 +778,7 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
         ` · ${nomeDaCategoria(app, categoriaId)}`,
     };
     daSerie = null;
+    previstoDe = null;
     await recarregar();
 
     // "Salvar e nova" preserva tudo e zera só o valor: é o que torna cinco
@@ -623,6 +787,19 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
     mostrarDesfazer();
     if (aoSalvar) await aoSalvar();
     return true;
+  }
+
+  /**
+   * De onde saiu o valor (02 §3.6): lançado de um previsto estimado, guarda a
+   * estimativa original — sem isso a R18 (acurácia da previsão) não existe.
+   */
+  function procedencia() {
+    if (!previstoDe) return {};
+    const igual = valor.centavos() === previstoDe.valor;
+    return {
+      origemValor: igual ? previstoDe.origemValor ?? 'digitado' : 'digitado',
+      valorEstimadoOriginal: previstoDe.estimado ? previstoDe.valor : null,
+    };
   }
 
   /**
@@ -685,15 +862,30 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
 
   // ── eventos ─────────────────────────────────────────────────────────────
 
+  function escolherCategoria(id) {
+    categoriaId = id === categoriaId ? null : id;
+    // O detalhe é escopado pela categoria: trocar de categoria recomeça a lista.
+    detalheId = null;
+    // No térreo, a conta segue a última usada nesta categoria — a não ser que
+    // a pessoa tenha escolhido a conta à mão (03 §1).
+    if (lembrarConta && !editando && !contaTocada && categoriaId) {
+      const lembrada = contaDaCategoria(categoriaId);
+      if (lembrada && lembrada !== contaId) {
+        contaId = lembrada;
+        pintarConta();
+        pintarData();
+      }
+    }
+  }
+
   el('categorias').addEventListener('click', (e) => {
     const botao = e.target.closest('button[data-id]');
     if (!botao) return;
-    categoriaId = botao.dataset.id === categoriaId ? null : botao.dataset.id;
+    escolherCategoria(botao.dataset.id);
     for (const b of el('categorias').querySelectorAll('button')) {
       b.setAttribute('aria-pressed', String(b.dataset.id === categoriaId));
     }
-    // O detalhe é escopado pela categoria: trocar de categoria recomeça a lista.
-    detalheId = null;
+    pintarTodasCategorias();
     pintarRefino();
     // Tocar na categoria fecha o teclado do celular — e é esse toque que revela
     // o botão de lançar, sem precisar de um passo só pra dispensar.
@@ -773,6 +965,7 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
 
   el('conta').addEventListener('change', () => {
     contaId = el('conta').value || null;
+    contaTocada = true;
     pintarArea();
     // Cada conta tem o seu marco zero: trocar de conta pode mudar o piso da data.
     pintarData();
@@ -849,7 +1042,7 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
 
   async function recarregar() {
     app = await estado.calcular();
-    if (!contaId || !app.contas[contaId]) contaId = contasUtilizaveis()[0]?.id ?? null;
+    if (!contaId || !app.contas[contaId] || app.contas[contaId].arquivada) contaId = contaPadrao();
     if (categoriaId && !app.categorias[categoriaId]) categoriaId = null;
     etiquetas = etiquetas.filter((t) => app.etiquetas?.[t]);
     pintarCategorias();
@@ -858,8 +1051,62 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
     pintarTipo();
     pintarRefino();
     perigo.mostrar(Boolean(editando));
+    pintarAtalhos();
+    pintarDevolucao();
     valor.pintar();
   }
+
+  /**
+   * Devolver é partir da compra (03 §3.3): só na correção de uma despesa, e
+   * mostrando quanto já voltou.
+   */
+  function pintarDevolucao() {
+    const pode = Boolean(editando) && editando.tipo === 'despesa' && Boolean(aoDevolver);
+    el('devolucao').hidden = !pode;
+    if (!pode) return;
+    const ja = estornado(app, editando.id);
+    el('devolucao').innerHTML =
+      (ja ? `<span>devolvido ${escapar(formatar(ja))} de ${escapar(formatar(editando.valor))}</span>` : '') +
+      (ja < editando.valor
+        ? '<button type="button" class="elo" data-papel="b-devolver">registrar devolução</button>'
+        : '');
+  }
+
+  el('devolucao').addEventListener('click', (e) => {
+    if (e.target.closest('[data-papel="b-devolver"]') && aoDevolver) aoDevolver(editando);
+  });
+
+  el('atalhos').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-atalho]');
+    if (b) usarAtalho(b.dataset.atalho, Number(b.dataset.i));
+  });
+
+  el('b-todas-cat').addEventListener('click', () => {
+    todasCategorias = !todasCategorias;
+    pintarTodasCategorias();
+    if (todasCategorias) el('nova-categoria').focus();
+  });
+
+  el('lista-todas-cat').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-id]');
+    if (!b) return;
+    escolherCategoria(b.dataset.id);
+    pintarCategorias();
+    pintarRefino();
+    valor.desfocar();
+    valor.pintar();
+  });
+
+  el('nova-categoria').addEventListener('keydown', async (e) => {
+    if (e.key !== 'Enter') return;
+    // Enter aqui cria a categoria, nunca salva o lançamento.
+    e.preventDefault();
+    e.stopPropagation();
+    const campo = el('nova-categoria');
+    const texto = campo.value;
+    campo.value = '';
+    await criarCategoria(texto);
+  });
 
   await recarregar();
 
@@ -897,6 +1144,7 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
     async usarConta(id) {
       if (!id) return;
       contaId = id;
+      contaTocada = true;
       await recarregar();
     },
 
@@ -909,6 +1157,8 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
     async preencher(o) {
       editando = null;
       daSerie = o.recorrenciaId;
+      previstoDe = o;
+      contaTocada = true;
       tipo = o.tipo;
       data = o.dataCompetencia;
       contaId = o.contaId;
@@ -927,6 +1177,9 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
     limpar: () => {
       editando = null;
       daSerie = null;
+      previstoDe = null;
+      contaTocada = false;
+      todasCategorias = false;
       etiquetas = [];
       detalheId = null;
       repete = 'nao';

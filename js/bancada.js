@@ -26,7 +26,11 @@ import { AREAS, areaDaConta } from './app/areas.js';
 
 const $ = (id) => document.getElementById(id);
 
-const SINGULAR = { contas: 'conta', categorias: 'categoria', etiquetas: 'etiqueta' };
+const SINGULAR = { contas: 'conta', categorias: 'categoria', etiquetas: 'etiqueta', detalhes: 'detalhe' };
+
+/** O nome do evento: "detalhe" é masculino, as outras listas são femininas. */
+const evento = (especie, acao) =>
+  `${SINGULAR[especie]}.${especie === 'detalhes' ? acao.replace(/a$/, 'o') : acao}`;
 
 const NOME_DO_TIPO = {
   corrente: 'conta corrente',
@@ -40,6 +44,7 @@ const NOME_DO_TIPO = {
 let app = null;
 let contagem = null;
 let confirmando = null; // "especie:id" esperando o segundo toque do apagar
+let fundindo = null; // "especie:id" escolhendo em qual outro fundir
 
 // ── abas ──────────────────────────────────────────────────────────────────
 
@@ -82,6 +87,7 @@ function pintar() {
   pintarContas();
   pintarCategorias();
   pintarEtiquetas();
+  pintarDetalhes();
   pintarDonos();
   pintarContadores();
   pintarProximoPasso();
@@ -118,6 +124,7 @@ function pintarContadores() {
     contas: Object.values(app.contas).filter((c) => !c.arquivada).length,
     categorias: Object.values(app.categorias).filter((c) => !c.arquivada).length,
     etiquetas: Object.values(app.etiquetas).filter((t) => !t.arquivada).length,
+    detalhes: Object.values(app.detalhes ?? {}).filter((d) => !d.arquivado).length,
   };
   for (const [especie, n] of Object.entries(quantos)) {
     document.querySelector(`[data-contador="${especie}"]`).textContent = n || '';
@@ -255,6 +262,33 @@ function pintarEtiquetas() {
 }
 
 /**
+ * Detalhes: o uso e as categorias onde aparecem — "Mercado X" em Supermercado
+ * e em Padaria diz que talvez seja o mesmo lugar com dois nomes.
+ */
+function pintarDetalhes() {
+  const detalhes = Object.values(app.detalhes ?? {}).map((d) => ({ ...d, arquivada: d.arquivado }));
+  const onde = new Map();
+  for (const l of Object.values(app.lancamentos)) {
+    if (l.removido || !l.detalheId || !app.categorias[l.categoriaId]) continue;
+    if (!onde.has(l.detalheId)) onde.set(l.detalheId, new Set());
+    onde.get(l.detalheId).add(app.categorias[l.categoriaId].nome);
+  }
+  $('lista-detalhes').innerHTML = detalhes.length
+    ? cabecalhoDeColunas(['detalhe', 'categorias', '', 'uso']) +
+      emBlocos(detalhes, (d) =>
+        linha({
+          especie: 'detalhes',
+          id: d.id,
+          nome: d.nome,
+          meta: escapar([...(onde.get(d.id) ?? [])].join(' · ')),
+          uso: contarUso('detalhes', d.id),
+          arquivada: d.arquivado,
+        })
+      )
+    : vazio('Nenhum ainda. Eles nascem na captura, no bloco "detalhes".');
+}
+
+/**
  * Ativas primeiro, arquivadas num bloco próprio no fim. Arquivada misturada no
  * meio é ruído: ela não aparece mais nas telas de lançamento, e quem está
  * organizando a lista quer ver o que está em uso.
@@ -274,11 +308,21 @@ function emBlocos(itens, desenhar) {
 /** Uma linha da lista: nome editável, o uso à vista e as ações. */
 function linha({ especie, id, nome, meta = '', valor = null, uso, arquivada = false, extras = '', simples = false }) {
   const confirmar = confirmando === `${especie}:${id}`;
-  const acoes = confirmar
+  const fundir = fundindo === `${especie}:${id}`;
+  const destinos = especie === 'contas' ? [] : destinosDeFusao(especie, id);
+  const acoes = fundir
+    ? `<span class="pergunta">fundir em</span>
+       <select class="em-edicao destino-fusao" aria-label="Fundir em qual">${destinos
+         .map((d) => `<option value="${escapar(d.id)}">${escapar(d.nome)}</option>`)
+         .join('')}</select>
+       <button type="button" class="perigo" data-acao="fundir-sim">fundir</button>
+       <button type="button" class="elo" data-acao="fundir-nao">não</button>`
+    : confirmar
     ? '<span class="pergunta">apagar mesmo?</span>' +
       '<button type="button" class="perigo" data-acao="apagar-sim">apagar</button>' +
       '<button type="button" class="elo" data-acao="apagar-nao">não</button>'
     : extras +
+      (destinos.length ? '<button type="button" class="elo" data-acao="fundir">fundir</button>' : '') +
       `<button type="button" class="elo" data-acao="${arquivada ? 'desarquivar' : 'arquivar'}">${arquivada ? 'desarquivar' : 'arquivar'}</button>` +
       '<button type="button" class="elo" data-acao="apagar">apagar</button>';
 
@@ -289,12 +333,45 @@ function linha({ especie, id, nome, meta = '', valor = null, uso, arquivada = fa
     : `<span class="meta">${meta}</span>
     <span class="valor ${valor < 0 ? 'negativo' : ''}">${valor === null ? '' : dinheiroHTML(valor)}</span>`;
 
-  return `<li class="item ${arquivada ? 'arquivada' : ''} ${confirmar ? 'confirmando' : ''}" data-id="${escapar(id)}">
+  return `<li class="item ${arquivada ? 'arquivada' : ''} ${confirmar || fundir ? 'confirmando' : ''}" data-id="${escapar(id)}">
     <button type="button" class="nome" data-acao="renomear" title="renomear">${escapar(nome)}</button>
     ${meio}
     <span class="uso">${uso}</span>
     <span class="acoes-item">${acoes}</span>
   </li>`;
+}
+
+/**
+ * Em quem se pode fundir: os outros da mesma lista — e, na categoria, da mesma
+ * natureza, porque fundir receita em despesa trocaria o sinal do passado.
+ */
+function destinosDeFusao(especie, id) {
+  const item = app[especie]?.[id];
+  if (!item) return [];
+  return Object.values(app[especie])
+    .filter((o) => o.id !== id)
+    .filter((o) => especie !== 'categorias' || (o.natureza ?? 'despesa') === (item.natureza ?? 'despesa'))
+    .sort(porNome);
+}
+
+/**
+ * Fundir move o histórico inteiro para o que fica, e se desfaz (02 §3.15).
+ * É a cura do "Mercado" e "Supermercado" criados em aparelhos diferentes.
+ */
+async function fundirItem(especie, id, item) {
+  const para = item.querySelector('.destino-fusao')?.value;
+  if (!para) return;
+  const nomeDe = app[especie][id].nome;
+  const nomePara = app[especie][para].nome;
+  const movidos = contagem[especie].get(id) ?? 0;
+  const idFusao = novoId('fus');
+  await estado.aplicarEvento(evento(especie, 'fundida'), { id: idFusao, de: id, para });
+  fundindo = null;
+  await recarregar();
+  avisarComAcao(
+    `"${nomeDe}" agora faz parte de "${nomePara}"${movidos ? ` — ${movidos} lançamento${movidos > 1 ? 's' : ''} foram junto` : ''}.`,
+    `<button type="button" class="elo" data-desfazer-fusao="${escapar(idFusao)}">desfazer</button>`
+  );
 }
 
 function contarUso(especie, id) {
@@ -344,6 +421,9 @@ function ligarLista(idDaLista, especie) {
       case 'apagar-sim': return apagar(especie, id);
       case 'apagar-nao': confirmando = null; avisar(''); return pintar();
       case 'saldo-inicial': return corrigirSaldoInicial(id, item);
+      case 'fundir': fundindo = `${especie}:${id}`; confirmando = null; return pintar();
+      case 'fundir-nao': fundindo = null; return pintar();
+      case 'fundir-sim': return fundirItem(especie, id, item);
       case 'ciclo': return abrirCiclo(id);
     }
   });
@@ -367,7 +447,7 @@ function renomear(especie, id, item) {
     fechado = true;
     const novo = campo.value.trim();
     if (!salvar || !novo || novo === antes) return pintar();
-    await estado.aplicarEvento(`${SINGULAR[especie]}.alterada`, { id, nome: novo });
+    await estado.aplicarEvento(evento(especie, 'alterada'), { id, nome: novo });
     avisar('');
     await recarregar();
   };
@@ -388,7 +468,10 @@ async function arquivar(especie, id, guardar) {
       );
     }
   }
-  await estado.aplicarEvento(`${SINGULAR[especie]}.arquivada`, { id, arquivada: guardar });
+  await estado.aplicarEvento(evento(especie, 'arquivada'), {
+    id,
+    [especie === 'detalhes' ? 'arquivado' : 'arquivada']: guardar,
+  });
   avisar('');
   await recarregar();
 }
@@ -404,7 +487,7 @@ function pedirParaApagar(especie, id) {
     return avisar(
       especie === 'contas'
         ? `${nome} tem ${resposta.usos} lançamento${resposta.usos > 1 ? 's' : ''}. Conta com passado não se apaga — arquive: ela sai das telas de lançamento e o extrato dela continua existindo.`
-        : `${nome} tem ${resposta.usos} lançamento${resposta.usos > 1 ? 's' : ''}. Arquive em vez de apagar: sai das telas de lançamento e continua somando nos relatórios do passado.`
+        : `${nome} tem ${resposta.usos} lançamento${resposta.usos > 1 ? 's' : ''}. Arquive em vez de apagar — sai das telas de lançamento e continua somando nos relatórios do passado — ou, se for repetido de outro, funda nele.`
     );
   }
 
@@ -419,7 +502,7 @@ function pedirParaApagar(especie, id) {
 }
 
 async function apagar(especie, id) {
-  await estado.aplicarEvento(`${SINGULAR[especie]}.removida`, { id });
+  await estado.aplicarEvento(evento(especie, 'removida'), { id });
   confirmando = null;
   avisar('');
   await recarregar();
@@ -477,6 +560,10 @@ $('f-categoria').addEventListener('submit', (e) =>
 
 $('f-etiqueta').addEventListener('submit', (e) =>
   criar(e, 'etiquetas', (nome) => ['etiqueta.criada', { id: novoId('etq'), nome }])
+);
+
+$('f-detalhe').addEventListener('submit', (e) =>
+  criar(e, 'detalhes', (nome) => ['detalhe.criado', { id: novoId('det'), nome }])
 );
 
 $('f-conta').addEventListener('submit', (e) =>
@@ -663,6 +750,21 @@ function avisar(mensagem) {
   el.hidden = !mensagem;
 }
 
+/** Aviso com o botão que desfaz, ao lado da frase. */
+function avisarComAcao(mensagem, botaoHTML) {
+  const el = $('aviso');
+  el.innerHTML = `${escapar(mensagem)} ${botaoHTML}`;
+  el.hidden = false;
+}
+
+$('aviso').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-desfazer-fusao]');
+  if (!b) return;
+  await estado.aplicarEvento('fusao.desfeita', { id: b.dataset.desfazerFusao });
+  avisar('Fusão desfeita: os dois voltaram, cada um com o seu histórico.');
+  await recarregar();
+});
+
 function escapar(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
@@ -673,6 +775,7 @@ for (const [lista, especie] of [
   ['lista-contas', 'contas'],
   ['lista-categorias', 'categorias'],
   ['lista-etiquetas', 'etiquetas'],
+  ['lista-detalhes', 'detalhes'],
 ]) {
   ligarLista(lista, especie);
 }

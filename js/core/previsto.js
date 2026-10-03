@@ -6,7 +6,7 @@
 // guardar qualquer um dos dois abriria a porta pro número que não bate com a
 // origem dele.
 
-import { hoje, inicioDoMes, fimDoMes, diaNoMes, proximoMes } from './datas.js';
+import { hoje, inicioDoMes, fimDoMes, diaNoMes, proximoMes, somarMeses } from './datas.js';
 import { temCiclo, cicloDaCompra, vencimentoDoCiclo } from './cartao.js';
 import { visiveis, saldoReal, sinalDeSaida } from './lancamentos.js';
 
@@ -133,24 +133,31 @@ export function aPagarAgora(estado, cartaoId, dia = hoje()) {
  * O mês está coberto quando existe lançamento da série com competência nele —
  * é o que faz a ocorrência sumir assim que alguém lança a conta de luz.
  */
-export function ocorrenciasPrevistas(estado, de, ate, dia = hoje()) {
-  const piso = de > inicioDoMes(dia) ? de : inicioDoMes(dia);
+export function ocorrenciasPrevistas(estado, de, ate, dia = hoje(), { comPassado = false } = {}) {
+  const piso = comPassado || de > inicioDoMes(dia) ? de : inicioDoMes(dia);
   if (piso > ate) return [];
 
   const todos = visiveis(estado);
   const saida = [];
   for (const r of Object.values(estado.recorrencias ?? {})) {
-    if (r.arquivada || (r.periodicidade ?? 'mensal') !== 'mensal') continue;
+    const periodicidade = r.periodicidade ?? 'mensal';
+    if (r.arquivada || (periodicidade !== 'mensal' && periodicidade !== 'anual')) continue;
+    // Anual (IPVA, seguro, matrícula): uma vez por ano, no mês do início.
+    const mesDoAno = periodicidade === 'anual' && r.inicio ? Number(r.inicio.slice(5, 7)) : null;
     const conta = estado.contas[r.contaId];
     if (!conta || conta.arquivada) continue;
 
     const daSerie = todos.filter((l) => l.recorrenciaId === r.id);
-    const cobertos = new Set(daSerie.map((l) => l.dataCompetencia.slice(0, 7)));
-    const { valor, estimado } = valorDaSerie(r, daSerie);
+    const cobertos = new Set([
+      ...daSerie.map((l) => l.dataCompetencia.slice(0, 7)),
+      ...(r.pulados ?? []),
+    ]);
+    const { valor, estimado, origem } = valorDaSerie(r, daSerie);
     if (!valor) continue;
 
     for (let mes = piso.slice(0, 7); mes <= ate.slice(0, 7); mes = proximoMes(mes)) {
       const [ano, m] = mes.split('-').map(Number);
+      if (mesDoAno && m !== mesDoAno) continue;
       const data = diaNoMes(ano, m, r.dia ?? 1);
       if (data < piso || data > ate) continue;
       if (r.inicio && data < r.inicio) continue;
@@ -170,6 +177,7 @@ export function ocorrenciasPrevistas(estado, de, ate, dia = hoje()) {
         categoriaId: r.categoriaId ?? null,
         detalheId: r.detalheId ?? null,
         etiquetas: [],
+        origemValor: origem,
         dataCompetencia: data,
         dataCaixa: ciclo ? ciclo.vencimento : data,
         dataVencimento: ciclo ? ciclo.vencimento : data,
@@ -183,17 +191,23 @@ export function ocorrenciasPrevistas(estado, de, ate, dia = hoje()) {
 }
 
 /**
- * Fixa: o valor travado. Estimada: a média das últimas 3 cobranças (E2), e por
- * isso sempre com ~ na tela.
+ * Fixa: o valor travado. Estimada (E2, prudente): despesa pela MÉDIA das
+ * últimas 3 cobranças, receita pelo PISO — a menor delas. Subestimar a entrada
+ * e superestimar a saída é prudência; o contrário é como se endivida sem
+ * perceber. Estimativa aparece sempre com ~.
  */
 export function valorDaSerie(r, daSerie) {
-  if (r.tipoValor === 'fixa' && r.valor) return { valor: r.valor, estimado: false };
+  if (r.tipoValor === 'fixa' && r.valor) return { valor: r.valor, estimado: false, origem: 'digitado' };
   const ultimas = [...daSerie]
     .sort((a, b) => (a.dataCompetencia < b.dataCompetencia ? 1 : -1))
     .slice(0, 3);
-  if (!ultimas.length) return { valor: r.valor ?? 0, estimado: true };
+  if (r.tipo === 'receita') {
+    if (!ultimas.length) return { valor: r.valor ?? 0, estimado: true, origem: 'estimado_piso' };
+    return { valor: Math.min(...ultimas.map((l) => l.valor)), estimado: true, origem: 'estimado_piso' };
+  }
+  if (!ultimas.length) return { valor: r.valor ?? 0, estimado: true, origem: 'estimado_media' };
   const soma = ultimas.reduce((t, l) => t + l.valor, 0);
-  return { valor: Math.round(soma / ultimas.length), estimado: true };
+  return { valor: Math.round(soma / ultimas.length), estimado: true, origem: 'estimado_media' };
 }
 
 // ── saldo previsto ────────────────────────────────────────────────────────
@@ -250,4 +264,15 @@ export function saldoPrevisto(estado, contaId, dia = hoje()) {
     estimado,
     previsto: real - totalFaturas - aSair,
   };
+}
+
+/**
+ * As ocorrências que já deviam ter acontecido e ninguém lançou: a parte
+ * "vencido" das recorrências, para a fila de pendências (R16). Olha no máximo
+ * um ano para trás — série esquecida há mais tempo é assunto da tela de
+ * recorrências, não da fila.
+ */
+export function ocorrenciasVencidas(estado, dia = hoje()) {
+  const de = inicioDoMes(somarMeses(dia, -12));
+  return ocorrenciasPrevistas(estado, de, dia, dia, { comPassado: true });
 }

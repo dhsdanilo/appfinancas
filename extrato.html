@@ -45,6 +45,11 @@
 
 <main>
 
+  <!-- A fila de pendências (R16): a única parte do app que cobra — e cobra
+       pendência, nunca comportamento (design/08-telas §6). Só aparece quando
+       há o que fazer. -->
+  <section class="cartao pendencias" id="pendencias" hidden></section>
+
   <!-- Saldo de corrente, fatura de cartão, investimento e folha são números de
        natureza diferente: lado a lado, eles se somam na cabeça de quem lê.
        A aba escolhe a natureza; a sub-aba, o foco (design/08-telas §4.1). -->
@@ -115,6 +120,24 @@
   <p class="atalhos">
     Sacar, depositar, aportar e resgatar são isto: o dinheiro trocando de bolso.
   </p>
+</dialog>
+
+<!-- Devolução: parte da compra, e só pergunta quanto e quando (design/03 §3.3). -->
+<dialog id="dialogo-devolucao" class="dialogo-captura" aria-label="Devolução">
+  <div class="cabecalho-dialogo">
+    <strong>Devolução</strong>
+    <button type="button" class="elo" data-fechar>fechar</button>
+  </div>
+  <div class="form-simples" id="formulario-devolucao"></div>
+</dialog>
+
+<!-- Conferir o saldo com o banco ou com a carteira (design/03 §8). -->
+<dialog id="dialogo-conferencia" class="dialogo-captura" aria-label="Conferir saldo">
+  <div class="cabecalho-dialogo">
+    <strong id="titulo-conferencia">Conferir saldo</strong>
+    <button type="button" class="elo" data-fechar>fechar</button>
+  </div>
+  <div class="form-simples" id="formulario-conferencia"></div>
 </dialog>
 
 <script type="module" src="js/extrato.js"></script>

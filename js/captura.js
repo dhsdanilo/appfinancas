@@ -9,6 +9,8 @@ import { iniciarSincronia } from './app/sincronia-viva.js';
 const formulario = await criarFormulario({
   raiz: document.getElementById('formulario'),
   acoes: [{ id: 'lancar', rotulo: 'Lançar', principal: true, fecha: false }],
+  // No térreo a conta segue a última usada na categoria escolhida (03 §1).
+  lembrarConta: true,
 });
 
 formulario.focar();

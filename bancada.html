@@ -39,7 +39,7 @@
 
 <p class="aviso" id="aviso" hidden></p>
 
-<!-- Três listas, três abas. Pessoas e aparelho não têm tela: o dono é um campo
+<!-- Quatro listas, quatro abas. Pessoas e aparelho não têm tela: o dono é um campo
      da conta, e o aparelho se registra sozinho (quem precisa vê-lo é a página
      de verificação). -->
 <div class="abas" role="tablist" aria-label="Seções da bancada">
@@ -54,6 +54,10 @@
   <button type="button" role="tab" id="aba-etiquetas" data-aba="etiquetas"
           aria-controls="painel-etiquetas" aria-selected="false" tabindex="-1">
     Etiquetas <span class="contador" data-contador="etiquetas"></span>
+  </button>
+  <button type="button" role="tab" id="aba-detalhes" data-aba="detalhes"
+          aria-controls="painel-detalhes" aria-selected="false" tabindex="-1">
+    Detalhes <span class="contador" data-contador="detalhes"></span>
   </button>
 </div>
 
@@ -187,6 +191,31 @@
   </form>
 
   <ul class="itens simples" id="lista-etiquetas"></ul>
+</section>
+
+<!-- ── detalhes ───────────────────────────────────────────────────────── -->
+<section class="cartao painel" role="tabpanel" id="painel-detalhes"
+         aria-labelledby="aba-detalhes" data-painel="detalhes" hidden>
+
+  <p class="titulo-bloco">novo detalhe</p>
+
+  <form class="formulario" id="f-detalhe">
+    <div class="campo largo">
+      <label for="detalhe-nome">Nome</label>
+      <input type="text" id="detalhe-nome" name="nome" autocomplete="off" placeholder="Mercado da esquina">
+    </div>
+    <div class="campo acao">
+      <button type="submit" class="principal">Criar detalhe</button>
+    </div>
+
+    <p class="dica">
+      O que distingue um lançamento dos outros da mesma categoria: em supermercado é o
+      mercado, em manutenção é o serviço. Normalmente nascem na própria captura; aqui é onde
+      se renomeiam, se arquivam e se fundem os repetidos.
+    </p>
+  </form>
+
+  <ul class="itens" id="lista-detalhes"></ul>
 </section>
 
 </main>

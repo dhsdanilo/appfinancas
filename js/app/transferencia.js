@@ -75,6 +75,8 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
   let app = null;
   let data = hoje();
   let editando = null;
+  // A série de que esta transferência é a ocorrência, quando veio de um previsto.
+  let daSerie = null;
 
   const valor = ligarCampoValor(raiz, {
     aoMudar: () => pintarAcao(),
@@ -169,8 +171,10 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
       // Sem categoria: não é gasto nem ganho (§3.1).
       categoriaId: null,
       confirmado: nasceConfirmado({ manual: true, dataCaixa: data }),
+      recorrenciaId: daSerie,
       lancadoPor: ap?.id ?? null,
     });
+    daSerie = null;
     await recarregar();
     if (aoSalvar) await aoSalvar();
     return true;
@@ -233,12 +237,28 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
 
     limpar: () => {
       editando = null;
+      daSerie = null;
       data = hoje();
       valor.limpar();
       el('origem').value = '';
       el('destino').value = '';
       pintarData();
       perigo.mostrar(false);
+      pintarAcao();
+    },
+
+    /**
+     * A ocorrência de uma transferência recorrente, vinda do extrato: tudo
+     * preenchido, e lançar amarra à série — o previsto some (03 §4).
+     */
+    async preencher(o) {
+      editando = null;
+      daSerie = o.recorrenciaId;
+      data = o.dataCompetencia;
+      await recarregar();
+      el('origem').value = o.contaId ?? '';
+      el('destino').value = o.contaDestinoId ?? '';
+      valor.definir(o.valor);
       pintarAcao();
     },
 

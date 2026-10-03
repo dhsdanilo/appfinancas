@@ -7,13 +7,17 @@
 
 import * as estado from './core/estado.js';
 import { dinheiroHTML } from './app/dinheiro-html.js';
+import { formatar } from './core/dinheiro.js';
 import { criarFormulario } from './app/formulario.js';
 import { criarTransferencia } from './app/transferencia.js';
+import { criarFila } from './app/fila.js';
+import { criarDevolucao } from './app/devolucao.js';
+import { criarConferencia } from './app/conferencia.js';
 import { instalarServiceWorker } from './app/instalar.js';
 import { iniciarSincronia } from './app/sincronia-viva.js';
 import {
   visiveis, porDataDecrescente, estadoDoLancamento, saldoReal, nomeDaCategoria,
-  sinalDeSaida, ehTransferencia, dataVista,
+  sinalDeSaida, ehTransferencia, dataVista, estornado,
 } from './core/lancamentos.js';
 import { temCiclo } from './core/cartao.js';
 import { AREAS as ABAS } from './app/areas.js';
@@ -89,6 +93,7 @@ const previstosNaTela = new Map();
 async function pintar() {
   app = await estado.calcular();
   previstosNaTela.clear();
+  fila?.pintar(app);
 
   const abas = ABAS.filter((a) => contasDaAba(a).length);
   // O menu mostra só o que existe (08-telas §2).
@@ -177,7 +182,7 @@ function pintarPeriodo() {
  */
 function pintarResumoDeCaixa(contas) {
   const previstos = contas.map((c) => ({ conta: c, p: saldoPrevisto(app, c.id) }));
-  const blocos = previstos.map(({ conta, p }) => blocoDeCaixa(conta.nome, p));
+  const blocos = previstos.map(({ conta, p }) => blocoDeCaixa(conta.nome, p, false, conta));
 
   if (previstos.length > 1) {
     const soma = {
@@ -194,7 +199,7 @@ function pintarResumoDeCaixa(contas) {
   $('resumo').innerHTML = `<div class="blocos">${blocos.join('')}</div>`;
 }
 
-function blocoDeCaixa(nome, p, total = false) {
+function blocoDeCaixa(nome, p, total = false, conta = null) {
   const linhas = [
     linhaDeResumo('saldo real', dinheiroHTML(p.real), p.real < 0 ? 'negativo' : ''),
     ...p.faturas.map((f) =>
@@ -213,9 +218,15 @@ function blocoDeCaixa(nome, p, total = false) {
         `fecho ${p.previsto < 0 ? 'negativo' : ''}`)
     );
   }
+  // Conferir com o banco (ou a carteira) mora na própria conta (03 §8).
+  const pe = conta
+    ? `<div class="pe-bloco"><span class="fino">${conta.conferidaEm ? `conferida em ${diaCurto(conta.conferidaEm)}` : 'nunca conferida'}</span>
+        <button type="button" class="elo" data-conferir="${escapar(conta.id)}">conferir</button></div>`
+    : '';
   return `<div class="bloco ${total ? 'total' : ''}">
     <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(nome)}</p>
     <dl>${linhas.join('')}</dl>
+    ${pe}
   </div>`;
 }
 
@@ -485,17 +496,26 @@ const ordenarPelaCompra = (lista) =>
  */
 function linhaHTML(l, ids, saldoApos = null) {
   const est = l.projetado || l.fatura ? (l.dataCaixa < hoje() ? 'vencido' : 'previsto') : estadoDoLancamento(l);
-  const conta = app.contas[l.contaId];
+  const conta = app.contas[l.contaId ?? l.contaDestinoId];
   const transferencia = ehTransferencia(l);
-  const entrada = !transferencia && sinalDeSaida(l) < 0;
+  const ajuste = l.tipo === 'ajuste_caixa';
+  const devolucao = l.tipo === 'estorno';
+  const entrada = !transferencia && !ajuste && sinalDeSaida(l) < 0;
 
-  const tom = transferencia ? 'transferencia' : entrada ? 'receita' : 'despesa';
-  const marca = transferencia ? '→' : entrada ? '↑' : '↓';
-  const nomeDoTom = l.tipo === 'pagamento_fatura' ? 'Pagamento de fatura' : transferencia ? 'Transferência' : entrada ? 'Receita' : 'Despesa';
+  // Devolução é despesa que se desfez, nunca receita (03 §3.3): marca própria,
+  // na cor da entrada de dinheiro. Ajuste de caixa não é gasto nem ganho.
+  const tom = transferencia ? 'transferencia' : ajuste ? 'ajuste' : devolucao ? 'receita' : entrada ? 'receita' : 'despesa';
+  const marca = transferencia ? '→' : ajuste ? '≈' : devolucao ? '↩' : entrada ? '↑' : '↓';
+  const nomeDoTom =
+    l.tipo === 'pagamento_fatura' ? 'Pagamento de fatura'
+      : transferencia ? 'Transferência'
+        : ajuste ? 'Ajuste de caixa'
+          : devolucao ? 'Devolução'
+            : entrada ? 'Receita' : 'Despesa';
 
-  // Na transferência o sinal diz se o dinheiro saiu ou entrou no foco.
+  // Na transferência e no ajuste o sinal diz se o dinheiro saiu ou entrou no foco.
   const d = direcao(l, ids);
-  const sinal = transferencia ? (d === 'entra' ? '+' : d === 'sai' ? '−' : '') : entrada ? '+' : '−';
+  const sinal = transferencia || ajuste ? (d === 'entra' ? '+' : d === 'sai' ? '−' : '') : entrada ? '+' : '−';
 
   const destino = app.contas[l.contaDestinoId];
   const detalhe = l.detalheId ? app.detalhes?.[l.detalheId]?.nome : null;
@@ -507,9 +527,19 @@ function linhaHTML(l, ids, saldoApos = null) {
   } else if (transferencia) {
     oque = nomeDoTom;
     onde = `${conta?.nome ?? '—'} → ${destino?.nome ?? '—'}`;
+  } else if (ajuste) {
+    oque = 'Ajuste de caixa';
+    onde = conta?.nome ?? '—';
+  } else if (devolucao) {
+    const compra = app.lancamentos[l.estornoDe];
+    oque = ['Devolução', nomeDaCategoria(app, l.categoriaId), detalhe].filter(Boolean).join(' · ');
+    onde = `${conta?.nome ?? '—'}${compra ? ` · da compra de ${diaCurto(dataVista(compra))}` : ''}`;
   } else {
     oque = [nomeDaCategoria(app, l.categoriaId) || l.tipo, detalhe].filter(Boolean).join(' · ');
     onde = conta?.nome ?? '—';
+    // A compra mostra o que já voltou dela (03 §3.3).
+    const voltou = l.tipo === 'despesa' && !l.projetado ? estornado(app, l.id) : 0;
+    if (voltou) onde += ` · devolvido ${formatar(voltou)} de ${formatar(l.valor)}`;
   }
   const rotuloEstado = est === 'realizado' ? '' : ` · ${l.projetado ? 'previsto' : est}`;
 
@@ -570,7 +600,29 @@ const edicao = await criarFormulario({
   acoes: [{ id: 'salvar', rotulo: 'Salvar', principal: true, fecha: true }],
   aoSalvar: pintar,
   aoFechar: () => dialogoEdicao.close(),
+  // Devolver parte da compra que se está corrigindo (03 §3.3).
+  aoDevolver: async (l) => {
+    dialogoEdicao.close();
+    await devolucao.abrir(l);
+  },
 });
+
+const devolucao = criarDevolucao({
+  janela: $('dialogo-devolucao'),
+  raiz: $('formulario-devolucao'),
+  aoSalvar: pintar,
+});
+
+const conferencia = criarConferencia({
+  janela: $('dialogo-conferencia'),
+  titulo: $('titulo-conferencia'),
+  raiz: $('formulario-conferencia'),
+  aoSalvar: pintar,
+});
+
+for (const fechar of document.querySelectorAll('dialog [data-fechar]')) {
+  fechar.addEventListener('click', () => fechar.closest('dialog').close());
+}
 
 // Transferir é outro formulário, porque é outra pergunta: de onde sai, pra onde
 // vai e quanto — sem categoria (design/03 §3.1). Pagar fatura é ele também,
@@ -582,6 +634,12 @@ const transferencia = await criarTransferencia({
   aoSalvar: pintar,
   aoFechar: () => dialogoTransferencia.close(),
   aoMudarTitulo: (titulo) => { $('titulo-transferencia').textContent = titulo; },
+});
+
+const fila = criarFila({
+  raiz: $('pendencias'),
+  abrirPagamento: (cartaoId, centavos) => pagarFatura(cartaoId, centavos),
+  abrirConferencia: (contaId) => conferencia.abrir(contaId),
 });
 
 async function pagarFatura(cartaoId, centavos) {
@@ -601,12 +659,25 @@ document.addEventListener('click', async (e) => {
     return;
   }
 
+  const conferir = e.target.closest('[data-conferir]');
+  if (conferir) {
+    await conferencia.abrir(conferir.dataset.conferir);
+    return;
+  }
+
   const previsto = e.target.closest('[data-previsto]');
   if (previsto) {
     // A ocorrência abre a captura já preenchida; lançar amarra à série e o
     // previsto some (03-alimentacao §4).
     const o = previstosNaTela.get(previsto.dataset.previsto);
     if (!o) return;
+    if (o.tipo === 'transferencia') {
+      transferencia.limpar();
+      await transferencia.preencher(o);
+      dialogoTransferencia.showModal();
+      transferencia.focar();
+      return;
+    }
     formulario.limpar();
     await formulario.preencher(o);
     dialogo.showModal();
@@ -620,6 +691,14 @@ document.addEventListener('click', async (e) => {
   if (!l || l.removido) return;
 
   // Cada tipo volta pro formulário que sabe falar dele.
+  if (l.tipo === 'estorno') {
+    await devolucao.abrir(l);
+    return;
+  }
+  if (l.tipo === 'ajuste_caixa') {
+    await conferencia.mostrarAjuste(l);
+    return;
+  }
   if (ehTransferencia(l)) {
     await transferencia.carregar(l);
     dialogoTransferencia.showModal();
@@ -724,7 +803,7 @@ for (const campo of ['p-de', 'p-ate']) {
 
 // Atalho global: lançar sem tirar a mão do teclado é o ponto do PC.
 document.addEventListener('keydown', (e) => {
-  if (dialogo.open || dialogoEdicao.open || dialogoTransferencia.open) return;
+  if (document.querySelector('dialog[open]')) return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   // O alvo pode ser o próprio document (que não tem `matches`), então a
   // verificação precisa ser à prova disso antes de perguntar o que ele é.

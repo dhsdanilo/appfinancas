@@ -89,3 +89,15 @@
   border-radius: 3px;
   background: var(--fundo);
 }
+
+/* ── recorrências ───────────────────────────────────────────────────────── */
+
+.cabeca-secao { display: flex; justify-content: space-between; align-items: center; gap: var(--e3); }
+.cabeca-secao h2 { margin: 0; }
+#painel-recorrencias { margin-bottom: var(--e4); }
+#lista-recorrencias .nome .ponto-area { width: 8px; height: 8px; }
+#lista-recorrencias .meta { white-space: normal; }
+.dialogo-ciclo .pilulas { align-self: flex-start; }
+/* O tipo ocupa a linha inteira: três pílulas espremidas quebravam o rótulo. */
+#f-recorrencia .campo:first-of-type { flex: 1 1 100%; }
+#f-recorrencia .pilulas button { white-space: nowrap; }

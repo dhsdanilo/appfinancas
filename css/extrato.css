@@ -350,3 +350,74 @@ button.linha.vencido { border-left: 3px solid var(--alerta); background: var(--a
 .painel[data-area] { border-top: 3px solid var(--area); }
 .bloco { border-color: color-mix(in srgb, var(--area, var(--borda)) 40%, var(--borda)); }
 .bloco .nome-bloco .ponto-area { width: 8px; height: 8px; }
+
+/* ── a fila "precisa de você" (R16) ─────────────────────────────────────── */
+/* A única parte do app que cobra: fica em cima, com o vermelho do que está
+   vencido — e some quando não há nada (08-telas §6). */
+
+.pendencias { border-left: 3px solid var(--alerta); border-radius: 0 var(--raio-cartao) var(--raio-cartao) 0; }
+.pendencias h2 { display: flex; align-items: center; gap: var(--e2); }
+.pendencias h2 .quantos {
+  padding: 0 var(--e2);
+  border-radius: var(--raio-pilula);
+  background: var(--alerta-fundo);
+  color: var(--alerta);
+  font-size: var(--t-apoio);
+}
+.lista-pendencias { list-style: none; margin: 0; padding: 0; }
+.pendencia {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--e2) var(--e3);
+  padding: var(--e2) 0;
+  border-bottom: 1px solid var(--borda);
+}
+.pendencia:last-child { border-bottom: 0; }
+.pendencia .o-que { min-width: 0; }
+.pendencia .quando { color: var(--alerta); font-size: var(--t-apoio); }
+.pendencia .fino { color: var(--tinta-fraca); font-size: var(--t-miudo); }
+.botoes-pendencia { display: flex; flex-wrap: wrap; gap: var(--e2); align-items: center; }
+.botoes-pendencia button { min-height: 34px; font-size: var(--t-apoio); }
+.botoes-pendencia button.principal { font-size: var(--t-apoio); }
+.campo-fila {
+  font: inherit;
+  font-size: var(--t-apoio);
+  min-height: 34px;
+  width: 140px;
+  min-width: 0;
+  flex: none;
+  padding: 0 var(--e2);
+  border: 1px solid var(--borda-forte);
+  border-radius: var(--raio-controle);
+  background: var(--superficie);
+  color: var(--tinta);
+}
+
+/* ── devolução e ajuste na linha ────────────────────────────────────────── */
+
+.linha.ajuste .marca { background: var(--fundo); color: var(--tinta-fraca); }
+.linha.ajuste .quanto,
+.linha.ajuste .quanto .moeda,
+.linha.ajuste .quanto .centavos { color: var(--tinta-fraca); }
+
+/* ── janelas simples: devolução e conferência ───────────────────────────── */
+
+.form-simples { display: flex; flex-direction: column; gap: var(--e3); padding-top: var(--e3); }
+.campo-simples { display: flex; flex-direction: column; gap: var(--e1); }
+.campo-simples input,
+.campo-simples select {
+  font: inherit;
+  min-height: var(--alvo);
+  padding: var(--e2) var(--e3);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-controle);
+  background: var(--superficie);
+  color: var(--tinta);
+}
+.form-simples .acoes { display: flex; justify-content: flex-end; }
+.resultado-conferencia { padding: var(--e3); border-radius: var(--raio-controle); background: var(--fundo); }
+.resultado-conferencia .bateu { margin: 0; color: var(--positivo); font-weight: 600; }
+.resultado-conferencia .nao-bateu { margin: 0 0 var(--e2); color: var(--alerta); font-weight: 600; }
+.resultado-conferencia ul { margin: var(--e1) 0 var(--e2); padding-left: var(--e4); font-size: var(--t-apoio); }

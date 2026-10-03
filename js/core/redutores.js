@@ -22,7 +22,7 @@ import { datarNoCartao, temCiclo } from './cartao.js';
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 6;
+export const VERSAO_ESTADO = 7;
 
 export function estadoVazio() {
   return {
@@ -33,6 +33,8 @@ export function estadoVazio() {
     detalhes: {},
     recorrencias: {},
     lancamentos: {},
+    // Fusões feitas, com o que foi movido — é o que permite desfazer (02 §3.15).
+    fusoes: {},
     // Tipos de evento que este app não conhece. Não é erro fatal (um aparelho
     // mais novo pode ter emitido algo), mas precisa ficar VISÍVEL — dado
     // financeiro ignorado em silêncio é a pior falha possível.
@@ -69,6 +71,10 @@ export const redutores = {
       saldoInicial: d.saldoInicial ?? 0,
       dataInicial: d.dataInicial ?? null,
       arquivada: false,
+      // A última conferência com o banco ou a carteira (02 §3.12). A R16 cobra
+      // quando passa de um mês.
+      conferidaEm: null,
+      ultimaConferencia: null,
       // Só em cartão (D13)
       limite: d.limite ?? null,
       diaFechamento: d.diaFechamento ?? null,
@@ -128,6 +134,15 @@ export const redutores = {
   'conta.arquivada'(e, d) {
     const c = e.contas[d.id];
     if (c) c.arquivada = d.arquivada !== false;
+  },
+
+  'conta.conferida'(e, d) {
+    // A conferência fica registrada sempre; a conta só ganha "conferida em"
+    // quando o saldo bateu (ou foi ajustado, na espécie) — 03 §8.
+    const c = e.contas[d.id];
+    if (!c) return;
+    c.ultimaConferencia = { data: d.data, saldoInformado: d.saldoInformado, bateu: Boolean(d.bateu) };
+    if (d.bateu) c.conferidaEm = d.data;
   },
 
   // ── categoria ───────────────────────────────────────────────────────────
@@ -264,6 +279,52 @@ export const redutores = {
     delete e.recorrencias[d.id];
   },
 
+  'recorrencia.pulada'(e, d) {
+    // "Não houve este mês": a ocorrência sai da projeção e da fila sem virar
+    // lançamento. Nunca beco sem saída (03 §10).
+    const r = e.recorrencias[d.id];
+    if (!r) return;
+    r.pulados = [...new Set([...(r.pulados ?? []), d.mes])];
+  },
+
+  // ── fusão ───────────────────────────────────────────────────────────────
+  //
+  // Fundir A em B remapeia as referências de A para B e remove A. Como o estado
+  // é derivado, a fusão guarda o que moveu e pode ser desfeita (02 §3.15).
+
+  'categoria.fundida'(e, d) { fundir(e, 'categorias', 'categoriaId', d); },
+  'etiqueta.fundida'(e, d) { fundir(e, 'etiquetas', 'etiquetas', d); },
+  'detalhe.fundido'(e, d) { fundir(e, 'detalhes', 'detalheId', d); },
+
+  'fusao.desfeita'(e, d) {
+    const f = e.fusoes[d.id];
+    if (!f || f.desfeita) return;
+    e[f.especie][f.item.id] = f.item;
+    for (const id of f.lancamentos) {
+      const l = e.lancamentos[id];
+      if (!l) continue;
+      if (f.campo === 'etiquetas') {
+        // Quem só tinha a de origem volta a tê-la no lugar da de destino; quem
+        // já tinha as duas só recupera a de origem. O que foi mexido depois da
+        // fusão é decisão nova, e vale.
+        if (f.substituiu.includes(id)) {
+          if (l.etiquetas.includes(f.para)) {
+            l.etiquetas = l.etiquetas.map((t) => (t === f.para ? f.item.id : t));
+          }
+        } else if (!l.etiquetas.includes(f.item.id)) {
+          l.etiquetas = [...l.etiquetas, f.item.id];
+        }
+      } else if (l[f.campo] === f.para) {
+        l[f.campo] = f.item.id;
+      }
+    }
+    for (const id of f.recorrencias ?? []) {
+      const r = e.recorrencias[id];
+      if (r && r[f.campo] === f.para) r[f.campo] = f.item.id;
+    }
+    f.desfeita = true;
+  },
+
   // ── lançamento ──────────────────────────────────────────────────────────
 
   'lancamento.registrado'(e, d) {
@@ -295,6 +356,9 @@ export const redutores = {
       envelopeId: d.envelopeId ?? null,
       extraordinario: d.extraordinario ?? Boolean(d.custeadoPor),
       lancadoPor: d.lancadoPor ?? null,
+      // Só no estorno: quando o dinheiro voltou (02 §3.6). No cartão, é isso
+      // que põe a devolução na fatura em formação, e não na da compra.
+      devolvidoEm: d.devolvidoEm ?? null,
       cicloFatura: null,
       removido: false,
     };
@@ -312,7 +376,9 @@ export const redutores = {
       if (l.cicloFatura && (campo === 'dataCaixa' || campo === 'dataVencimento')) continue;
       if (campo !== 'id' && valor !== undefined) l[campo] = valor;
     }
-    if (d.contaId !== undefined || d.dataCompetencia !== undefined) {
+    if (d.contaId !== undefined || d.dataCompetencia !== undefined || d.devolvidoEm !== undefined) {
+      // Estorno fora do cartão: o caixa é quando o dinheiro voltou.
+      if (d.devolvidoEm !== undefined && !l.cicloFatura) l.dataCaixa = d.devolvidoEm;
       datarNoCartao(l, e.contas[l.contaId]);
     }
   },
@@ -342,4 +408,43 @@ export function aplicar(rascunho, evento) {
   }
   redutor(rascunho, evento.dados ?? {}, evento);
   return true;
+}
+
+/**
+ * Fundir `d.de` em `d.para` dentro de uma lista. Guarda em `e.fusoes` o item
+ * removido e quem foi movido, para o desfazer.
+ */
+function fundir(e, especie, campo, d) {
+  const item = e[especie][d.de];
+  if (!item || !e[especie][d.para] || d.de === d.para) return;
+
+  const movidos = [];
+  const substituiu = [];
+  for (const l of Object.values(e.lancamentos)) {
+    if (campo === 'etiquetas') {
+      if (!l.etiquetas.includes(d.de)) continue;
+      // Se o lançamento já tinha as duas, a de origem só sai: não há o que
+      // trocar, e no desfazer ela volta sem tirar a de destino.
+      if (!l.etiquetas.includes(d.para)) substituiu.push(l.id);
+      l.etiquetas = [...new Set(l.etiquetas.map((t) => (t === d.de ? d.para : t)))];
+      movidos.push(l.id);
+    } else if (l[campo] === d.de) {
+      l[campo] = d.para;
+      movidos.push(l.id);
+    }
+  }
+  const recorrencias = [];
+  if (campo !== 'etiquetas') {
+    for (const r of Object.values(e.recorrencias)) {
+      if (r[campo] === d.de) {
+        r[campo] = d.para;
+        recorrencias.push(r.id);
+      }
+    }
+  }
+  delete e[especie][d.de];
+  e.fusoes[d.id] = {
+    id: d.id, especie, campo, item, para: d.para,
+    lancamentos: movidos, substituiu, recorrencias, desfeita: false,
+  };
 }

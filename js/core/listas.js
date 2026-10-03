@@ -17,6 +17,7 @@ export function usos(estado) {
   const categorias = new Map();
   const contas = new Map();
   const etiquetas = new Map();
+  const detalhes = new Map();
   const soma = (mapa, chave) => {
     if (chave) mapa.set(chave, (mapa.get(chave) || 0) + 1);
   };
@@ -26,16 +27,17 @@ export function usos(estado) {
     soma(contas, l.contaId);
     // A transferência toca duas contas, e pesa nas duas.
     soma(contas, l.contaDestinoId);
+    soma(detalhes, l.detalheId);
     for (const etiqueta of l.etiquetas ?? []) soma(etiquetas, etiqueta);
   }
-  return { categorias, contas, etiquetas };
+  return { categorias, contas, etiquetas, detalhes };
 }
 
 /**
  * Remover de verdade só o que nunca foi usado. O que tem histórico se arquiva
  * ou se funde — apagar deixaria lançamento órfão, e isso o app não faz.
  *
- * @param {'categorias'|'contas'|'etiquetas'} especie
+ * @param {'categorias'|'contas'|'etiquetas'|'detalhes'} especie
  */
 export function podeRemover(estado, especie, id) {
   const quantos = usos(estado)[especie]?.get(id) ?? 0;

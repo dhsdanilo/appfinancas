@@ -44,16 +44,19 @@ export function vencimentoDoCiclo(conta, fechamento) {
  * pela fatura.
  */
 export function datarNoCartao(l, conta) {
+  // O estorno entra na fatura de quando o dinheiro voltou — "reduz a fatura,
+  // inclusive a em formação" (03 §3.3) —, e não na da compra que ele desfaz.
+  const base = l.tipo === 'estorno' && l.devolvidoEm ? l.devolvidoEm : l.dataCompetencia;
   if (!temCiclo(conta)) {
     // Saiu do cartão (ou o cartão perdeu o ciclo): as datas voltam a ser uma.
     if (l.cicloFatura) {
       l.cicloFatura = null;
-      l.dataCaixa = l.dataCompetencia;
-      l.dataVencimento = l.dataCompetencia;
+      l.dataCaixa = base;
+      l.dataVencimento = base;
     }
     return;
   }
-  const { fechamento, vencimento } = cicloDaCompra(conta, l.dataCompetencia);
+  const { fechamento, vencimento } = cicloDaCompra(conta, base);
   l.cicloFatura = fechamento;
   l.dataCaixa = vencimento;
   l.dataVencimento = vencimento;

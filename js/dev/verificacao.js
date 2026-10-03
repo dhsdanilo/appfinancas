@@ -20,6 +20,7 @@ import { VERSAO_ESTADO } from '../core/redutores.js';
 import * as cartao from '../core/cartao.js';
 import * as previsto from '../core/previsto.js';
 import * as datas from '../core/datas.js';
+import * as pendencias from '../core/pendencias.js';
 
 const BANCO_DE_TESTE = 'appfinancas-teste';
 
@@ -1154,9 +1155,9 @@ caso('previsto', 'recorrência estimada projeta a média das últimas 3', () => 
     { valor: 28000, dataCompetencia: '2027-03-10' },
     { valor: 99999, dataCompetencia: '2026-12-10' },
   ];
-  igual(previsto.valorDaSerie(r, serie), { valor: 28333, estimado: true },
+  igual(previsto.valorDaSerie(r, serie), { valor: 28333, estimado: true, origem: 'estimado_media' },
     'só as três mais recentes, e sempre marcada como estimativa');
-  igual(previsto.valorDaSerie({ tipoValor: 'fixa', valor: 15000 }, serie), { valor: 15000, estimado: false });
+  igual(previsto.valorDaSerie({ tipoValor: 'fixa', valor: 15000 }, serie), { valor: 15000, estimado: false, origem: 'digitado' });
 });
 
 caso('previsto', 'mês que passou sem lançamento não é projetado', async () => {
@@ -1170,6 +1171,151 @@ caso('previsto', 'mês que passou sem lançamento não é projetado', async () =
   const e = await estado.calcular();
   igual(previsto.ocorrenciasPrevistas(e, '2027-01-01', '2027-03-31', '2027-03-10').map((o) => o.dataCaixa),
     ['2027-03-05'], 'janeiro e fevereiro são assunto da fila de vencidos, não da projeção');
+});
+
+
+// estorno, fusão, pendências ───────────────────────────────────────────────
+
+caso('estorno', 'devolução abate a compra no mês dela e sobe o saldo quando voltou', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', { id: 'k1', nome: 'Corrente', tipo: 'corrente', saldoInicial: 100000 });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'compra', tipo: 'despesa', valor: 30000, contaId: 'k1', categoriaId: 'x',
+    dataCompetencia: '2027-10-20', dataCaixa: '2027-10-20', confirmado: true,
+  });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'dev', tipo: 'estorno', valor: 12000, contaId: 'k1', categoriaId: 'x', estornoDe: 'compra',
+    dataCompetencia: '2027-10-20', dataCaixa: '2027-11-05', devolvidoEm: '2027-11-05', confirmado: true,
+  });
+  const e = await estado.calcular();
+  igual([e.lancamentos.dev.dataCompetencia, e.lancamentos.dev.dataCaixa], ['2027-10-20', '2027-11-05'],
+    'competência da compra (outubro volta a ser verdade), caixa de quando voltou');
+  igual(lanc.saldoReal(e, 'k1'), 82000, 'o saldo sobe com o que voltou');
+  igual(lanc.estornado(e, 'compra'), 12000);
+  igual(lanc.restanteEstornavel(e, 'compra'), 18000, 'nunca mais que a compra');
+});
+
+caso('estorno', 'no cartão a devolução cai na fatura em formação', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', {
+    id: 'c1', nome: 'Cartão', tipo: 'cartao', diaFechamento: 3, diaVencimento: 10,
+  });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'compra', tipo: 'despesa', valor: 30000, contaId: 'c1', categoriaId: 'x',
+    dataCompetencia: '2027-10-20', dataCaixa: '2027-10-20', confirmado: true,
+  });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'dev', tipo: 'estorno', valor: 30000, contaId: 'c1', categoriaId: 'x', estornoDe: 'compra',
+    dataCompetencia: '2027-10-20', dataCaixa: '2027-11-15', devolvidoEm: '2027-11-15', confirmado: true,
+  });
+  const e = await estado.calcular();
+  igual(e.lancamentos.dev.cicloFatura, '2027-12-03', 'a fatura de quando o dinheiro voltou, não a da compra');
+  const f = previsto.faturas(e, 'c1', '2027-11-20');
+  igual(f.map((c) => [c.fechamento, c.aPagar]), [['2027-11-03', 0], ['2027-12-03', 0]],
+    'a fechada ficou paga pelo crédito da devolução');
+});
+
+caso('fusão', 'fundir categoria leva o histórico e se desfaz', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('categoria.criada', { id: 'a', nome: 'Mercado' });
+  await estado.aplicarEvento('categoria.criada', { id: 'b', nome: 'Supermercado' });
+  for (const id of ['l1', 'l2']) {
+    await estado.aplicarEvento('lancamento.registrado', {
+      id, tipo: 'despesa', valor: 1000, contaId: 'k', categoriaId: 'a',
+      dataCompetencia: '2027-03-10', dataCaixa: '2027-03-10', confirmado: true,
+    });
+  }
+  await estado.aplicarEvento('categoria.fundida', { id: 'f1', de: 'a', para: 'b' });
+  let e = await estado.calcular();
+  verdade(!e.categorias.a, 'a de origem some');
+  igual([e.lancamentos.l1.categoriaId, e.lancamentos.l2.categoriaId], ['b', 'b'], 'o histórico vai junto');
+
+  await estado.aplicarEvento('fusao.desfeita', { id: 'f1' });
+  e = await estado.calcular();
+  igual(e.categorias.a?.nome, 'Mercado', 'desfazer devolve a categoria');
+  igual([e.lancamentos.l1.categoriaId, e.lancamentos.l2.categoriaId], ['a', 'a'], 'e os lançamentos dela');
+  const doZero = await estado.recalcular();
+  igual(doZero.lancamentos.l1.categoriaId, 'a', 'e o recálculo do zero concorda');
+});
+
+caso('fusão', 'fundir etiqueta não duplica quem já tinha as duas', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('etiqueta.criada', { id: 'a', nome: 'carro' });
+  await estado.aplicarEvento('etiqueta.criada', { id: 'b', nome: 'Carro' });
+  const lanca = (id, etiquetas) => estado.aplicarEvento('lancamento.registrado', {
+    id, tipo: 'despesa', valor: 1000, contaId: 'k', categoriaId: 'x', etiquetas,
+    dataCompetencia: '2027-03-10', dataCaixa: '2027-03-10', confirmado: true,
+  });
+  await lanca('so-a', ['a']);
+  await lanca('as-duas', ['a', 'b']);
+  await estado.aplicarEvento('etiqueta.fundida', { id: 'f1', de: 'a', para: 'b' });
+  let e = await estado.calcular();
+  igual([e.lancamentos['so-a'].etiquetas, e.lancamentos['as-duas'].etiquetas], [['b'], ['b']]);
+  await estado.aplicarEvento('fusao.desfeita', { id: 'f1' });
+  e = await estado.calcular();
+  igual([e.lancamentos['so-a'].etiquetas, [...e.lancamentos['as-duas'].etiquetas].sort()], [['a'], ['a', 'b']],
+    'desfazer devolve cada um como era');
+});
+
+caso('previsto', 'receita estimada pelo piso, despesa pela média (E2)', () => {
+  const serie = [
+    { valor: 500000, dataCompetencia: '2027-01-05' },
+    { valor: 420000, dataCompetencia: '2027-02-05' },
+    { valor: 610000, dataCompetencia: '2027-03-05' },
+  ];
+  igual(previsto.valorDaSerie({ tipo: 'receita', tipoValor: 'variavel' }, serie).valor, 420000,
+    'receita: a menor das últimas — subestimar a entrada é prudência');
+  igual(previsto.valorDaSerie({ tipo: 'despesa', tipoValor: 'variavel' }, serie).valor, 510000,
+    'despesa: a média');
+});
+
+caso('pendências', 'a fila junta vencidos, ocorrências esquecidas, fatura vencida e conta sem conferir', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const dia = '2027-03-20';
+  await estado.aplicarEvento('conta.criada', {
+    id: 'k1', nome: 'Corrente', tipo: 'corrente', saldoInicial: 100000, dataInicial: '2027-01-01',
+  });
+  await estado.aplicarEvento('conta.criada', {
+    id: 'c1', nome: 'Cartão', tipo: 'cartao', diaFechamento: 3, diaVencimento: 10, pagaCom: 'k1',
+  });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'boleto', tipo: 'despesa', valor: 5000, contaId: 'k1', categoriaId: 'x',
+    dataCompetencia: '2027-03-15', dataCaixa: '2027-03-15', confirmado: false,
+  });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'compra', tipo: 'despesa', valor: 8000, contaId: 'c1', categoriaId: 'x',
+    dataCompetencia: '2027-02-10', dataCaixa: '2027-02-10', confirmado: true,
+  });
+  await estado.aplicarEvento('recorrencia.criada', {
+    id: 'r1', nome: 'Plano', tipo: 'despesa', contaId: 'k1', categoriaId: 'x',
+    tipoValor: 'fixa', valor: 15000, dia: 5, inicio: '2027-02-05',
+  });
+  let e = await estado.calcular();
+  let fila = pendencias.pendencias(e, dia);
+  igual(fila.map((i) => i.tipo), ['conferir', 'ocorrencia', 'ocorrencia', 'fatura', 'vencido'],
+    'da mais antiga para a mais nova');
+
+  // Resolver cada um tira da fila.
+  await estado.aplicarEvento('recorrencia.pulada', { id: 'r1', mes: '2027-02' });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'plano-mar', tipo: 'despesa', valor: 15000, contaId: 'k1', categoriaId: 'x', recorrenciaId: 'r1',
+    dataCompetencia: '2027-03-05', dataCaixa: '2027-03-05', confirmado: true,
+  });
+  await estado.aplicarEvento('lancamento.alterado', { id: 'boleto', confirmado: true });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'pag', tipo: 'pagamento_fatura', valor: 8000, contaId: 'k1', contaDestinoId: 'c1',
+    dataCompetencia: '2027-03-18', dataCaixa: '2027-03-18', confirmado: true,
+  });
+  await estado.aplicarEvento('conta.conferida', { id: 'k1', data: dia, saldoInformado: 72000, bateu: true });
+  e = await estado.calcular();
+  fila = pendencias.pendencias(e, dia);
+  igual(fila, [], 'nada mais a fazer');
+  igual(e.contas.k1.conferidaEm, dia, 'conferida em');
 });
 
 // ── apoio ─────────────────────────────────────────────────────────────────

@@ -315,11 +315,14 @@ input[type="text"] {
 .eventos { font-family: var(--mono); font-size: var(--t-miudo); }
 .eventos li { margin: 2px 0; overflow-wrap: anywhere; }
 
+/* Aviso é informação, não alarme: tom neutro. Só o erro de verdade (.erro)
+   fala vermelho — senão "fusão desfeita" pareceria uma falha. */
 .aviso {
   margin: var(--e3) 0 0; padding: var(--e2) var(--e3);
-  border: 1px solid var(--atencao); border-radius: var(--raio-controle);
-  color: var(--atencao); font-size: var(--t-apoio);
+  border: 1px solid var(--borda-forte); border-radius: var(--raio-controle);
+  color: var(--tinta); font-size: var(--t-apoio);
 }
+.aviso.erro { border-color: var(--alerta); color: var(--alerta); }
 
 code { font-family: var(--mono); font-size: 0.9em; }
 
@@ -463,3 +466,8 @@ code { font-family: var(--mono); font-size: 0.9em; }
 /* A janela veste a área da conta que está nela: lançar no cartão é uma janela
    mostarda, e transferir é uma janela azul (09-identidade §3). */
 dialog[data-area] { border-top: 4px solid var(--area); }
+.pilulas button[data-tipo="transferencia"][aria-pressed="true"] {
+  background: var(--transferencia-fundo);
+  color: var(--transferencia);
+  box-shadow: inset 0 0 0 1.5px var(--transferencia);
+}
