@@ -25,9 +25,15 @@ import { MARCACAO_CAMPO_VALOR, ligarCampoValor } from './campo-valor.js';
 import { ligarZonaDePerigo } from './zona-perigo.js';
 import { areaDaConta, opcoesDeConta, categoriaNaArea, areasParaConta } from './areas.js';
 
-const MARCACAO = `
+// As peças do formulário. O térreo (captura rápida do celular) começa pelo
+// valor, com o teclado já aberto — três toques (03-alimentacao §1). O "Novo
+// lançamento" do app começa pelo que se pensa primeiro: tipo, categoria,
+// descrição e só então o valor (pedido dele, 03/10/2026).
+const P = {
+  valor: `
   ${MARCACAO_CAMPO_VALOR}
-
+`,
+  contexto: `
   <div class="contexto">
     <div class="pilulas" role="group" aria-label="Tipo de lançamento">
       <button type="button" data-tipo="despesa" aria-pressed="true">↓ despesa</button>
@@ -41,6 +47,8 @@ const MARCACAO = `
     </div>
   </div>
 
+`,
+  fatura: `
   <!-- No cartão: em qual fatura a compra cai, e um passo para a vizinha
        quando o banco a processou noutra. -->
   <div class="linha-fatura" data-papel="linha-fatura" hidden>
@@ -50,10 +58,16 @@ const MARCACAO = `
     <button type="button" class="passo" data-papel="fatura-depois" aria-label="Fatura seguinte">›</button>
   </div>
 
+`,
+  recado: `
   <p class="recado" data-papel="recado" hidden></p>
 
+`,
+  atalhos: `
   <div class="atalhos-captura" data-papel="atalhos" role="group" aria-label="Atalhos" hidden></div>
 
+`,
+  categorias: `
   <div class="categorias" data-papel="categorias" role="group" aria-label="Categoria"></div>
 
   <div class="mais-categorias">
@@ -65,6 +79,8 @@ const MARCACAO = `
            placeholder="criar categoria" aria-label="Criar categoria nova">
   </div>
 
+`,
+  conta: `
   <div class="linha-conta">
     <label class="escolha-conta" data-papel="escolha-conta">
       <span class="miudo"><span class="ponto-area" aria-hidden="true"></span>conta</span>
@@ -73,6 +89,17 @@ const MARCACAO = `
     <button type="button" class="elo" data-papel="b-refino" aria-expanded="false">detalhes</button>
   </div>
 
+`,
+  descricao: `
+  <div class="detalhes" data-papel="detalhes">
+    <span class="rotulo-etiquetas">descrição</span>
+    <div class="chips" data-papel="chips-detalhe" role="group" aria-label="Descrição"></div>
+    <input type="text" class="nova-etiqueta" data-papel="novo-detalhe" autocomplete="off"
+       aria-label="Descrição">
+  </div>
+
+`,
+  refinoComDescricao: `
   <div class="refino" data-papel="refino" hidden>
     <div class="detalhes" data-papel="detalhes">
       <span class="rotulo-etiquetas">descrição</span>
@@ -118,6 +145,48 @@ const MARCACAO = `
     </div>
   </div>
 
+`,
+  refino: `
+  <div class="refino" data-papel="refino" hidden>
+    <div class="etiquetas" data-papel="etiquetas">
+    <span class="rotulo-etiquetas">etiquetas</span>
+    <div class="chips" data-papel="chips" role="group" aria-label="Etiquetas aplicadas"></div>
+    <div class="busca">
+      <input type="text" class="nova-etiqueta" data-papel="nova-etiqueta" autocomplete="off"
+             placeholder="digite para achar ou criar" aria-label="Procurar ou criar etiqueta"
+             role="combobox" aria-expanded="false" aria-autocomplete="list">
+      <ul class="sugestoes" data-papel="sugestoes" role="listbox" hidden></ul>
+    </div>
+      <button type="button" class="elo" data-papel="b-todas">ver todas</button>
+      <div class="chips todas" data-papel="todas" role="group" aria-label="Todas as etiquetas" hidden></div>
+    </div>
+
+    <div class="linha-refino" data-papel="linha-parcelas">
+      <span class="rotulo-etiquetas">parcelas</span>
+      <input type="number" class="parcelas" data-papel="parcelas" min="1" max="99" value="1"
+             aria-label="Número de parcelas">
+      <span class="conta-parcela" data-papel="conta-parcela"></span>
+    </div>
+
+    <div class="linha-refino" data-papel="linha-repete">
+      <span class="rotulo-etiquetas">repete</span>
+      <div class="pilulas" role="group" aria-label="Recorrência">
+        <button type="button" data-repete="nao" aria-pressed="true">não</button>
+        <button type="button" data-repete="fixa" aria-pressed="false">fixa</button>
+        <button type="button" data-repete="estimada" aria-pressed="false">estimada</button>
+      </div>
+      <span class="pista-repete" data-papel="pista-repete"></span>
+    </div>
+
+    <div class="linha-refino">
+      <span class="rotulo-etiquetas">obs</span>
+      <input type="text" class="observacao" data-papel="observacao" autocomplete="off"
+             placeholder="o que mais importa lembrar" aria-label="Observação">
+    </div>
+  </div>
+
+`,
+  final: `
   <p class="desfazer" data-papel="desfazer" hidden></p>
 
   <label class="reajuste" data-papel="linha-reajuste" hidden>
@@ -129,7 +198,19 @@ const MARCACAO = `
   <div class="acoes" data-papel="acoes"></div>
 
   <p class="zona-perigo" data-papel="perigo" hidden></p>
-`;
+`,
+};
+
+const rotuloDeCampo = (texto) => `  <p class="rotulo-campo">${texto}</p>\n`;
+
+const MARCACAO = P.valor + P.contexto + P.fatura + P.recado + P.atalhos + P.categorias + P.conta + P.refinoComDescricao + P.final;
+
+const MARCACAO_DO_APP =
+  P.contexto + P.recado +
+  rotuloDeCampo('categoria') + P.categorias +
+  rotuloDeCampo('descrição <span class="fino">· opcional</span>') + P.descricao +
+  rotuloDeCampo('valor') + P.valor +
+  P.conta + P.fatura + P.refino + P.atalhos + P.final;
 
 /**
  * @param {object} opcoes
@@ -140,8 +221,12 @@ const MARCACAO = `
  */
 export async function criarFormulario({
   raiz, acoes, aoSalvar, aoFechar, comEtiquetas = false, lembrarConta = false, aoDevolver = null,
+  ordemDoApp = false,
 }) {
-  raiz.innerHTML = MARCACAO;
+  raiz.innerHTML = ordemDoApp ? MARCACAO_DO_APP : MARCACAO;
+  raiz.classList.toggle('formulario-app', ordemDoApp);
+  if (ordemDoApp) raiz.querySelector('[data-papel="nova-categoria"]').placeholder = 'buscar ou criar categoria';
+  const dedo = matchMedia('(pointer: coarse)').matches;
   const el = (papel) => raiz.querySelector(`[data-papel="${papel}"]`);
 
   // O datalist só funciona por id, e há dois formulários na mesma página — então
@@ -167,7 +252,9 @@ export async function criarFormulario({
   let repeteAntes = 'nao';
   // Dedo ou mouse — é o contexto que muda a pressa, não a marca do aparelho.
   // No PC o refino nasce aberto; no celular, a um toque (03-alimentacao §1).
-  let refinoAberto = !matchMedia('(pointer: coarse)').matches;
+  // No app o "mais" nasce fechado: tipo, categoria, descrição, valor e conta
+  // já estão à vista, e o resto é exceção.
+  let refinoAberto = ordemDoApp ? false : !dedo;
   let ultimo = null;
   let sumir = null;
   // O lançamento que está sendo corrigido, ou null — é só isso que separa as
@@ -213,8 +300,10 @@ export async function criarFormulario({
    */
   function maisUsadas(limite = 8) {
     const usos = new Map();
-    for (const l of Object.values(app.lancamentos)) {
-      if (l.removido || !l.categoriaId) continue;
+    // No app, as que você mais usou POR ÚLTIMO: os 40 lançamentos mais
+    // recentes, para a lista acompanhar a fase em que você está.
+    const todos = Object.values(app.lancamentos).filter((l) => !l.removido && l.categoriaId);
+    for (const l of ordemDoApp ? todos.slice(-40) : todos) {
       usos.set(l.categoriaId, (usos.get(l.categoriaId) || 0) + 1);
     }
     const ehGrupo = (c) => Object.values(app.categorias).some((o) => o.pai === c.id);
@@ -242,6 +331,7 @@ export async function criarFormulario({
     if (!todasCategorias) return;
     const ehGrupo = (c) => Object.values(app.categorias).some((o) => o.pai === c.id);
     const todas = categoriasDaVez(ehGrupo).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    if (ordemDoApp) return pintarListaDoApp(todas);
     el('lista-todas-cat').innerHTML = todas.length
       ? todas
           .map(
@@ -250,6 +340,25 @@ export async function criarFormulario({
           )
           .join('')
       : '<span class="vazio">nenhuma ainda</span>';
+  }
+
+  /**
+   * "outras ▾" no app: a lista inteira, filtrada pelo que se digita, e no fim
+   * "+ criar" — com o que foi digitado, ou para começar a digitar.
+   */
+  function pintarListaDoApp(todas) {
+    // "saude" acha "Saúde": sem acento e sem caixa.
+    const chave = (t) => t.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLocaleLowerCase('pt-BR').trim();
+    const busca = chave(el('nova-categoria').value);
+    const achadas = busca ? todas.filter((c) => chave(c.nome).includes(busca)) : todas;
+    const exata = todas.some((c) => chave(c.nome) === busca);
+    const criar = busca && !exata
+      ? `<button type="button" class="criar-categoria" data-criar-categoria>+ criar “${escapar(el('nova-categoria').value.trim())}”</button>`
+      : busca ? '' : '<button type="button" class="criar-categoria" data-criar-categoria>+ criar categoria</button>';
+    el('lista-todas-cat').innerHTML =
+      achadas
+        .map((c) => `<button type="button" data-id="${escapar(c.id)}" aria-pressed="${c.id === categoriaId}">${escapar(c.nome)}</button>`)
+        .join('') + criar;
   }
 
   async function criarCategoria(texto) {
@@ -285,21 +394,26 @@ export async function criarFormulario({
 
   function pintarCategorias() {
     pintarTodasCategorias();
-    const lista = maisUsadas();
+    const lista = maisUsadas(ordemDoApp ? 3 : 8);
     // A categoria de um lançamento antigo pode não estar mais entre as mais
     // usadas, e ela precisa aparecer marcada: edição que não mostra o que está
     // lá parece ter perdido o dado.
     if (categoriaId && app.categorias[categoriaId] && !lista.some((c) => c.id === categoriaId)) {
       lista.push(app.categorias[categoriaId]);
     }
+    const outras = ordemDoApp
+      ? `<button type="button" class="outras-categorias" data-outras aria-expanded="${todasCategorias}">${todasCategorias ? 'fechar ▴' : 'outras ▾'}</button>`
+      : '';
     el('categorias').innerHTML = lista.length
       ? lista
           .map(
             (c) =>
               `<button type="button" data-id="${c.id}" aria-pressed="${c.id === categoriaId}">${escapar(c.nome)}</button>`
           )
-          .join('')
-      : `<p class="vazio">Nenhuma categoria de ${tipo} ${nomeDaArea()}. Crie em "+ todas" ou em <a href="app.html#/configuracoes/categorias">Configurações</a>.</p>`;
+          .join('') + outras
+      : ordemDoApp
+        ? `<span class="vazio">Nenhuma categoria de ${tipo} ${nomeDaArea()} ainda.</span>${outras}`
+        : `<p class="vazio">Nenhuma categoria de ${tipo} ${nomeDaArea()}. Crie em "+ todas" ou em <a href="app.html#/configuracoes/categorias">Configurações</a>.</p>`;
   }
 
   /**
@@ -367,7 +481,9 @@ export async function criarFormulario({
   }
 
   function pintarAtalhos() {
-    const mostrar = !editando && !daSerie;
+    // No app o "repetir último" e os favoritos saem (pedido dele): a lista de
+    // categorias já começa pelas que você usou por último.
+    const mostrar = !ordemDoApp && !editando && !daSerie;
     const ultimo = mostrar ? ultimoDaqui() : null;
     const favs = mostrar ? favoritos() : [];
     el('atalhos').hidden = !ultimo && !favs.length;
@@ -632,10 +748,13 @@ export async function criarFormulario({
   function pintarRefino() {
     el('refino').hidden = !refinoAberto;
     el('b-refino').setAttribute('aria-expanded', String(refinoAberto));
-    el('b-refino').textContent = refinoAberto ? 'detalhes' : resumoDoRefino();
+    el('b-refino').textContent = ordemDoApp
+      ? (refinoAberto ? 'menos ▴' : `mais ▾${resumoDoRefino() !== 'detalhes' ? ` · ${resumoDoRefino()}` : ''}`)
+      : refinoAberto ? 'detalhes' : resumoDoRefino();
+    if (ordemDoApp) pintarDetalhes();
     if (!refinoAberto) return;
 
-    pintarDetalhes();
+    if (!ordemDoApp) pintarDetalhes();
     pintarEtiquetas();
     pintarParcelas();
     pintarRepete();
@@ -644,7 +763,7 @@ export async function criarFormulario({
   /** Fechado, o botão conta o que tem dentro — senão ninguém abre. */
   function resumoDoRefino() {
     const partes = [];
-    if (nomeDoDetalhe()) partes.push(nomeDoDetalhe());
+    if (nomeDoDetalhe() && !ordemDoApp) partes.push(nomeDoDetalhe());
     if (etiquetas.length) partes.push(`${etiquetas.length} etiqueta${etiquetas.length > 1 ? 's' : ''}`);
     if (parcelas() > 1) partes.push(`${parcelas()}×`);
     if (repete !== 'nao') partes.push(repete);
@@ -785,6 +904,13 @@ export async function criarFormulario({
 
   async function salvar() {
     if (!pronto()) return false;
+    // A descrição escrita e não confirmada com Enter vale do mesmo jeito:
+    // salvar sem ela perdia o que estava escrito na tela.
+    const escrita = el('novo-detalhe').value.trim();
+    if (escrita) {
+      el('novo-detalhe').value = '';
+      await escolherDetalhe(escrita);
+    }
     return editando ? salvarCorrecao() : registrar();
   }
 
@@ -913,10 +1039,18 @@ export async function criarFormulario({
     el('reajuste').checked = false;
     daSerie = null;
     previstoDe = null;
+    // "Salvar e nova" guarda o que vale para a pilha de notas — tipo, conta e
+    // data — e limpa o que era deste lançamento: descrição, etiquetas,
+    // observação, parcelas, repete (pedido dele, 03/10/2026). No app, também
+    // a categoria: a próxima nota raramente é da mesma.
+    detalheId = null;
+    etiquetas = [];
+    el('observacao').value = '';
+    el('parcelas').value = '1';
+    repete = 'nao';
+    faturaDesloca = 0;
+    if (ordemDoApp) categoriaId = null;
     await recarregar();
-
-    // "Salvar e nova" preserva tudo e zera só o valor: é o que torna cinco
-    // compras do mesmo mercado cinco digitações em vez de cinco formulários.
     valor.limpar();
     mostrarDesfazer();
     if (aoSalvar) await aoSalvar();
@@ -1013,6 +1147,13 @@ export async function criarFormulario({
   }
 
   el('categorias').addEventListener('click', (e) => {
+    if (e.target.closest('[data-outras]')) {
+      todasCategorias = !todasCategorias;
+      el('nova-categoria').value = '';
+      pintarCategorias();
+      if (todasCategorias && !dedo) el('nova-categoria').focus();
+      return;
+    }
     const botao = e.target.closest('button[data-id]');
     if (!botao) return;
     escolherCategoria(botao.dataset.id);
@@ -1022,8 +1163,9 @@ export async function criarFormulario({
     pintarTodasCategorias();
     pintarRefino();
     // Tocar na categoria fecha o teclado do celular — e é esse toque que revela
-    // o botão de lançar, sem precisar de um passo só pra dispensar.
-    valor.desfocar();
+    // o botão de lançar, sem precisar de um passo só pra dispensar. No app, no
+    // PC, o próximo passo é o valor: o foco vai para ele.
+    if (ordemDoApp && !dedo) valor.focar(); else valor.desfocar();
     valor.pintar();
   });
 
@@ -1246,14 +1388,32 @@ export async function criarFormulario({
     if (todasCategorias) el('nova-categoria').focus();
   });
 
-  el('lista-todas-cat').addEventListener('click', (e) => {
+  el('lista-todas-cat').addEventListener('click', async (e) => {
+    if (e.target.closest('[data-criar-categoria]')) {
+      const texto = el('nova-categoria').value;
+      if (!texto.trim()) { el('nova-categoria').focus(); return; }
+      el('nova-categoria').value = '';
+      todasCategorias = false;
+      await criarCategoria(texto);
+      if (ordemDoApp && !dedo) valor.focar();
+      return;
+    }
     const b = e.target.closest('button[data-id]');
     if (!b) return;
     escolherCategoria(b.dataset.id);
+    if (ordemDoApp) {
+      todasCategorias = false;
+      el('nova-categoria').value = '';
+    }
     pintarCategorias();
     pintarRefino();
-    valor.desfocar();
+    if (ordemDoApp && !dedo) valor.focar(); else valor.desfocar();
     valor.pintar();
+  });
+
+  // No app, o campo da lista filtra enquanto se digita.
+  el('nova-categoria').addEventListener('input', () => {
+    if (ordemDoApp) pintarTodasCategorias();
   });
 
   el('nova-categoria').addEventListener('keydown', async (e) => {
@@ -1263,6 +1423,22 @@ export async function criarFormulario({
     e.stopPropagation();
     const campo = el('nova-categoria');
     const texto = campo.value;
+    if (ordemDoApp) {
+      // Enter escolhe a primeira achada; sem nenhuma, cria.
+      const primeira = el('lista-todas-cat').querySelector('button[data-id]');
+      campo.value = '';
+      todasCategorias = false;
+      if (primeira && texto.trim()) {
+        escolherCategoria(primeira.dataset.id);
+        pintarCategorias();
+        pintarRefino();
+      } else {
+        await criarCategoria(texto);
+      }
+      if (!dedo) valor.focar();
+      valor.pintar();
+      return;
+    }
     campo.value = '';
     await criarCategoria(texto);
   });
@@ -1271,7 +1447,7 @@ export async function criarFormulario({
 
   return {
     recarregar,
-    focar: () => valor.focar(),
+    focar: () => { if (!(ordemDoApp && dedo)) valor.focar(); },
 
     /**
      * Entra em modo correção com um lançamento que já existe (design/03 §9).

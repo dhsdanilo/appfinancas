@@ -497,3 +497,57 @@ input[type="text"].observacao {
 .linha-fatura { display: flex; align-items: center; gap: var(--e2); margin: var(--e2) 0 0; color: var(--tinta-fraca); font-size: var(--t-apoio); }
 .linha-fatura[hidden] { display: none; }
 .linha-fatura.movida [data-papel="fatura-rotulo"] { color: var(--tinta); font-weight: 600; }
+
+/* ── o "Novo lançamento" do app (pedido dele, 03/10/2026) ────────────────── */
+/* Tipo e data em cima; depois categoria, descrição e valor, cada um com o seu
+   rótulo na mesma margem; conta e "mais" no fim. */
+
+.formulario-app .contexto { padding-bottom: 0; }
+.formulario-app .rotulo-campo {
+  margin: var(--e4) 0 var(--e2);
+  font-size: var(--t-miudo);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--tinta-fraca);
+}
+.formulario-app .rotulo-campo .fino { text-transform: none; letter-spacing: 0; font-weight: 400; }
+
+.formulario-app .categorias { display: flex; flex-wrap: wrap; gap: var(--e2); overflow: visible; padding-bottom: 0; }
+.formulario-app .categorias button { min-height: 40px; padding: 0 var(--e4); }
+.formulario-app .categorias .outras-categorias { border-style: dashed; color: var(--tinta-fraca); font-weight: 400; }
+.formulario-app .mais-categorias { display: none; }
+
+.formulario-app .todas-categorias {
+  margin-top: var(--e2);
+  padding: var(--e2);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-controle);
+}
+.formulario-app .todas-categorias input[type="text"].nova-etiqueta { order: -1; }
+.formulario-app .todas-categorias .chips { flex-direction: column; flex-wrap: nowrap; gap: 0; max-height: 240px; overflow-y: auto; }
+.formulario-app .todas-categorias .chips button {
+  justify-content: flex-start;
+  min-height: 36px;
+  border: 0;
+  border-radius: var(--raio-controle);
+  background: none;
+  text-align: left;
+}
+.formulario-app .todas-categorias .chips button:hover { background: var(--fundo); }
+.formulario-app .todas-categorias .chips button[aria-pressed="true"] { background: var(--acento-fundo); }
+.formulario-app .todas-categorias .criar-categoria { color: var(--acento); }
+
+.formulario-app .detalhes { padding-top: 0; }
+.formulario-app .detalhes .rotulo-etiquetas { display: none; }
+.formulario-app .detalhes input[type="text"].nova-etiqueta { flex: 1 1 160px; }
+
+.formulario-app .valor,
+.dialogo-captura .formulario-app .valor { padding: 0 0 var(--e2); }
+.formulario-app .linha-conta {
+  align-items: center;
+  margin-top: var(--e2);
+  padding: var(--e3) 0 var(--e2);
+  border-top: 1px solid var(--borda);
+}
+.formulario-app .linha-fatura { margin: 0 0 var(--e2); }

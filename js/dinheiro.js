@@ -1098,9 +1098,16 @@ function linhaHTML(l, ids, saldoApos = null) {
     const compra = app.lancamentos[l.estornoDe];
     oque = ['Devolução', nomeDaCategoria(app, l.categoriaId), detalhe].filter(Boolean).join(' · ');
     onde = `${conta?.nome ?? '—'}${compra ? ` · da compra de ${diaCurto(dataVista(compra))}` : ''}`;
+  } else if (detalhe) {
+    // Com descrição, ela é o que se lê primeiro — é o que distingue esta
+    // linha das outras da mesma categoria (pedido dele, 03/10/2026).
+    oque = detalhe;
+    onde = [nomeDaCategoria(app, l.categoriaId), conta?.nome ?? '—'].filter(Boolean).join(' · ');
   } else {
-    oque = [nomeDaCategoria(app, l.categoriaId) || l.tipo, detalhe].filter(Boolean).join(' · ');
+    oque = nomeDaCategoria(app, l.categoriaId) || l.tipo;
     onde = conta?.nome ?? '—';
+  }
+  if (!l.fatura && !transferencia && !ajuste && !devolucao) {
     // A compra mostra o que já voltou dela (03 §3.3).
     const voltou = l.tipo === 'despesa' && !l.projetado ? estornado(app, l.id) : 0;
     if (voltou) onde += ` · devolvido ${formatar(voltou)} de ${formatar(l.valor)}`;
@@ -1180,6 +1187,8 @@ const formulario = await criarFormulario({
   raiz: $('formulario'),
   // No PC se lança sentado: a etiqueta cabe já na captura. No celular, não.
   comEtiquetas: true,
+  // Tipo, categoria, descrição, valor — a ordem em que se pensa (03/10/2026).
+  ordemDoApp: true,
   acoes: [
     { id: 'nova', rotulo: 'Salvar e nova', principal: true, fecha: false },
     { id: 'fechar', rotulo: 'Salvar e fechar', fecha: true },
@@ -1194,6 +1203,7 @@ const dialogoEdicao = $('dialogo-edicao');
 
 const edicao = await criarFormulario({
   raiz: $('formulario-edicao'),
+  ordemDoApp: true,
   acoes: [{ id: 'salvar', rotulo: 'Salvar', principal: true, fecha: true }],
   aoSalvar: pintar,
   aoFechar: () => dialogoEdicao.close(),
