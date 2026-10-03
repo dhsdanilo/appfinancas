@@ -1,17 +1,5 @@
 /* Extrato. Valores de design/09-identidade.md. */
 
-.saldos { display: grid; gap: var(--e2); }
-.saldo {
-  display: grid;
-  grid-template-columns: 1fr auto 96px;
-  align-items: baseline;
-  gap: var(--e3);
-  padding: var(--e2) 0;
-  border-bottom: 1px solid var(--borda);
-}
-.saldo:last-child { border-bottom: 0; }
-.saldo .tipo { color: var(--tinta-fraca); font-size: var(--t-miudo); text-align: right; }
-
 .lista { list-style: none; margin: 0; padding: 0; }
 .linha {
   display: grid;
@@ -124,18 +112,6 @@ button.linha.vencido { border-left: 3px solid var(--alerta); background: var(--a
    só entra onde carrega informação — direção do dinheiro e saldo no vermelho
    (design/09-identidade.md §3). */
 
-.saldo .quantia { font-weight: 600; }
-.saldo .quantia.negativo,
-.saldo .quantia.negativo .moeda,
-.saldo .quantia.negativo .centavos { color: var(--alerta); }
-/* Agora que despesa é vermelha, o saldo negativo precisa de mais que cor pra
-   continuar gritando: ele é o único com fundo. */
-.saldo .quantia.negativo {
-  padding: 2px var(--e2);
-  border-radius: var(--raio-controle);
-  background: var(--alerta-fundo);
-}
-
 /* Receita sobe em verde; despesa desce em tinta normal, com o sinal dizendo a
    direção. Pintar TODA despesa de vermelho apagaria o vermelho do saldo
    negativo, que é onde ele precisa gritar. */
@@ -186,3 +162,174 @@ button.linha.vencido { border-left: 3px solid var(--alerta); background: var(--a
   font-size: var(--t-miudo);
   font-variant-numeric: tabular-nums;
 }
+
+/* ── abas, sub-abas e período (design/08-telas §4.1) ────────────────────── */
+
+.painel { margin-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
+
+/* As sub-abas são o foco dentro da natureza: fichas, não abas — uma aba
+   dentro de outra faria o olho procurar onde está. Rolam de lado no celular
+   em vez de empilhar. */
+.subabas {
+  display: flex;
+  gap: var(--e2);
+  overflow-x: auto;
+  padding-bottom: var(--e3);
+  scrollbar-width: none;
+}
+.subabas[hidden] { display: none; }
+.subabas button {
+  flex: none;
+  min-height: 34px;
+  padding: 0 var(--e3);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-pilula);
+  background: var(--superficie);
+  color: var(--tinta-fraca);
+  font-size: var(--t-apoio);
+}
+.subabas button[aria-pressed="true"] {
+  border-color: var(--acento);
+  background: var(--acento-fundo);
+  color: var(--tinta);
+  font-weight: 600;
+}
+
+.periodo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--e2);
+  padding: var(--e2) 0 var(--e4);
+}
+.periodo .passo {
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-controle);
+  background: var(--superficie);
+  color: var(--tinta-fraca);
+  font-size: var(--t-secao);
+  line-height: 1;
+}
+.periodo .passo:hover { color: var(--tinta); border-color: var(--borda-forte); }
+.periodo .rotulo-periodo { min-width: 150px; text-align: center; font-weight: 600; }
+.periodo .intervalo { display: inline-flex; align-items: center; gap: var(--e2); flex-wrap: wrap; }
+.periodo .intervalo[hidden] { display: none; }
+.periodo input[type="date"] {
+  font: inherit;
+  font-size: var(--t-apoio);
+  min-height: 36px;
+  padding: 0 var(--e2);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-controle);
+  background: var(--superficie);
+  color: var(--tinta);
+}
+
+/* ── o resumo: um bloco por conta ───────────────────────────────────────── */
+
+.blocos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--e3);
+  margin-bottom: var(--e6);
+}
+.bloco {
+  padding: var(--e3) var(--e4);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-cartao);
+  background: var(--superficie);
+}
+.bloco.total { background: var(--fundo); }
+.bloco .nome-bloco {
+  margin: 0 0 var(--e2);
+  font-size: var(--t-miudo);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--tinta-fraca);
+}
+.bloco dl { margin: 0; }
+.linha-resumo {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--e3);
+  padding: 2px 0;
+}
+.linha-resumo dt { color: var(--tinta-fraca); font-size: var(--t-apoio); }
+.linha-resumo dd { margin: 0; font-weight: 600; white-space: nowrap; }
+.linha-resumo.abate dd { font-weight: 400; color: var(--tinta-fraca); }
+.linha-resumo.abate dd .moeda,
+.linha-resumo.abate dd .centavos { color: var(--tinta-fraca); }
+
+/* O previsto é a conclusão da conta aberta: separado por um fio, como o
+   subtotal da bancada (09-identidade §7). */
+.linha-resumo.fecho { margin-top: var(--e1); padding-top: var(--e2); border-top: 1px solid var(--borda); }
+.linha-resumo.fecho dt { color: var(--tinta); font-weight: 600; }
+
+/* Vermelho onde ele informa: saldo negativo, fatura vencida (09-identidade
+   §3). Com fundo, porque despesa também é vermelha e o alerta precisa
+   gritar mais que ela. */
+.linha-resumo.negativo dd,
+.linha-resumo.negativo dd .moeda,
+.linha-resumo.negativo dd .centavos { color: var(--alerta); }
+.linha-resumo.negativo dd {
+  padding: 0 var(--e2);
+  border-radius: var(--raio-controle);
+  background: var(--alerta-fundo);
+}
+.linha-resumo.devido dd { color: var(--atencao); }
+
+.bloco .aviso-bloco { margin: var(--e2) 0 0; color: var(--atencao); font-size: var(--t-apoio); }
+.bloco .pe-bloco {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--e3);
+  margin-top: var(--e3);
+  padding-top: var(--e2);
+  border-top: 1px solid var(--borda);
+}
+.bloco .pe-bloco .fino { color: var(--tinta-fraca); font-size: var(--t-miudo); }
+.bloco .pe-bloco button { flex: none; }
+
+/* ── a lista ────────────────────────────────────────────────────────────── */
+
+.cabeca-lista { display: flex; justify-content: space-between; align-items: baseline; gap: var(--e3); flex-wrap: wrap; }
+.cabeca-lista h2 { margin-bottom: var(--e1); }
+.totais { margin: 0; color: var(--tinta-fraca); font-size: var(--t-apoio); }
+
+/* Com uma conta em foco, a linha ganha a coluna do saldo depois dela. */
+.linha.com-saldo { grid-template-columns: 26px 40px 1fr auto 104px; }
+.linha .saldo-apos { text-align: right; color: var(--tinta-fraca); font-size: var(--t-apoio); }
+.linha .saldo-apos .moeda,
+.linha .saldo-apos .centavos { color: var(--tinta-fraca); }
+.linha .saldo-apos.negativo,
+.linha .saldo-apos.negativo .moeda,
+.linha .saldo-apos.negativo .centavos { color: var(--alerta); }
+
+/* O cabeçalho da fatura dentro da lista do cartão. */
+.lista > li.grupo {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--e3);
+  margin-top: var(--e4);
+  padding: var(--e2) 0;
+  border-bottom: 1px solid var(--borda-forte);
+  font-weight: 600;
+}
+.lista > li.grupo:first-child { margin-top: 0; }
+.lista > li.grupo .fino { display: block; color: var(--tinta-fraca); font-size: var(--t-miudo); font-weight: 400; }
+.lista > li.grupo .valor-grupo { white-space: nowrap; text-align: right; }
+
+@media (max-width: 600px) {
+  .linha.com-saldo { grid-template-columns: 26px 40px 1fr auto; }
+  .linha.com-saldo .saldo-apos { grid-column: 3 / -1; font-size: var(--t-miudo); }
+  .blocos { grid-template-columns: 1fr; }
+  .periodo .rotulo-periodo { min-width: 0; flex: 1; }
+}
+.lista > li.grupo .valor-grupo .fino { display: inline; }

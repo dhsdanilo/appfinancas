@@ -363,3 +363,45 @@ code { font-family: var(--mono); font-size: 0.9em; }
 .bt-nuvem svg { width: 20px; height: 20px; }
 .bt-nuvem.girando { color: var(--acento); }
 .bt-nuvem:disabled { opacity: 0.6; cursor: progress; }
+
+/* ── abas (bancada e extrato) ────────────────────────────────────────── */
+
+.abas {
+  display: flex;
+  gap: var(--e1);
+  margin-top: var(--e4);
+  border-bottom: 1px solid var(--borda);
+  /* No celular as abas rolam de lado em vez de quebrar o rótulo. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.abas [role="tab"] {
+  flex: none;
+  white-space: nowrap;
+  min-height: 40px;
+  padding: var(--e2) var(--e4);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--tinta-fraca);
+  font-size: var(--t-apoio);
+}
+.abas [role="tab"]:hover { color: var(--tinta); }
+.abas [role="tab"][aria-selected="true"] {
+  color: var(--tinta);
+  border-bottom-color: var(--acento);
+  font-weight: 600;
+}
+
+.abas .contador {
+  margin-left: var(--e1);
+  padding: 0 6px;
+  border-radius: var(--raio-pilula);
+  background: var(--fundo);
+  color: var(--tinta-fraca);
+  font-size: var(--t-miudo);
+  font-variant-numeric: tabular-nums;
+}
+.abas .contador:empty { display: none; }

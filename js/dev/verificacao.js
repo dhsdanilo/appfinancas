@@ -17,6 +17,9 @@ import * as listas from '../core/listas.js';
 import * as cripto from '../core/cripto.js';
 import * as sincronia from '../core/sincronia.js';
 import { VERSAO_ESTADO } from '../core/redutores.js';
+import * as cartao from '../core/cartao.js';
+import * as previsto from '../core/previsto.js';
+import * as datas from '../core/datas.js';
 
 const BANCO_DE_TESTE = 'appfinancas-teste';
 
@@ -634,14 +637,14 @@ caso('lançamento', 'corrigir a data move as três quando elas são a mesma', ()
     dataCaixa: '2027-03-08', dataCompetencia: '2027-03-08', dataVencimento: '2027-03-08',
   }, 'no lançamento comum as três datas são a mesma coisa');
 
-  // Compra de cartão: competência e vencimento vêm do ciclo, não do dedo.
-  const cartao = {
+  // Datas que divergem sem ser cartão (boleto pago atrasado): só o caixa anda.
+  const divergentes = {
     valor: 1000, confirmado: true,
     dataCompetencia: '2027-03-10', dataCaixa: '2027-04-10', dataVencimento: '2027-04-10',
   };
-  igual(lanc.correcao(cartao, { dataCaixa: '2027-04-12' }, '2027-05-01'), {
+  igual(lanc.correcao(divergentes, { dataCaixa: '2027-04-12' }, '2027-05-01'), {
     dataCaixa: '2027-04-12', dataVencimento: '2027-04-12',
-  }, 'a competência da compra fica onde estava');
+  }, 'a competência fica onde estava');
 });
 
 caso('lançamento', 'data no futuro devolve o lançamento a previsto, e o contrário não vale', () => {
@@ -945,6 +948,226 @@ caso('estado', 'cache de forma antiga é descartado, não usado torto', async ()
   const e = await estado.calcular();
   igual(e.categorias.k1?.nome, 'Supermercado', 'recalculou do zero em vez de usar a forma velha');
   verdade(e.lancamentos !== undefined, 'e o estado veio completo');
+});
+
+
+// cartão ───────────────────────────────────────────────────────────────────
+
+caso('cartão', 'a compra cai na fatura pelo dia do fechamento', () => {
+  const fecha3 = { tipo: 'cartao', diaFechamento: 3, diaVencimento: 10 };
+  igual(cartao.cicloDaCompra(fecha3, '2027-03-02'), { fechamento: '2027-03-03', vencimento: '2027-03-10' },
+    'antes do fechamento: a fatura que fecha neste mês');
+  igual(cartao.cicloDaCompra(fecha3, '2027-03-03'), { fechamento: '2027-04-03', vencimento: '2027-04-10' },
+    'no dia do fechamento já é a seguinte — como os bancos fazem');
+  igual(cartao.cicloDaCompra(fecha3, '2027-12-20'), { fechamento: '2028-01-03', vencimento: '2028-01-10' },
+    'e atravessa o ano');
+
+  const fecha28 = { tipo: 'cartao', diaFechamento: 28, diaVencimento: 5 };
+  igual(cartao.cicloDaCompra(fecha28, '2027-03-10'), { fechamento: '2027-03-28', vencimento: '2027-04-05' },
+    'vencimento menor que o fechamento vence no mês seguinte');
+
+  const fecha31 = { tipo: 'cartao', diaFechamento: 31, diaVencimento: 8 };
+  igual(cartao.cicloDaCompra(fecha31, '2027-02-15').fechamento, '2027-02-28',
+    'dia 31 em fevereiro é o último dia de fevereiro');
+  igual(cartao.cicloDaCompra(fecha31, '2027-02-28').fechamento, '2027-03-31');
+});
+
+caso('cartão', 'a compra guarda as três datas, e a parcela vai para as faturas seguintes', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', {
+    id: 'c1', nome: 'Cartão', tipo: 'cartao', diaFechamento: 3, diaVencimento: 10,
+  });
+  // Como a captura sempre gravou: data da compra + i meses, e parcela futura
+  // "não confirmada". É o cálculo do estado que põe cada uma na sua fatura.
+  for (let i = 0; i < 3; i += 1) {
+    const dia = datas.somarMeses('2027-03-20', i);
+    await estado.aplicarEvento('lancamento.registrado', {
+      id: 'l' + i, tipo: 'despesa', valor: 29900, contaId: 'c1', categoriaId: 'k1',
+      dataCompetencia: dia, dataCaixa: dia, confirmado: i === 0,
+      parcela: { compraId: 'cmp1', numero: i + 1, total: 3 },
+    });
+  }
+  const e = await estado.calcular();
+  const l0 = e.lancamentos.l0;
+  igual([l0.dataCompetencia, l0.cicloFatura, l0.dataCaixa, l0.dataVencimento],
+    ['2027-03-20', '2027-04-03', '2027-04-10', '2027-04-10'],
+    'competência é a compra; caixa e vencimento são da fatura (D4)');
+  igual(['l0', 'l1', 'l2'].map((id) => e.lancamentos[id].cicloFatura),
+    ['2027-04-03', '2027-05-03', '2027-06-03'], 'uma parcela por fatura, em sequência');
+  verdade(['l0', 'l1', 'l2'].every((id) => e.lancamentos[id].confirmado),
+    'a parcela é realizada: a compra aconteceu, o que falta é o pagamento');
+  igual(lanc.saldoReal(e, 'c1'), -89700, 'a dívida do cartão é a compra inteira');
+});
+
+caso('cartão', 'compra lançada antes do ciclo cai na fatura quando o ciclo é definido', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', { id: 'c1', nome: 'Cartão', tipo: 'cartao' });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'l1', tipo: 'despesa', valor: 5000, contaId: 'c1', categoriaId: 'k1',
+    dataCompetencia: '2027-03-20', dataCaixa: '2027-03-20', confirmado: true,
+  });
+  let e = await estado.calcular();
+  igual([e.lancamentos.l1.cicloFatura, e.lancamentos.l1.dataCaixa], [null, '2027-03-20'],
+    'sem ciclo, a compra pesa no dia em que foi feita');
+
+  await estado.aplicarEvento('conta.alterada', { id: 'c1', diaFechamento: 3, diaVencimento: 10 });
+  e = await estado.calcular();
+  igual([e.lancamentos.l1.cicloFatura, e.lancamentos.l1.dataCaixa], ['2027-04-03', '2027-04-10'],
+    'definido o ciclo, ela vai pra fatura certa sem evento novo nela');
+
+  const doZero = await estado.recalcular();
+  igual(doZero.lancamentos.l1, e.lancamentos.l1, 'e o recálculo do zero chega no mesmo lugar');
+});
+
+caso('cartão', 'mudar o fechamento refaz só as faturas que ainda não fecharam', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', {
+    id: 'c1', nome: 'Cartão', tipo: 'cartao', diaFechamento: 3, diaVencimento: 10,
+  });
+  const compra = (id, dia) => estado.aplicarEvento('lancamento.registrado', {
+    id, tipo: 'despesa', valor: 1000, contaId: 'c1', categoriaId: 'k1',
+    dataCompetencia: dia, dataCaixa: dia, confirmado: true,
+  });
+  await compra('antiga', '2020-01-10');
+  await compra('futura', '2099-01-10');
+  await estado.aplicarEvento('conta.alterada', { id: 'c1', diaFechamento: 15, diaVencimento: 22 });
+
+  const e = await estado.calcular();
+  igual(e.lancamentos.antiga.cicloFatura, '2020-02-03', 'fatura fechada é passado: o banco também não a refaz');
+  igual(e.lancamentos.futura.cicloFatura, '2099-01-15', 'a que ainda não fechou segue o ciclo novo');
+});
+
+caso('cartão', 'corrigir a data no cartão corrige a compra', () => {
+  const l = {
+    valor: 1000, confirmado: true, cicloFatura: '2027-04-03',
+    dataCompetencia: '2027-03-20', dataCaixa: '2027-04-10', dataVencimento: '2027-04-10',
+  };
+  igual(lanc.correcao(l, { dataCaixa: '2027-03-21' }, '2027-03-25'), { dataCompetencia: '2027-03-21' },
+    'a data que se vê no cartão é a da compra; caixa e vencimento o ciclo refaz');
+  igual(lanc.correcao(l, { dataCaixa: '2027-03-20' }, '2027-03-25'), {}, 'mesma compra, nada mudou');
+});
+
+caso('cartão', 'o pagamento quita a fatura mais antiga primeiro', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', { id: 'k1', nome: 'Corrente', tipo: 'corrente', saldoInicial: 100000 });
+  await estado.aplicarEvento('conta.criada', {
+    id: 'c1', nome: 'Cartão', tipo: 'cartao', diaFechamento: 3, diaVencimento: 10, pagaCom: 'k1',
+  });
+  const compra = (id, dia, valor) => estado.aplicarEvento('lancamento.registrado', {
+    id, tipo: 'despesa', valor, contaId: 'c1', categoriaId: 'x',
+    dataCompetencia: dia, dataCaixa: dia, confirmado: true,
+  });
+  await compra('a', '2027-02-20', 10000); // fecha 03/03
+  await compra('b', '2027-03-20', 5000); // fecha 03/04
+
+  let e = await estado.calcular();
+  let f = previsto.faturas(e, 'c1', '2027-03-25');
+  igual(f.map((c) => [c.fechamento, c.situacao, c.aPagar]),
+    [['2027-03-03', 'fechada', 10000], ['2027-04-03', 'aberta', 5000]]);
+
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'p1', tipo: lanc.tipoDaTransferencia(e, 'c1'), valor: 6000, contaId: 'k1', contaDestinoId: 'c1',
+    dataCompetencia: '2027-03-08', dataCaixa: '2027-03-08', confirmado: true,
+  });
+  e = await estado.calcular();
+  igual(e.lancamentos.p1.tipo, 'pagamento_fatura', 'transferir para o cartão é pagar a fatura');
+  f = previsto.faturas(e, 'c1', '2027-03-25');
+  igual(f.map((c) => c.aPagar), [4000, 5000], 'pagou menos que a fechada: o resto continua nela (rotativo)');
+  const r = previsto.resumoDoCartao(e, 'c1', '2027-03-25');
+  igual([r.fechada.aPagar, r.fechada.atrasada, r.aberta.aPagar], [4000, true, 5000]);
+
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'p2', tipo: 'pagamento_fatura', valor: 6000, contaId: 'k1', contaDestinoId: 'c1',
+    dataCompetencia: '2027-03-26', dataCaixa: '2027-03-26', confirmado: true,
+  });
+  e = await estado.calcular();
+  f = previsto.faturas(e, 'c1', '2027-03-26');
+  igual(f.map((c) => c.aPagar), [0, 3000], 'pagou mais: a sobra abate a aberta');
+  igual(lanc.saldoReal(e, 'k1'), 88000, 'pagamento mexe na corrente e não é despesa');
+});
+
+caso('cartão', 'o saldo já na fatura quando o cartão entrou no app conta como dívida', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', {
+    id: 'c1', nome: 'Cartão', tipo: 'cartao', diaFechamento: 3, diaVencimento: 10,
+    saldoInicial: -45000, dataInicial: '2027-03-10',
+  });
+  const f = previsto.faturas(await estado.calcular(), 'c1', '2027-03-12');
+  igual(f.map((c) => [c.fechamento, c.aPagar]), [['2027-04-03', 45000]], 'entra na fatura aberta do dia');
+});
+
+caso('previsto', 'saldo previsto = real − faturas − recorrentes e agendados', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const dia = '2027-03-10';
+  await estado.aplicarEvento('conta.criada', { id: 'k1', nome: 'Corrente', tipo: 'corrente', saldoInicial: 100000 });
+  await estado.aplicarEvento('conta.criada', {
+    id: 'c1', nome: 'Cartão', tipo: 'cartao', diaFechamento: 3, diaVencimento: 10, pagaCom: 'k1',
+  });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'compra', tipo: 'despesa', valor: 20000, contaId: 'c1', categoriaId: 'x',
+    dataCompetencia: '2027-03-05', dataCaixa: '2027-03-05', confirmado: true,
+  });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'boleto', tipo: 'despesa', valor: 5000, contaId: 'k1', categoriaId: 'x',
+    dataCompetencia: '2027-03-20', dataCaixa: '2027-03-20', confirmado: false,
+  });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'salario', tipo: 'receita', valor: 300000, contaId: 'k1', categoriaId: 'y',
+    dataCompetencia: '2027-03-30', dataCaixa: '2027-03-30', confirmado: false,
+  });
+  await estado.aplicarEvento('recorrencia.criada', {
+    id: 'r1', nome: 'Plano', tipo: 'despesa', contaId: 'k1', categoriaId: 'x',
+    tipoValor: 'fixa', valor: 15000, dia: 25, inicio: '2027-01-25',
+  });
+
+  let e = await estado.calcular();
+  let p = previsto.saldoPrevisto(e, 'k1', dia);
+  igual([p.real, p.faturas.map((f) => f.valor), p.aSair, p.previsto, p.ate],
+    [100000, [20000], 20000, 60000, '2027-03-31'],
+    'a fatura aberta pesa mesmo vencendo em abril; receita futura não entra');
+
+  // Lançada a ocorrência do mês, ela deixa de ser prevista.
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'plano-mar', tipo: 'despesa', valor: 15000, contaId: 'k1', categoriaId: 'x',
+    dataCompetencia: '2027-03-25', dataCaixa: '2027-03-25', confirmado: false, recorrenciaId: 'r1',
+  });
+  e = await estado.calcular();
+  p = previsto.saldoPrevisto(e, 'k1', dia);
+  igual(p.aSair, 20000, 'virou agendado: conta uma vez só, não duas');
+  igual(previsto.ocorrenciasPrevistas(e, '2027-03-01', '2027-04-30', dia).map((o) => o.dataCaixa),
+    ['2027-04-25'], 'e a próxima ocorrência é a de abril');
+});
+
+caso('previsto', 'recorrência estimada projeta a média das últimas 3', () => {
+  const r = { tipoValor: 'variavel', valor: null };
+  const serie = [
+    { valor: 30000, dataCompetencia: '2027-01-10' },
+    { valor: 27000, dataCompetencia: '2027-02-10' },
+    { valor: 28000, dataCompetencia: '2027-03-10' },
+    { valor: 99999, dataCompetencia: '2026-12-10' },
+  ];
+  igual(previsto.valorDaSerie(r, serie), { valor: 28333, estimado: true },
+    'só as três mais recentes, e sempre marcada como estimativa');
+  igual(previsto.valorDaSerie({ tipoValor: 'fixa', valor: 15000 }, serie), { valor: 15000, estimado: false });
+});
+
+caso('previsto', 'mês que passou sem lançamento não é projetado', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', { id: 'k1', nome: 'Corrente', tipo: 'corrente' });
+  await estado.aplicarEvento('recorrencia.criada', {
+    id: 'r1', nome: 'Plano', tipo: 'despesa', contaId: 'k1', categoriaId: 'x',
+    tipoValor: 'fixa', valor: 15000, dia: 5, inicio: '2027-01-05',
+  });
+  const e = await estado.calcular();
+  igual(previsto.ocorrenciasPrevistas(e, '2027-01-01', '2027-03-31', '2027-03-10').map((o) => o.dataCaixa),
+    ['2027-03-05'], 'janeiro e fevereiro são assunto da fila de vencidos, não da projeção');
 });
 
 // ── apoio ─────────────────────────────────────────────────────────────────

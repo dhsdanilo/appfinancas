@@ -17,8 +17,9 @@ import { novoId } from '../core/id.js';
 import * as log from '../core/log.js';
 import * as estado from '../core/estado.js';
 import {
-  hoje, nasceConfirmado, nomeDaCategoria, correcao, detalhesDaCategoria,
+  hoje, nasceConfirmado, nomeDaCategoria, correcao, detalhesDaCategoria, dataVista,
 } from '../core/lancamentos.js';
+import { somarDias, somarMeses } from '../core/datas.js';
 import { MARCACAO_CAMPO_VALOR, ligarCampoValor } from './campo-valor.js';
 import { ligarZonaDePerigo } from './zona-perigo.js';
 
@@ -137,6 +138,9 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
   // O lançamento que está sendo corrigido, ou null — é só isso que separa as
   // duas vidas deste formulário.
   let editando = null;
+  // A série de que este lançamento é a ocorrência do mês, quando ele nasceu
+  // de um previsto do extrato. Lançado, o previsto some (03-alimentacao §4).
+  let daSerie = null;
 
   // ── valor ───────────────────────────────────────────────────────────────
 
@@ -239,12 +243,6 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
   }
 
   const pisoDaConta = () => app.contas[contaId]?.dataInicial ?? null;
-
-  function somarDias(dia, quantos) {
-    const d = new Date(dia + 'T12:00:00');
-    d.setDate(d.getDate() + quantos);
-    return d.toISOString().slice(0, 10);
-  }
 
   function irPara(novoDia) {
     const piso = pisoDaConta();
@@ -431,7 +429,7 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
   }
 
   function pintarRepete() {
-    el('linha-repete').hidden = Boolean(editando);
+    el('linha-repete').hidden = Boolean(editando) || Boolean(daSerie);
     for (const b of raiz.querySelectorAll('[data-repete]')) {
       b.setAttribute('aria-pressed', String(b.dataset.repete === repete));
     }
@@ -562,7 +560,10 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
     // linha-mãe com o total, que seria a forma mais fácil de contar o mesmo
     // dinheiro duas vezes (03-alimentacao §6.1).
     const compraId = quantas > 1 ? novoId('cmp') : null;
-    const recorrenciaId = await garantirRecorrencia();
+    const recorrenciaId = daSerie ?? (await garantirRecorrencia());
+    // No cartão a parcela é realizada desde a compra (D4): o que vem depois é
+    // o pagamento, não o gasto. Na corrente, parcela futura é compromisso.
+    const noCartao = app.contas[contaId]?.tipo === 'cartao';
 
     const comum = {
       tipo,
@@ -589,7 +590,7 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
         dataCompetencia: dia,
         dataCaixa: dia,
         // Não é escolha de ninguém: vem da origem e da data (D2).
-        confirmado: nasceConfirmado({ manual: true, dataCaixa: dia }),
+        confirmado: nasceConfirmado({ manual: true, dataCaixa: noCartao ? data : dia }),
         parcela: compraId ? { compraId, numero: i + 1, total: quantas } : null,
       });
     }
@@ -601,6 +602,7 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
         (quantas > 1 ? `${quantas}× de ${quanto}` : quanto) +
         ` · ${nomeDaCategoria(app, categoriaId)}`,
     };
+    daSerie = null;
     await recarregar();
 
     // "Salvar e nova" preserva tudo e zera só o valor: é o que torna cinco
@@ -634,16 +636,6 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
     });
     app = await estado.calcular();
     return id;
-  }
-
-  /** Mês cheio, sem estourar: 31/01 + 1 mês é 28/02, não 03/03. */
-  function somarMeses(dia, quantos) {
-    const [ano, mes, d] = dia.split('-').map(Number);
-    const alvo = new Date(ano, mes - 1 + quantos, 1);
-    const ultimoDia = new Date(alvo.getFullYear(), alvo.getMonth() + 1, 0).getDate();
-    alvo.setDate(Math.min(d, ultimoDia));
-    const dois = (n) => String(n).padStart(2, '0');
-    return `${alvo.getFullYear()}-${dois(alvo.getMonth() + 1)}-${dois(alvo.getDate())}`;
   }
 
   function mostrarDesfazer() {
@@ -868,8 +860,10 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
      */
     async carregar(l) {
       editando = l;
+      daSerie = null;
       tipo = l.tipo;
-      data = l.dataCaixa;
+      // No cartão, a data que se corrige é a da compra (03-alimentacao §6.2).
+      data = dataVista(l);
       contaId = l.contaId;
       categoriaId = l.categoriaId;
       detalheId = l.detalheId ?? null;
@@ -883,9 +877,33 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
       await recarregar();
     },
 
+    /**
+     * Começa um lançamento novo a partir de um previsto do extrato: a
+     * ocorrência de uma recorrência que ninguém lançou ainda. Vem tudo
+     * preenchido — inclusive o valor, que é o fixo ou a média — e lançar
+     * amarra o lançamento à série, o que faz o previsto sumir.
+     */
+    async preencher(o) {
+      editando = null;
+      daSerie = o.recorrenciaId;
+      tipo = o.tipo;
+      data = o.dataCompetencia;
+      contaId = o.contaId;
+      categoriaId = o.categoriaId;
+      detalheId = o.detalheId ?? null;
+      etiquetas = [];
+      repete = 'nao';
+      el('parcelas').value = '1';
+      el('observacao').value = '';
+      valor.definir(o.valor);
+      el('desfazer').hidden = true;
+      await recarregar();
+    },
+
     /** Zera tudo: usado ao reabrir o diálogo depois de fechado. */
     limpar: () => {
       editando = null;
+      daSerie = null;
       etiquetas = [];
       detalheId = null;
       repete = 'nao';

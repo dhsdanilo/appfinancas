@@ -17,15 +17,17 @@ import { valorLancavel, formatar } from '../core/dinheiro.js';
 import { novoId } from '../core/id.js';
 import * as log from '../core/log.js';
 import * as estado from '../core/estado.js';
-import { hoje, nasceConfirmado, correcao } from '../core/lancamentos.js';
+import { hoje, nasceConfirmado, correcao, tipoDaTransferencia } from '../core/lancamentos.js';
 import { MARCACAO_CAMPO_VALOR, ligarCampoValor } from './campo-valor.js';
 import { ligarZonaDePerigo } from './zona-perigo.js';
 
 // Todas as contas que não estão arquivadas. Cartão, dívida e folha entram
 // porque o dinheiro passa por elas de verdade: pagar a fatura é corrente →
-// cartão, e o líquido do holerite é folha → corrente. Os tipos próprios dessas
-// operações (pagamento de fatura, §6; holerite, D25) ainda não existem, e até
-// lá a transferência faz o essencial — mexe em saldo, sem virar gasto.
+// cartão, e o líquido do holerite é folha → corrente.
+//
+// Pagar a fatura é ESTA operação com destino num cartão, e o tipo
+// `pagamento_fatura` sai do destino sozinho — não existe como errar
+// (03-alimentacao §6.2). O holerite (D25) ainda não tem tipo próprio.
 
 const MARCACAO = `
   ${MARCACAO_CAMPO_VALOR}
@@ -61,7 +63,7 @@ const MARCACAO = `
  * @param {Function} [opcoes.aoSalvar]
  * @param {Function} [opcoes.aoFechar]
  */
-export async function criarTransferencia({ raiz, aoSalvar, aoFechar }) {
+export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitulo }) {
   raiz.innerHTML = MARCACAO;
   const el = (papel) => raiz.querySelector(`[data-papel="${papel}"]`);
 
@@ -83,9 +85,12 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar }) {
   const pronto = () =>
     valorLancavel(valor.centavos()) && origem() && destino() && origem() !== destino();
 
+  const pagandoFatura = () => Boolean(app) && tipoDaTransferencia(app, destino()) === 'pagamento_fatura';
+
   function pintarAcao() {
     el('b-salvar').disabled = !pronto();
-    el('b-salvar').textContent = editando ? 'Salvar' : 'Transferir';
+    el('b-salvar').textContent = editando ? 'Salvar' : pagandoFatura() ? 'Pagar fatura' : 'Transferir';
+    if (aoMudarTitulo) aoMudarTitulo(pagandoFatura() ? 'Pagar fatura' : 'Transferência');
 
     // A recusa diz o que resolve, nunca só que não dá.
     const mesma = origem() && origem() === destino();
@@ -149,7 +154,7 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar }) {
     const ap = await log.aparelho();
     await estado.aplicarEvento('lancamento.registrado', {
       id: novoId('lan'),
-      tipo: 'transferencia',
+      tipo: tipoDaTransferencia(app, destino()),
       valor: valor.centavos(),
       dataCompetencia: data,
       dataCaixa: data,
@@ -168,6 +173,7 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar }) {
   async function salvarCorrecao() {
     const mudancas = correcao(editando, {
       valor: valor.centavos(),
+      tipo: tipoDaTransferencia(app, destino()),
       contaId: origem(),
       contaDestinoId: destino(),
       dataCaixa: data,
@@ -223,8 +229,25 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar }) {
       editando = null;
       data = hoje();
       valor.limpar();
+      el('origem').value = '';
+      el('destino').value = '';
       pintarData();
       perigo.mostrar(false);
+      pintarAcao();
+    },
+
+    /**
+     * O botão "pagar fatura" do cartão: a mesma transferência, já com a conta
+     * que paga, o cartão e o valor. Tudo editável — pagamento parcial é
+     * permitido, e o que falta continua devido (03-alimentacao §6.2).
+     */
+    async pagarFatura({ cartaoId, origemId, centavos }) {
+      editando = null;
+      data = hoje();
+      await recarregar();
+      el('origem').value = origemId ?? '';
+      el('destino').value = cartaoId;
+      if (centavos > 0) valor.definir(centavos); else valor.limpar();
       pintarAcao();
     },
   };

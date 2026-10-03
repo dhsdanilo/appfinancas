@@ -4,43 +4,6 @@
    aqui cabe densidade que a tela de captura não tolera. Mas densidade não é
    bagunça — três listas, três abas, e uma linha por item. */
 
-/* ── abas ───────────────────────────────────────────────────────────────── */
-
-.abas {
-  display: flex;
-  gap: var(--e1);
-  margin-top: var(--e4);
-  border-bottom: 1px solid var(--borda);
-}
-
-.abas [role="tab"] {
-  min-height: 40px;
-  padding: var(--e2) var(--e4);
-  border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  background: none;
-  color: var(--tinta-fraca);
-  font-size: var(--t-apoio);
-}
-.abas [role="tab"]:hover { color: var(--tinta); }
-.abas [role="tab"][aria-selected="true"] {
-  color: var(--tinta);
-  border-bottom-color: var(--acento);
-  font-weight: 600;
-}
-
-.abas .contador {
-  margin-left: var(--e1);
-  padding: 0 6px;
-  border-radius: var(--raio-pilula);
-  background: var(--fundo);
-  color: var(--tinta-fraca);
-  font-size: var(--t-miudo);
-  font-variant-numeric: tabular-nums;
-}
-.abas .contador:empty { display: none; }
-
 .painel { margin-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
 .painel[hidden] { display: none; }
 
@@ -314,3 +277,17 @@
 }
 .proximo[hidden] { display: none; }
 .proximo .elo { color: var(--tinta); }
+
+/* ── o ciclo do cartão ──────────────────────────────────────────────────── */
+
+.dialogo-ciclo {
+  width: min(520px, calc(100vw - 2 * var(--e4)));
+  padding: var(--e4);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-cartao);
+  background: var(--superficie);
+  color: var(--tinta);
+}
+.dialogo-ciclo::backdrop { background: #0006; }
+.dialogo-ciclo .formulario { padding-bottom: 0; border-bottom: 0; }
+.dialogo-ciclo .titulo-bloco { flex: 1 1 100%; margin: 0; }

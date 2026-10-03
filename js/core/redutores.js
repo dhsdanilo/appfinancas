@@ -7,6 +7,8 @@
 // Cobertos: pessoa, conta, categoria e lançamento. Faltam recorrência,
 // envelope, holerite e os demais tipos de lançamento — Fase 3 em diante.
 
+import { datarNoCartao, temCiclo } from './cartao.js';
+
 /**
  * Versão da FORMA do estado derivado — diferente da versão do formato dos
  * eventos (formato.js).
@@ -20,7 +22,7 @@
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 5;
+export const VERSAO_ESTADO = 6;
 
 export function estadoVazio() {
   return {
@@ -71,21 +73,26 @@ export const redutores = {
       limite: d.limite ?? null,
       diaFechamento: d.diaFechamento ?? null,
       diaVencimento: d.diaVencimento ?? null,
+      // A conta que paga a fatura: é o que faz a fatura pesar no saldo
+      // previsto dela (03-alimentacao §6.2).
+      pagaCom: d.pagaCom ?? null,
       // Só em investimento (D16)
       risco: d.risco ?? null,
       liquidez: d.liquidez ?? null,
     };
   },
 
-  'conta.alterada'(e, d) {
+  'conta.alterada'(e, d, evento) {
     const c = e.contas[d.id];
     if (!c) return;
+    const cicloAntes = temCiclo(c) ? `${c.diaFechamento}/${c.diaVencimento}` : null;
     for (const campo of [
       'nome',
       'titular',
       'limite',
       'diaFechamento',
       'diaVencimento',
+      'pagaCom',
       'risco',
       'liquidez',
     ]) {
@@ -93,6 +100,18 @@ export const redutores = {
     }
     // tipo, saldoInicial e dataInicial não mudam por aqui de propósito:
     // mexem em saldo histórico e precisam de evento próprio, deliberado.
+
+    const cicloDepois = temCiclo(c) ? `${c.diaFechamento}/${c.diaVencimento}` : null;
+    if (cicloDepois === cicloAntes) return;
+    // Mudou o ciclo: refaz só as faturas que ainda não tinham fechado no dia
+    // da mudança. Fatura fechada é passado — o banco também não a refaz
+    // (03-alimentacao §6.2). Lançamento que nunca teve ciclo entra agora.
+    const dia = evento?.t ? evento.t.slice(0, 10) : '';
+    for (const l of Object.values(e.lancamentos)) {
+      if (l.contaId !== c.id) continue;
+      if (l.cicloFatura && l.cicloFatura <= dia) continue;
+      datarNoCartao(l, c);
+    }
   },
 
   'conta.saldoInicialCorrigido'(e, d) {
@@ -276,15 +295,25 @@ export const redutores = {
       envelopeId: d.envelopeId ?? null,
       extraordinario: d.extraordinario ?? Boolean(d.custeadoPor),
       lancadoPor: d.lancadoPor ?? null,
+      cicloFatura: null,
       removido: false,
     };
+    // No cartão, o evento traz a data da compra e o ciclo diz o resto (D4).
+    // É aqui, e não na captura, para que as compras lançadas antes de o ciclo
+    // existir no app caiam na fatura certa sem evento novo (02 §3.8).
+    datarNoCartao(e.lancamentos[d.id], e.contas[d.contaId]);
   },
 
   'lancamento.alterado'(e, d) {
     const l = e.lancamentos[d.id];
     if (!l) return;
     for (const [campo, valor] of Object.entries(d)) {
+      // No cartão, caixa e vencimento são do ciclo, nunca do dedo.
+      if (l.cicloFatura && (campo === 'dataCaixa' || campo === 'dataVencimento')) continue;
       if (campo !== 'id' && valor !== undefined) l[campo] = valor;
+    }
+    if (d.contaId !== undefined || d.dataCompetencia !== undefined) {
+      datarNoCartao(l, e.contas[l.contaId]);
     }
   },
 

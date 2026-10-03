@@ -77,6 +77,7 @@ async function recarregar() {
 }
 
 function pintar() {
+  pintarPagadoras();
   pintarContas();
   pintarCategorias();
   pintarEtiquetas();
@@ -152,7 +153,22 @@ function pintarContas() {
   const desenhar = (c) => {
     const detalhes = [NOME_DO_TIPO[c.tipo] ?? c.tipo];
     if (c.titular && app.pessoas[c.titular]) detalhes.push(app.pessoas[c.titular].nome);
-    if (c.tipo === 'cartao' && c.diaVencimento) detalhes.push(`vence dia ${c.diaVencimento}`);
+    if (c.tipo === 'cartao') {
+      if (c.diaFechamento && c.diaVencimento) {
+        detalhes.push(`fecha ${c.diaFechamento} · vence ${c.diaVencimento}`);
+      } else {
+        // Sem os dois dias o app não sabe a qual fatura a compra pertence, e
+        // a compra volta a pesar no dia em que foi feita.
+        detalhes.push('sem ciclo');
+      }
+      const pagadora = app.contas[c.pagaCom];
+      if (pagadora) detalhes.push(`paga com ${pagadora.nome}`);
+    }
+    // A corrente diz quais cartões ela paga: é o vínculo visto do outro lado.
+    const pagos = Object.values(app.contas)
+      .filter((o) => o.tipo === 'cartao' && o.pagaCom === c.id && !o.arquivada)
+      .map((o) => o.nome);
+    if (pagos.length) detalhes.push(`paga ${pagos.join(', ')}`);
     return linha({
       especie: 'contas',
       id: c.id,
@@ -163,7 +179,9 @@ function pintarContas() {
       valor: saldoReal(app, c.id),
       uso: contarUso('contas', c.id),
       arquivada: c.arquivada,
-      extras: '<button type="button" class="elo" data-acao="saldo-inicial">saldo inicial</button>',
+      extras:
+        (c.tipo === 'cartao' ? '<button type="button" class="elo" data-acao="ciclo">ciclo</button>' : '') +
+        '<button type="button" class="elo" data-acao="saldo-inicial">saldo inicial</button>',
     });
   };
 
@@ -331,6 +349,7 @@ function ligarLista(idDaLista, especie) {
       case 'apagar-sim': return apagar(especie, id);
       case 'apagar-nao': confirmando = null; avisar(''); return pintar();
       case 'saldo-inicial': return corrigirSaldoInicial(id, item);
+      case 'ciclo': return abrirCiclo(id);
     }
   });
 }
@@ -417,10 +436,14 @@ async function apagar(especie, id) {
  */
 function corrigirSaldoInicial(id, item) {
   const conta = app.contas[id];
+  // No cartão o marco zero é o que já estava na fatura aberta: digita-se o
+  // valor da fatura, positivo, e ele entra como dívida (02 §3.2).
+  const cartao = conta.tipo === 'cartao';
+  const mostrado = cartao ? -(conta.saldoInicial ?? 0) : conta.saldoInicial ?? 0;
   const alvo = item.querySelector('.meta');
   alvo.innerHTML = `<input type="text" class="em-edicao" inputmode="decimal"
-      value="${formatarSimples(conta.saldoInicial ?? 0).replace('R$ ', '')}"
-      aria-label="Saldo inicial da conta">`;
+      value="${formatarSimples(mostrado).replace('R$ ', '')}"
+      aria-label="${cartao ? 'Já na fatura aberta quando o cartão entrou no app' : 'Saldo inicial da conta'}">`;
   const campo = alvo.querySelector('input');
   campo.focus();
   campo.select();
@@ -429,10 +452,15 @@ function corrigirSaldoInicial(id, item) {
   const terminar = async (salvar) => {
     if (fechado) return;
     fechado = true;
-    const novo = deTexto(campo.value);
+    const digitado = deTexto(campo.value);
+    const novo = cartao ? -Math.abs(digitado) : digitado;
     if (!salvar || novo === (conta.saldoInicial ?? 0)) return pintar();
     await estado.aplicarEvento('conta.saldoInicialCorrigido', { id, saldoInicial: novo });
-    avisar(`Saldo inicial de ${conta.nome} agora é ${formatarSimples(novo)} — todo saldo dali pra frente mudou junto.`);
+    avisar(
+      cartao
+        ? `${conta.nome} entrou no app com ${formatarSimples(-novo)} na fatura aberta.`
+        : `Saldo inicial de ${conta.nome} agora é ${formatarSimples(novo)} — todo saldo dali pra frente mudou junto.`
+    );
     await recarregar();
   };
 
@@ -464,13 +492,16 @@ $('f-conta').addEventListener('submit', (e) =>
       nome,
       tipo,
       titular: await pessoaChamada(campos.dono.value),
-      saldoInicial: deTexto(campos.saldo.value),
+      // No cartão o número digitado é o que já está na fatura aberta, e ele
+      // entra como dívida (02 §3.2).
+      saldoInicial: tipo === 'cartao' ? -Math.abs(deTexto(campos.saldo.value)) : deTexto(campos.saldo.value),
       dataInicial: campos.data.value || hoje(),
     };
     if (tipo === 'cartao') {
       dados.limite = deTexto(campos.limite.value) || null;
       dados.diaFechamento = Number(campos.fechamento.value) || null;
       dados.diaVencimento = Number(campos.vencimento.value) || null;
+      dados.pagaCom = campos.pagaCom.value || null;
     }
     return ['conta.criada', dados];
   })
@@ -533,8 +564,64 @@ async function criar(e, especie, montar) {
 }
 
 function mostrarCamposDeCartao() {
-  $('campos-cartao').hidden = $('f-conta').elements.tipo.value !== 'cartao';
+  const cartao = $('f-conta').elements.tipo.value === 'cartao';
+  $('campos-cartao').hidden = !cartao;
+  $('rotulo-saldo').textContent = cartao ? 'Já na fatura aberta' : 'Saldo de hoje';
 }
+
+/** Quem pode pagar a fatura: as contas de caixa — corrente e espécie. */
+function pintarPagadoras() {
+  const pagadoras = Object.values(app.contas)
+    .filter((c) => !c.arquivada && (c.tipo === 'corrente' || c.tipo === 'especie'))
+    .sort(porNome);
+  const opcoes =
+    '<option value="">—</option>' +
+    pagadoras.map((c) => `<option value="${escapar(c.id)}">${escapar(c.nome)}</option>`).join('');
+  for (const select of document.querySelectorAll('[data-papel="paga-com"]')) {
+    const antes = select.value;
+    select.innerHTML = opcoes;
+    select.value = antes;
+  }
+}
+
+// ── o ciclo de um cartão que já existe ────────────────────────────────────
+
+let cicloDe = null;
+
+function abrirCiclo(id) {
+  const c = app.contas[id];
+  cicloDe = id;
+  const f = $('f-ciclo').elements;
+  $('titulo-ciclo').textContent = c.nome;
+  f.fechamento.value = c.diaFechamento ?? '';
+  f.vencimento.value = c.diaVencimento ?? '';
+  f.limite.value = c.limite ? formatarSimples(c.limite).replace('R$ ', '') : '';
+  pintarPagadoras();
+  f.pagaCom.value = c.pagaCom ?? '';
+  $('dialogo-ciclo').showModal();
+  f.fechamento.focus();
+}
+
+$('dialogo-ciclo').addEventListener('close', async () => {
+  const id = cicloDe;
+  cicloDe = null;
+  if (!id || $('dialogo-ciclo').returnValue !== 'salvar') return;
+
+  const c = app.contas[id];
+  const f = $('f-ciclo').elements;
+  const novo = {
+    diaFechamento: Number(f.fechamento.value) || null,
+    diaVencimento: Number(f.vencimento.value) || null,
+    limite: deTexto(f.limite.value) || null,
+    pagaCom: f.pagaCom.value || null,
+  };
+  // Só o que mudou: "salvou igual" não é evento.
+  const mudou = Object.fromEntries(Object.entries(novo).filter(([k, v]) => (c[k] ?? null) !== v));
+  if (!Object.keys(mudou).length) return;
+  await estado.aplicarEvento('conta.alterada', { id, ...mudou });
+  avisar('');
+  await recarregar();
+});
 
 $('f-conta').elements.tipo.addEventListener('change', mostrarCamposDeCartao);
 
