@@ -24,6 +24,7 @@ import * as pendencias from '../core/pendencias.js';
 import { categoriaNaArea, areasParaConta } from '../app/areas.js';
 import * as holerite from '../core/holerite.js';
 import * as divida from '../core/divida.js';
+import * as investimentos from '../core/investimentos.js';
 
 const BANCO_DE_TESTE = 'appfinancas-teste';
 
@@ -1693,6 +1694,66 @@ caso('previsto', 'o mês seguinte de uma conta fixa vem com as etiquetas e a des
   e = await estado.calcular();
   const fev = previsto.ocorrenciasPrevistas(e, '2027-02-01', '2027-02-28', '2027-01-10')[0];
   igual([fev.etiquetas, fev.detalheId], [['casa', 'apto'], 'imob'], 'depois: as do último lançado');
+});
+
+caso('investimento', 'no banco: aplicar sai da corrente, resgatar volta, e o ganho é rendimento', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const ev = (t, d) => estado.aplicarEvento(t, d);
+  await ev('conta.criada', { id: 'cc', nome: 'Corrente', tipo: 'corrente', saldoInicial: 1000000 });
+  await ev('conta.criada', { id: 'inv', nome: 'Investimentos do banco', tipo: 'investimento', caixaEm: 'cc' });
+  await ev('ativo.criado', { id: 'cdb', contaId: 'inv', nome: 'CDB', classe: 'renda_fixa' });
+  await ev('lancamento.registrado', { id: 'a1', tipo: 'aplicacao', valor: 500000, contaId: 'cc', ativoId: 'cdb', dataCompetencia: '2025-01-10', confirmado: true });
+  let e = await estado.calcular();
+  igual(lanc.saldoReal(e, 'cc'), 500000, 'a aplicação saiu da corrente');
+  let p = investimentos.posicao(e, 'cdb', '2025-02-01');
+  igual([p.valorAtual, p.rendeu, p.estimado], [500000, 0, true], 'sem valor informado: vale o aplicado, com ~');
+
+  await ev('ativo.avaliado', { id: 'cdb', data: '2025-06-01', valor: 510000 });
+  e = await estado.calcular();
+  p = investimentos.posicao(e, 'cdb', '2025-06-01');
+  igual([p.valorAtual, p.rendeu, p.estimado], [510000, 10000, false], 'o valor do banco manda');
+
+  await ev('lancamento.registrado', { id: 'r1', tipo: 'resgate', valor: 518000, contaId: 'cc', ativoId: 'cdb', dataCompetencia: '2025-07-01', confirmado: true });
+  await ev('lancamento.registrado', { id: 'j1', tipo: 'provento', valor: 5000, contaId: 'cc', ativoId: 'cdb', dataCompetencia: '2025-07-01', confirmado: true });
+  e = await estado.calcular();
+  p = investimentos.posicao(e, 'cdb', '2025-07-01');
+  igual([p.valorAtual, p.rendeu, p.encerrado], [0, 23000, true], 'resgate total: rendeu 180 + 50 de provento');
+  igual(lanc.saldoReal(e, 'cc'), 1000000 - 500000 + 518000 + 5000, 'resgate e provento voltaram para a corrente');
+  const r = investimentos.resumoDaConta(e, e.contas.inv, '2025-07-01');
+  igual([r.valorAtual, r.rendeu, r.caixa], [0, 23000, 0], 'no banco não há caixa parado');
+  const doMes = lanc.visiveis(e, '2025-07-31');
+  igual(holerite.rendaDaFolha(e, doMes, new Set(['cc'])).bruta, 0, 'provento não é receita');
+});
+
+caso('investimento', 'na própria corretora: aporte vira caixa parado, aplicar tira dele', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const ev = (t, d) => estado.aplicarEvento(t, d);
+  await ev('conta.criada', { id: 'cc', nome: 'Corrente', tipo: 'corrente', saldoInicial: 1000000 });
+  await ev('conta.criada', { id: 'cor', nome: 'Corretora', tipo: 'investimento' });
+  await ev('ativo.criado', { id: 'tes', contaId: 'cor', nome: 'Tesouro', classe: 'tesouro' });
+  await ev('lancamento.registrado', { id: 't1', tipo: 'transferencia', valor: 300000, contaId: 'cc', contaDestinoId: 'cor', dataCompetencia: '2025-01-05', confirmado: true });
+  await ev('lancamento.registrado', { id: 'a1', tipo: 'aplicacao', valor: 200000, contaId: 'cor', ativoId: 'tes', dataCompetencia: '2025-01-06', confirmado: true });
+  await ev('ativo.avaliado', { id: 'tes', data: '2025-03-01', valor: 210000 });
+  const e = await estado.calcular();
+  const r = investimentos.resumoDaConta(e, e.contas.cor, '2025-03-01');
+  igual([r.caixa, r.valorAtual, r.investido, r.rendeu], [100000, 310000, 300000, 10000],
+    'caixa 1.000 + tesouro 2.100; aportado 3.000; rendeu 100');
+});
+
+caso('investimento', 'conta sem ativos: o valor informado mostra quanto rendeu', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const ev = (t, d) => estado.aplicarEvento(t, d);
+  await ev('conta.criada', { id: 'cc', nome: 'Corrente', tipo: 'corrente', saldoInicial: 1000000 });
+  await ev('conta.criada', { id: 'poup', nome: 'Poupança', tipo: 'investimento' });
+  await ev('lancamento.registrado', { id: 't1', tipo: 'transferencia', valor: 100000, contaId: 'cc', contaDestinoId: 'poup', dataCompetencia: '2025-01-05', confirmado: true });
+  await ev('conta.fotografada', { id: 'poup', data: '2025-02-05', valor: 101000 });
+  await ev('lancamento.registrado', { id: 't2', tipo: 'transferencia', valor: 50000, contaId: 'cc', contaDestinoId: 'poup', dataCompetencia: '2025-02-10', confirmado: true });
+  const e = await estado.calcular();
+  const r = investimentos.resumoDaConta(e, e.contas.poup, '2025-02-20');
+  igual([r.valorAtual, r.investido, r.rendeu], [151000, 150000, 1000], 'o rendimento da foto acompanha o aporte de depois');
 });
 
 // ── apoio ─────────────────────────────────────────────────────────────────

@@ -719,6 +719,11 @@ $('f-conta')?.addEventListener('submit', (e) =>
         }];
       }
     }
+    if (tipo === 'investimento') {
+      dados.caixaEm = campos.caixaEm.value || null;
+      // No banco não há caixa parado: o saldo de partida não existe.
+      if (dados.caixaEm) dados.saldoInicial = 0;
+    }
     if (tipo === 'cartao') {
       dados.limite = deTexto(campos.limite.value) || null;
       dados.diaFechamento = Number(campos.fechamento.value) || null;
@@ -796,6 +801,10 @@ async function criar(e, especie, montar) {
 function mostrarCamposDeCartao() {
   const tipo = $('f-conta').elements.tipo.value;
   const cartao = tipo === 'cartao';
+  $('conta-campo-caixa').hidden = tipo !== 'investimento';
+  // Ligada à corrente do banco, a conta não tem saldo próprio para informar.
+  const noBanco = tipo === 'investimento' && Boolean($('f-conta').elements.caixaEm.value);
+  $('f-conta').elements.saldo.closest('.campo').hidden = noBanco || AREA_GESTAO === 'folha';
   $('campos-divida').hidden = tipo !== 'divida';
   if (tipo === 'divida') $('rotulo-saldo').textContent = 'Saldo devedor hoje';
   // O "criar conta" veste a cor da área do tipo escolhido (09-identidade §3).
@@ -993,6 +1002,11 @@ function abrirEditarConta(id) {
     pintarPagadoras();
     f.pagaCom.value = c.pagaCom ?? '';
   }
+  $('ec-campo-caixa').hidden = c.tipo !== 'investimento';
+  if (c.tipo === 'investimento') {
+    pintarPagadoras();
+    f.caixaEm.value = c.caixaEm ?? '';
+  }
   // A folha não tem saldo inicial: é passagem, zera a cada holerite (D25).
   $('ec-campo-saldo').hidden = folha;
   $('ec-campo-data').hidden = folha;
@@ -1042,6 +1056,7 @@ $('f-editar-conta')?.addEventListener('submit', async (e) => {
     };
     for (const [k, v] of Object.entries(novo)) if ((c[k] ?? null) !== v) mudou[k] = v;
   }
+  if (c.tipo === 'investimento' && (f.caixaEm.value || null) !== (c.caixaEm ?? null)) mudou.caixaEm = f.caixaEm.value || null;
   if (Object.keys(mudou).length) await estado.aplicarEvento('conta.alterada', { id, ...mudou });
 
   if (c.tipo !== 'folha') {
@@ -1143,6 +1158,15 @@ function pintarPagadoras() {
   const quemPagaDivida = Object.values(app.contas).filter(
     (c) => !c.arquivada && ['corrente', 'especie', 'cartao', 'folha'].includes(c.tipo)
   );
+  // Onde fica o dinheiro de uma conta de investimento: nela mesma, ou numa
+  // corrente (design/10 §3.6).
+  const correntes = Object.values(app.contas).filter((c) => !c.arquivada && c.tipo === 'corrente').sort(porNome);
+  for (const select of document.querySelectorAll('[data-papel="caixa-em"]')) {
+    const antes = select.value;
+    select.innerHTML = '<option value="">na própria conta (corretora, poupança)</option>' +
+      correntes.map((c) => `<option value="${escapar(c.id)}">na conta corrente ${escapar(c.nome)}</option>`).join('');
+    select.value = antes;
+  }
   for (const select of document.querySelectorAll('[data-papel="paga-divida"]')) {
     const antes = select.value;
     select.innerHTML = opcoesDeConta(quemPagaDivida, antes, { vazia: true });
@@ -1192,6 +1216,7 @@ $('dialogo-ciclo')?.addEventListener('close', async () => {
 });
 
 $('f-conta')?.elements.tipo.addEventListener('change', mostrarCamposDeCartao);
+$('f-conta')?.elements.caixaEm.addEventListener('change', mostrarCamposDeCartao);
 
 // "Nova conta", "Novo cartão", "Novo empréstimo"… — a janela de criar da área.
 function abrirNovaConta() {

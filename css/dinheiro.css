@@ -728,3 +728,59 @@ body[data-pagina="dividas"] .bloco { min-width: 0; }
 .barra-limite { height: 6px; border-radius: 3px; background: var(--borda); overflow: hidden; }
 .barra-limite i { display: block; height: 100%; background: var(--area, var(--acento)); }
 .barra-limite.alto i { background: var(--alerta); }
+
+/* ── investimentos (design/10 §3) ────────────────────────────────────────── */
+/* Não há gasto nem receita aqui: "Novo lançamento" sai, o "+" aporta. */
+body[data-pagina="investimentos"] #b-novo,
+body[data-pagina="investimentos"] .acoes-topo .atalho { display: none; }
+
+.investimento-resumo .ativos { margin-top: var(--e3); }
+.classe-ativos {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--e3);
+  margin: var(--e3) 0 0;
+  padding: var(--e1) 0;
+  border-bottom: 1px solid var(--borda-forte);
+  color: var(--tinta-fraca);
+  font-size: var(--t-miudo);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.classe-ativos span:last-child { text-transform: none; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.linha-ativo {
+  display: grid;
+  grid-template-columns: 1fr auto 64px;
+  align-items: baseline;
+  gap: var(--e3);
+  width: 100%;
+  min-height: 0;
+  padding: var(--e2) 0;
+  border: 0;
+  border-bottom: 1px solid var(--borda);
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+.linha-ativo:hover { background: var(--acento-fundo); }
+.linha-ativo.arquivado { opacity: 0.6; }
+.linha-ativo .nome-ativo { display: flex; flex-direction: column; min-width: 0; }
+.linha-ativo .nome-ativo .fino { color: var(--tinta-fraca); font-size: var(--t-miudo); }
+.linha-ativo .valor-ativo { font-weight: 600; white-space: nowrap; }
+.linha-ativo .rendeu-ativo { text-align: right; color: var(--tinta-fraca); font-size: var(--t-apoio); }
+.linha-ativo .rendeu-ativo.positivo { color: var(--positivo); }
+.linha-ativo .rendeu-ativo.negativo { color: var(--alerta); }
+.acoes-investimento { display: inline-flex; align-items: center; gap: var(--e3); }
+
+.dialogo-ativo { width: min(560px, calc(100vw - 2 * var(--e4))); }
+.dialogo-ativo .ficha-ativo { display: flex; flex-direction: column; gap: var(--e3); }
+.dialogo-ativo .ficha-ativo[hidden], .dialogo-ativo .operacoes-ativo[hidden] { display: none; }
+.dialogo-ativo .operacoes-ativo { display: flex; flex-direction: column; gap: var(--e3); }
+.dialogo-ativo .pilulas { align-self: flex-start; flex-wrap: wrap; }
+.dialogo-ativo .linha-operacao { display: grid; grid-template-columns: 1fr 1fr; gap: var(--e3); }
+.dialogo-ativo .nota { margin: 0; }
+.operacoes-lista .linha-holerite { grid-template-columns: 48px 1fr auto auto; }
+.operacoes-lista .quando { color: var(--tinta-fraca); font-size: var(--t-apoio); }

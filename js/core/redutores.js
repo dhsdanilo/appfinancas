@@ -25,7 +25,7 @@ export const AREAS_PADRAO = ['caixa', 'cartoes'];
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 16;
+export const VERSAO_ESTADO = 17;
 
 export function estadoVazio() {
   return {
@@ -35,6 +35,9 @@ export function estadoVazio() {
     etiquetas: {},
     detalhes: {},
     recorrencias: {},
+    // Os ativos das contas de investimento: o CDB, o Tesouro, a ação
+    // (design/10 §3). O que eles valem sai das operações e das avaliações.
+    ativos: {},
     lancamentos: {},
     // Fusões feitas, com o que foi movido — é o que permite desfazer (02 §3.15).
     fusoes: {},
@@ -97,6 +100,10 @@ export const redutores = {
       amortizacoes: [],
       parcelasPuladas: [],
       parcelasCorrigidas: {},
+      // Só em investimento: onde fica o dinheiro dela (design/10 §3.6). Nulo
+      // é a própria corretora, com caixa parado; o id de uma corrente é o
+      // banco — aplicar sai dela, resgatar volta para ela.
+      caixaEm: d.caixaEm ?? null,
       // Só em investimento (D16)
       risco: d.risco ?? null,
       liquidez: d.liquidez ?? null,
@@ -116,6 +123,7 @@ export const redutores = {
       'pagaCom',
       'liquidoPara',
       'contrato',
+      'caixaEm',
       'risco',
       'liquidez',
     ]) {
@@ -214,6 +222,49 @@ export const redutores = {
     if (!c) return;
     c.ultimaConferencia = { data: d.data, saldoInformado: d.saldoInformado, bateu: Boolean(d.bateu) };
     if (d.bateu) c.conferidaEm = d.data;
+  },
+
+  // ── ativo ───────────────────────────────────────────────────────────────
+  //
+  // O papel, o título, a aplicação dentro de uma conta de investimento
+  // (design/10 §3). Aplicar, resgatar e provento são lançamentos com
+  // `ativoId`; o valor de hoje é uma avaliação, como a foto do saldo.
+
+  'ativo.criado'(e, d) {
+    e.ativos[d.id] = {
+      id: d.id,
+      contaId: d.contaId,
+      nome: d.nome,
+      classe: d.classe ?? 'renda_fixa',
+      vencimento: d.vencimento ?? null,
+      avaliacoes: [],
+      arquivado: false,
+    };
+  },
+
+  'ativo.alterado'(e, d) {
+    const a = e.ativos[d.id];
+    if (!a) return;
+    for (const campo of ['nome', 'classe', 'vencimento', 'contaId']) {
+      if (d[campo] !== undefined) a[campo] = d[campo];
+    }
+  },
+
+  'ativo.avaliado'(e, d, evento) {
+    // O valor de hoje, informado: uma por dia, a mais nova substitui.
+    const a = e.ativos[d.id];
+    if (!a) return;
+    a.avaliacoes = [...a.avaliacoes.filter((v) => v.data !== d.data), { data: d.data, valor: d.valor, lc: evento?.lc ?? null }]
+      .sort((x, y) => (x.data < y.data ? -1 : 1));
+  },
+
+  'ativo.arquivado'(e, d) {
+    const a = e.ativos[d.id];
+    if (a) a.arquivado = d.arquivado !== false;
+  },
+
+  'ativo.removido'(e, d) {
+    delete e.ativos[d.id];
   },
 
   // ── categoria ───────────────────────────────────────────────────────────
@@ -450,6 +501,8 @@ export const redutores = {
       // A parcela de um contrato de dívida que este lançamento substitui —
       // a automática corrigida pela linha (design/10 §4.4).
       parcelaDe: d.parcelaDe ?? null,
+      // Aplicação, resgate e provento: o ativo de que se trata (design/10 §3.6).
+      ativoId: d.ativoId ?? null,
       // No cartão: quantas faturas a compra anda para frente (+) ou para trás
       // (−) da que a data dela daria — o banco às vezes processa na vizinha.
       faturaDesloca: d.faturaDesloca ?? 0,

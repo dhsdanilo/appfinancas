@@ -21,13 +21,15 @@ import { linhasDoHolerite, lancadosNoMes } from './core/holerite.js';
 import { situacao, saldoDevedor, jurosDaParcela, cronograma, simularAmortizacao } from './core/divida.js';
 import { fotografar, amortizar, pularParcela } from './app/contrato.js';
 import { lancarOcorrencia } from './app/ocorrencia.js';
+import { criarJanelaDoAtivo } from './app/ativo.js';
+import { resumoDaConta, ativosDaConta, nomeDaClasse, CLASSES } from './core/investimentos.js';
 import { aoLancar } from './app/pagina.js';
 import { enderecoDa } from './app/rotas.js';
 import { BARRA, PRINCIPAL, DIALOGOS } from './app/marcacao-dinheiro.js';
 import { rendaDaFolha } from './core/holerite.js';
 import {
   visiveis, porDataDecrescente, estadoDoLancamento, saldoReal, nomeDaCategoria,
-  sinalDeSaida, ehTransferencia, dataVista, estornado,
+  sinalDeSaida, ehTransferencia, dataVista, estornado, ehDeInvestimento,
 } from './core/lancamentos.js';
 import { temCiclo } from './core/cartao.js';
 import { AREAS as ABAS } from './app/areas.js';
@@ -198,6 +200,7 @@ function pintarArea() {
     pintarListaDeCartoes(foco);
   } else {
     if (aba.id === 'caixa') pintarResumoDeCaixa(foco);
+    else if (aba.id === 'investimentos') pintarInvestimentos(foco);
     else pintarResumoDeSaldos(aba, foco);
     pintarLista(aba, foco);
   }
@@ -278,8 +281,11 @@ function cartaoDoInicio(area, contas) {
     if (faltam) linhas.push(linhaDeResumo('contracheques a lançar', String(faltam), 'abate'));
   }
   if (area.id === 'investimentos') {
-    const total = contas.reduce((t, c) => t + saldoReal(app, c.id), 0);
-    linhas.push(linhaDeResumo('total', dinheiroHTML(total)));
+    const resumos = contas.map((c) => resumoDaConta(app, c));
+    const total = resumos.reduce((t, r) => t + r.valorAtual, 0);
+    const rendeu = resumos.reduce((t, r) => t + r.rendeu, 0);
+    linhas.push(linhaDeResumo('valor atual', dinheiroHTML(total, { estimado: resumos.some((r) => r.estimado) })));
+    linhas.push(linhaDeResumo('rendeu', dinheiroHTML(rendeu, { sinal: rendeu >= 0 ? '+' : '' }), 'abate'));
   }
   if (area.id === 'dividas') {
     const total = contas.reduce((t, c) => t + (saldoDevedor(app, c.id) ?? 0), 0);
@@ -898,6 +904,97 @@ function pintarResumoDeSaldos(aba, contas) {
   $('resumo').innerHTML = `<div class="blocos">${blocos.join('')}</div>`;
 }
 
+// ── investimentos (design/10 §3 e §3.6) ───────────────────────────────────
+
+const pctTexto = (v) => `${(v * 100).toFixed(1).replace('.', ',')}%`;
+const rendeuTexto = (v) => `${v >= 0 ? '+' : '−'}${formatar(Math.abs(v))}`;
+
+/**
+ * Uma conta: a faixa (valor atual, investido, rendeu e, na corretora, o caixa
+ * parado) e os ativos por classe. Geral: a soma e a divisão por classe.
+ */
+function pintarInvestimentos(contas) {
+  const resumos = contas.map((c) => resumoDaConta(app, c));
+  if (resumos.length > 1) {
+    $('resumo').innerHTML = `<div class="blocos">${blocoGeralDosInvestimentos(resumos)}</div>`;
+    return;
+  }
+  const r = resumos[0];
+  const c = r.conta;
+  const numeros = [
+    numeroDaFaixa(r.semAtivos && r.foto ? `valor em ${diaCurto(r.foto.data)}` : 'valor atual', `${r.estimado ? '~' : ''}${formatar(r.valorAtual)}`),
+    numeroDaFaixa('investido', formatar(r.investido)),
+    numeroDaFaixa('rendeu', `${rendeuTexto(r.rendeu)}${r.investido ? ` · ${pctTexto(r.rendeu / r.investido)}` : ''}`),
+  ];
+  if (r.proprio && !r.semAtivos) numeros.push(numeroDaFaixa('caixa parado', formatar(r.caixa)));
+  const dinheiro = r.proprio ? 'o dinheiro fica na própria conta' : `o dinheiro sai e volta de ${escapar(app.contas[c.caixaEm]?.nome ?? '—')}`;
+  const valorDeHoje = r.semAtivos && r.proprio
+    ? `<span class="foto-divida" data-foto-de="${escapar(c.id)}"><button type="button" class="elo" data-foto="${escapar(c.id)}">informar valor de hoje</button></span>`
+    : '';
+  $('resumo').innerHTML = `<div class="blocos"><div class="bloco largo investimento-resumo">
+    <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(c.nome)}</p>
+    <div class="numeros-renda">${numeros.join('')}</div>
+    ${listaDeAtivos(r)}
+    <div class="pe-bloco">
+      <span class="fino">${dinheiro}</span>
+      <span class="acoes-investimento">${valorDeHoje}<button type="button" class="${r.semAtivos ? 'elo' : 'principal'}" data-novo-ativo="${escapar(c.id)}">novo ativo</button></span>
+    </div>
+  </div></div>`;
+}
+
+/** Os ativos de uma conta, agrupados pela classe, cada um com valor e quanto rendeu. */
+function listaDeAtivos(r) {
+  if (!r.posicoes.length) return '';
+  const grupos = CLASSES.map((cl) => ({ cl, ps: r.posicoes.filter((p) => p.ativo.classe === cl.id) }))
+    .filter((g) => g.ps.length);
+  return `<div class="ativos">${grupos.map((g) => {
+    const vivos = g.ps.filter((p) => !p.ativo.arquivado);
+    const total = vivos.reduce((t, p) => t + p.valorAtual, 0);
+    const aplicado = vivos.reduce((t, p) => t + p.aplicado, 0);
+    const rendeu = vivos.reduce((t, p) => t + p.rendeu, 0);
+    return `<p class="classe-ativos"><span>${escapar(g.cl.nome)}</span><span>${formatar(total)}${aplicado ? ` · ${pctTexto(rendeu / aplicado)}` : ''}</span></p>
+      ${g.ps.map((p) => {
+        const a = p.ativo;
+        const sub = [
+          a.vencimento ? `vence ${diaCurto(a.vencimento)}/${a.vencimento.slice(0, 4)}` : '',
+          p.avaliacao ? `valor de ${diaCurto(p.avaliacao.data)}` : 'sem valor informado',
+          a.arquivado ? 'arquivado' : '',
+        ].filter(Boolean).join(' · ');
+        return `<button type="button" class="linha-ativo ${a.arquivado ? 'arquivado' : ''}" data-ativo-abrir="${escapar(a.id)}">
+          <span class="nome-ativo">${escapar(a.nome)}<span class="fino">${escapar(sub)}</span></span>
+          <span class="valor-ativo">${p.estimado && p.valorAtual ? '~' : ''}${formatar(p.valorAtual)}</span>
+          <span class="rendeu-ativo ${p.rendeu > 0 ? 'positivo' : p.rendeu < 0 ? 'negativo' : ''}">${p.aplicado ? pctTexto(p.pct) : '—'}</span>
+        </button>`;
+      }).join('')}`;
+  }).join('')}</div>`;
+}
+
+/** Geral: a soma das contas e o dinheiro por classe. */
+function blocoGeralDosInvestimentos(resumos) {
+  const valor = resumos.reduce((t, r) => t + r.valorAtual, 0);
+  const investido = resumos.reduce((t, r) => t + r.investido, 0);
+  const rendeu = resumos.reduce((t, r) => t + r.rendeu, 0);
+  const porClasse = new Map();
+  for (const r of resumos) {
+    for (const p of r.posicoes) porClasse.set(p.ativo.classe, (porClasse.get(p.ativo.classe) ?? 0) + p.valorAtual);
+    if (r.caixa) porClasse.set('caixa', (porClasse.get('caixa') ?? 0) + r.caixa);
+  }
+  const linhas = [...porClasse.entries()]
+    .filter(([, v]) => v)
+    .sort((a, b) => b[1] - a[1])
+    .map(([cl, v]) => `<p class="classe-ativos"><span>${escapar(cl === 'caixa' ? 'Caixa e contas sem ativos' : nomeDaClasse(cl))}</span><span>${formatar(v)}${valor ? ` · ${pctTexto(v / valor)}` : ''}</span></p>`)
+    .join('');
+  return `<div class="bloco total largo investimento-resumo">
+    <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>geral</p>
+    <div class="numeros-renda">
+      ${numeroDaFaixa('valor atual', `${resumos.some((r) => r.estimado) ? '~' : ''}${formatar(valor)}`)}
+      ${numeroDaFaixa('investido', formatar(investido))}
+      ${numeroDaFaixa('rendeu', `${rendeuTexto(rendeu)}${investido ? ` · ${pctTexto(rendeu / investido)}` : ''}`)}
+    </div>
+    ${linhas ? `<div class="ativos">${linhas}</div>` : ''}
+  </div>`;
+}
+
 function blocoDeTotal(aba, contas) {
   const soma = contas.reduce((t, c) => t + saldoReal(app, c.id), 0);
   return `<div class="bloco total">
@@ -938,9 +1035,14 @@ function pintarLista(aba, contas) {
   const ids = new Set(contas.map((c) => c.id));
   const { de, ate } = intervalo();
   const noPeriodo = (dia) => dia >= de && dia <= ate;
+  // Em Investimentos entram as operações dos ativos destas contas, mesmo
+  // quando o dinheiro passou pela corrente do banco (design/10 §3.6).
+  const dosAtivos = new Set(
+    aba.id === 'investimentos' ? contas.flatMap((c) => ativosDaConta(app, c.id).map((a) => a.id)) : []
+  );
 
   const linhas = visiveis(app).filter(
-    (l) => (ids.has(l.contaId) || ids.has(l.contaDestinoId)) && noPeriodo(l.dataCaixa)
+    (l) => (ids.has(l.contaId) || ids.has(l.contaDestinoId) || dosAtivos.has(l.ativoId)) && noPeriodo(l.dataCaixa)
   );
 
   for (const o of ocorrenciasPrevistas(app, de, ate)) {
@@ -1114,7 +1216,8 @@ const ordenarPelaCompra = (lista) =>
 function linhaHTML(l, ids, saldoApos = null) {
   const est = l.projetado || l.fatura ? (l.dataCaixa < hoje() ? 'vencido' : 'previsto') : estadoDoLancamento(l);
   const conta = app.contas[l.contaId ?? l.contaDestinoId];
-  const transferencia = ehTransferencia(l);
+  const investimento = ehDeInvestimento(l);
+  const transferencia = ehTransferencia(l) || investimento;
   const ajuste = l.tipo === 'ajuste_caixa';
   const devolucao = l.tipo === 'estorno';
   const entrada = !transferencia && !ajuste && sinalDeSaida(l) < 0;
@@ -1122,9 +1225,10 @@ function linhaHTML(l, ids, saldoApos = null) {
   // Devolução é despesa que se desfez, nunca receita (03 §3.3): marca própria,
   // na cor da entrada de dinheiro. Ajuste de caixa não é gasto nem ganho.
   const tom = transferencia ? 'transferencia' : ajuste ? 'ajuste' : devolucao ? 'receita' : entrada ? 'receita' : 'despesa';
-  const marca = transferencia ? '→' : ajuste ? '≈' : devolucao ? '↩' : entrada ? '↑' : '↓';
+  const marca = investimento ? (l.tipo === 'aplicacao' ? '→' : '←') : transferencia ? '→' : ajuste ? '≈' : devolucao ? '↩' : entrada ? '↑' : '↓';
   const nomeDoTom =
-    l.tipo === 'pagamento_fatura' ? 'Pagamento de fatura'
+    investimento ? { aplicacao: 'Aplicação', resgate: 'Resgate', provento: 'Provento' }[l.tipo]
+    : l.tipo === 'pagamento_fatura' ? 'Pagamento de fatura'
       : transferencia ? 'Transferência'
         : ajuste ? 'Ajuste de caixa'
           : devolucao ? 'Devolução'
@@ -1132,13 +1236,20 @@ function linhaHTML(l, ids, saldoApos = null) {
 
   // Na transferência e no ajuste o sinal diz se o dinheiro saiu ou entrou no foco.
   const d = direcao(l, ids);
-  const sinal = transferencia || ajuste ? (d === 'entra' ? '+' : d === 'sai' ? '−' : '') : entrada ? '+' : '−';
+  const sinal = investimento
+    ? (l.tipo === 'aplicacao' ? '−' : '+')
+    : transferencia || ajuste ? (d === 'entra' ? '+' : d === 'sai' ? '−' : '') : entrada ? '+' : '−';
 
   const destino = app.contas[l.contaDestinoId];
   const detalhe = l.detalheId ? app.detalhes?.[l.detalheId]?.nome : null;
   let oque;
   let onde;
-  if (l.fatura) {
+  if (investimento) {
+    // "CDB Banco · aplicação", com a conta por onde o dinheiro passou.
+    const ativo = app.ativos?.[l.ativoId];
+    oque = `${ativo?.nome ?? 'Investimento'} · ${{ aplicacao: 'aplicação', resgate: 'resgate', provento: 'provento' }[l.tipo]}`;
+    onde = conta?.nome ?? '—';
+  } else if (l.fatura) {
     oque = `Fatura ${destino?.nome ?? ''}`;
     onde = `${conta?.nome ?? '—'} · fecha ${diaCurto(l.fatura.fechamento)}`;
   } else if (transferencia) {
@@ -1306,6 +1417,8 @@ const transferencia = await criarTransferencia({
   aoMudarTitulo: (titulo) => { $('titulo-transferencia').textContent = titulo; },
 });
 
+const janelaDoAtivo = criarJanelaDoAtivo({ aoSalvar: pintar });
+
 const holerite = criarHolerite({
   janela: $('dialogo-holerite'),
   raiz: $('formulario-holerite'),
@@ -1340,7 +1453,7 @@ document.addEventListener('click', async (e) => {
   const foto = e.target.closest('[data-foto]');
   if (foto) {
     const lugar = foto.closest('[data-foto-de]');
-    lugar.innerHTML = `<input type="text" inputmode="decimal" class="campo-fila" data-foto-valor placeholder="o que o banco mostra" aria-label="Saldo devedor de hoje">
+    lugar.innerHTML = `<input type="text" inputmode="decimal" class="campo-fila" data-foto-valor placeholder="o que o banco mostra" aria-label="Valor de hoje">
       <button type="button" class="principal" data-foto-ok>ok</button>`;
     lugar.querySelector('input').focus();
     return;
@@ -1399,6 +1512,16 @@ document.addEventListener('click', async (e) => {
     await amortizar(app, { ...pedido, modo: confirmar.dataset.amConfirmar });
     return;
   }
+  const abrirAtivo = e.target.closest('[data-ativo-abrir]');
+  if (abrirAtivo) {
+    await janelaDoAtivo.abrir(abrirAtivo.dataset.ativoAbrir);
+    return;
+  }
+  const novoAtivo = e.target.closest('[data-novo-ativo]');
+  if (novoAtivo) {
+    await janelaDoAtivo.novo(novoAtivo.dataset.novoAtivo);
+    return;
+  }
   const editarConta = e.target.closest('[data-editar-conta]');
   if (editarConta) {
     document.dispatchEvent(new CustomEvent('conta:editar', { detail: editarConta.dataset.editarConta }));
@@ -1448,6 +1571,10 @@ document.addEventListener('click', async (e) => {
   if (!l || l.removido) return;
 
   // Cada tipo volta pro formulário que sabe falar dele.
+  if (ehDeInvestimento(l)) {
+    await janelaDoAtivo.abrir(l.ativoId, l.tipo);
+    return;
+  }
   if (l.tipo === 'estorno') {
     await devolucao.abrir(l);
     return;
@@ -1480,6 +1607,11 @@ async function abrir() {
   // Em Dívidas não se lança: o "+" e o N criam um empréstimo.
   if (AREA === 'dividas') {
     $('b-nova-conta')?.click();
+    return;
+  }
+  // Em Investimentos não há gasto nem receita: o "+" e o N aportam.
+  if (AREA === 'investimentos') {
+    abrirTransferencia();
     return;
   }
   formulario.limpar();

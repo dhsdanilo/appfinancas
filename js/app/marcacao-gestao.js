@@ -28,6 +28,11 @@ export const NOVA_CONTA = `
              placeholder="de quem é">
       <datalist id="donos"></datalist>
     </div>
+    <!-- Só em investimento: onde fica o dinheiro dela (design/10 §3.6). -->
+    <div class="campo" id="conta-campo-caixa" hidden>
+      <label for="conta-caixa">O dinheiro fica</label>
+      <select id="conta-caixa" name="caixaEm" data-papel="caixa-em"></select>
+    </div>
     <div class="campo">
       <label for="conta-saldo" id="rotulo-saldo">Saldo de hoje</label>
       <input type="text" id="conta-saldo" name="saldo" inputmode="decimal"
@@ -240,6 +245,11 @@ export const EDITAR_CONTA = `
         <label for="ec-paga-com">Paga com</label>
         <select id="ec-paga-com" name="pagaCom" data-papel="paga-com"></select>
       </div>
+    </div>
+    <!-- Só em investimento: onde fica o dinheiro dela (design/10 §3.6). -->
+    <div class="campo" id="ec-campo-caixa" hidden>
+      <label for="ec-caixa">O dinheiro fica</label>
+      <select id="ec-caixa" name="caixaEm" data-papel="caixa-em"></select>
     </div>
     <div class="campo" id="ec-campo-saldo">
       <label for="ec-saldo" id="ec-rotulo-saldo">Saldo inicial</label>
