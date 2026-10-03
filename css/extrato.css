@@ -2,13 +2,15 @@
 
 .saldos { display: grid; gap: var(--e2); }
 .saldo {
-  display: flex; align-items: baseline; gap: var(--e3);
-  padding: var(--e2) 0; border-bottom: 1px solid var(--borda);
+  display: grid;
+  grid-template-columns: 1fr auto 96px;
+  align-items: baseline;
+  gap: var(--e3);
+  padding: var(--e2) 0;
+  border-bottom: 1px solid var(--borda);
 }
 .saldo:last-child { border-bottom: 0; }
-.saldo .miudo { flex: 1; }
-.saldo .dinheiro { font-weight: 600; }
-.saldo .tipo { color: var(--tinta-fraca); font-size: var(--t-miudo); min-width: 84px; text-align: right; }
+.saldo .tipo { color: var(--tinta-fraca); font-size: var(--t-miudo); text-align: right; }
 
 .lista { list-style: none; margin: 0; padding: 0; }
 .linha {
@@ -104,10 +106,6 @@ button.linha:hover { background: var(--acento-fundo); border-color: transparent;
 button.linha.previsto { border-left: 2px dashed var(--borda-forte); }
 button.linha.vencido { border-left: 3px solid var(--alerta); background: var(--alerta-fundo); }
 
-/* Transferência não é gasto nem ganho: o valor não leva sinal nem cor de
-   entrada — ela só mexe em saldo (design/03 §3.1). */
-.linha .quanto.neutro { color: var(--tinta-fraca); font-weight: 500; }
-
 .linha .etiqueta {
   margin-left: var(--e2);
   padding: 0 var(--e2);
@@ -120,3 +118,27 @@ button.linha.vencido { border-left: 3px solid var(--alerta); background: var(--a
 /* As ações da tela ficam abaixo do cabeçalho, não dentro dele: o topo é
    navegação e identidade, e misturar os dois faz o olho procurar duas vezes. */
 .barra-acoes { padding-top: var(--e2); }
+
+/* ── cor onde ela informa ───────────────────────────────────────────────── */
+/* A paleta é pequena de propósito: se tudo é colorido, nada se lê. Então cor
+   só entra onde carrega informação — direção do dinheiro e saldo no vermelho
+   (design/09-identidade.md §3). */
+
+.saldo .quantia { font-weight: 600; }
+.saldo .quantia.negativo,
+.saldo .quantia.negativo .moeda,
+.saldo .quantia.negativo .centavos { color: var(--alerta); }
+
+/* Receita sobe em verde; despesa desce em tinta normal, com o sinal dizendo a
+   direção. Pintar TODA despesa de vermelho apagaria o vermelho do saldo
+   negativo, que é onde ele precisa gritar. */
+.linha .quanto.entrada,
+.linha .quanto.entrada .moeda,
+.linha .quanto.entrada .centavos { color: var(--positivo); }
+
+.linha .quanto.saida { color: var(--tinta); }
+
+/* Transferência não é gasto nem ganho: tom apagado e seta, nunca sinal. */
+.linha .quanto.neutro,
+.linha .quanto.neutro .moeda,
+.linha .quanto.neutro .centavos { color: var(--tinta-fraca); font-weight: 500; }

@@ -28,10 +28,15 @@ const MARCACAO = `
       <button type="button" data-tipo="despesa" aria-pressed="true">despesa</button>
       <button type="button" data-tipo="receita" aria-pressed="false">receita</button>
     </div>
-    <button type="button" class="elo" data-papel="data">hoje</button>
-    <input type="date" class="data-exata" data-papel="data-exata" hidden
-           aria-label="Data do lançamento">
+    <div class="quando">
+      <button type="button" class="passo" data-papel="dia-menos" aria-label="Um dia antes">−</button>
+      <button type="button" class="elo" data-papel="data" aria-label="Escolher a data no calendário">hoje</button>
+      <button type="button" class="passo" data-papel="dia-mais" aria-label="Um dia depois">+</button>
+      <input type="date" class="data-exata" data-papel="data-exata" aria-label="Data do lançamento" tabindex="-1">
+    </div>
   </div>
+
+  <p class="recado" data-papel="recado" hidden></p>
 
   <div class="categorias" data-papel="categorias" role="group" aria-label="Categoria"></div>
 
@@ -41,6 +46,7 @@ const MARCACAO = `
   </div>
 
   <div class="etiquetas" data-papel="etiquetas" hidden>
+    <span class="rotulo-etiquetas">etiquetas</span>
     <div class="chips" data-papel="chips" role="group" aria-label="Etiquetas"></div>
     <input type="text" class="nova-etiqueta" data-papel="nova-etiqueta" autocomplete="off"
            placeholder="+ etiqueta" aria-label="Acrescentar etiqueta">
@@ -148,14 +154,54 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar }) {
     el('conta').textContent = conta ? `conta: ${conta.nome}` : 'escolher conta';
   }
 
+  /**
+   * Um dia pra trás, um dia pra frente, ou o calendário. Quem lança a pilha de
+   * notas da semana anda de um em um; quem conserta um lançamento de duas
+   * semanas atrás escolhe o dia. Os dois caminhos no mesmo controle.
+   */
   function pintarData() {
-    // Na captura, o passo rápido hoje · ontem · anteontem. Na correção, a data
-    // exata: quem conserta um lançamento de duas semanas atrás precisa escolher
-    // o dia, não andar de um em um.
-    el('data').hidden = Boolean(editando);
-    el('data-exata').hidden = !editando;
+    el('data').textContent = rotuloDoDia(data);
     el('data-exata').value = data;
-    el('data').textContent = data === hoje() ? 'hoje' : data.split('-').reverse().slice(0, 2).join('/');
+
+    // O marco zero da conta é o saldo que você conferiu: lançamento antes dele
+    // mexeria num saldo que não é seu (04-categorias §5).
+    const piso = pisoDaConta();
+    el('data-exata').min = piso ?? '';
+    el('dia-menos').disabled = Boolean(piso) && data <= piso;
+  }
+
+  function rotuloDoDia(dia) {
+    if (dia === hoje()) return 'hoje';
+    if (dia === somarDias(hoje(), -1)) return 'ontem';
+    if (dia === somarDias(hoje(), 1)) return 'amanhã';
+    const [ano, mes, d] = dia.split('-');
+    return ano === hoje().slice(0, 4) ? `${d}/${mes}` : `${d}/${mes}/${ano}`;
+  }
+
+  const pisoDaConta = () => app.contas[contaId]?.dataInicial ?? null;
+
+  function somarDias(dia, quantos) {
+    const d = new Date(dia + 'T12:00:00');
+    d.setDate(d.getDate() + quantos);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function irPara(novoDia) {
+    const piso = pisoDaConta();
+    if (piso && novoDia < piso) {
+      const conta = app.contas[contaId];
+      return recadar(
+        `${conta.nome} começou em ${rotuloDoDia(piso)}: antes disso o saldo não é seu.`
+      );
+    }
+    data = novoDia;
+    recadar('');
+    pintarData();
+  }
+
+  function recadar(texto) {
+    el('recado').textContent = texto;
+    el('recado').hidden = !texto;
   }
 
   function pintarTipo() {
@@ -352,22 +398,31 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar }) {
     const i = contas.findIndex((c) => c.id === contaId);
     contaId = contas[(i + 1) % contas.length].id;
     pintarConta();
+    pintarData();
   });
 
+  el('dia-menos').addEventListener('click', () => irPara(somarDias(data, -1)));
+  el('dia-mais').addEventListener('click', () => irPara(somarDias(data, 1)));
+
   el('data').addEventListener('click', () => {
-    // Hoje → ontem → anteontem → hoje. O caso dominante é hoje, e "ontem"
-    // precisa estar a um toque (03-alimentacao §1).
-    const d = new Date(data + 'T12:00:00');
-    const diff = Math.round((new Date(hoje() + 'T12:00:00') - d) / 86400000);
-    d.setDate(d.getDate() - (diff >= 2 ? -2 : 1));
-    data = d.toISOString().slice(0, 10);
-    pintarData();
+    const campo = el('data-exata');
+    // showPicker abre o calendário do próprio aparelho — no celular é o seletor
+    // nativo, que é melhor que qualquer coisa que eu desenhasse.
+    if (typeof campo.showPicker === 'function') {
+      try {
+        campo.showPicker();
+        return;
+      } catch {
+        // alguns navegadores recusam fora de gesto direto; cai no caminho abaixo
+      }
+    }
+    campo.focus();
+    campo.click();
   });
 
   el('data-exata').addEventListener('change', () => {
-    if (!el('data-exata').value) { pintarData(); return; }
-    data = el('data-exata').value;
-    pintarData();
+    if (!el('data-exata').value) return pintarData();
+    irPara(el('data-exata').value);
   });
 
   raiz.querySelector('.pilulas').addEventListener('click', (e) => {

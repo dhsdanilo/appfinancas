@@ -245,3 +245,52 @@ input[type="text"].nova-etiqueta {
   font-size: var(--t-apoio);
 }
 .recado[hidden] { display: none; }
+
+/* ── a data: um dia pra trás, um pra frente, ou o calendário ────────────── */
+/* Quem lança a pilha de notas da semana anda de um em um; quem conserta um
+   lançamento antigo escolhe o dia. Os dois no mesmo controle. */
+
+.quando { position: relative; display: flex; align-items: center; gap: 2px; }
+
+.quando .passo {
+  width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-controle);
+  background: var(--superficie);
+  color: var(--tinta-fraca);
+  font-size: var(--t-corpo);
+  line-height: 1;
+}
+.quando .passo:hover:not(:disabled) { color: var(--tinta); border-color: var(--borda-forte); }
+.quando .elo { min-width: 64px; text-align: center; }
+
+/* O campo real fica atrás do rótulo, invisível: é nele que o calendário do
+   aparelho se ancora quando o rótulo é tocado. */
+.quando .data-exata {
+  position: absolute;
+  left: 34px;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.recado {
+  margin: var(--e2) 0 0;
+  color: var(--atencao);
+  font-size: var(--t-apoio);
+}
+.recado[hidden] { display: none; }
+
+.rotulo-etiquetas {
+  font-size: var(--t-miudo);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--tinta-fraca);
+}

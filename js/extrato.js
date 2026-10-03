@@ -13,6 +13,15 @@ import {
 
 const $ = (id) => document.getElementById(id);
 
+const NOME_DO_TIPO = {
+  corrente: 'corrente',
+  cartao: 'cartão',
+  especie: 'espécie',
+  investimento: 'investimento',
+  divida: 'dívida',
+  folha: 'folha',
+};
+
 function escapar(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
@@ -25,7 +34,13 @@ async function pintar() {
     ? contas
         .map((c) => {
           const saldo = saldoReal(app, c.id);
-          return `<div class="saldo"><span class="miudo">${escapar(c.nome)}</span>${dinheiroHTML(saldo)}<span class="tipo">${c.tipo}</span></div>`;
+          // Vermelho onde ele informa: saldo negativo, fatura em aberto, dívida
+          // (09-identidade §3). Nunca em toda despesa, que apagaria o sinal.
+          return `<div class="saldo">
+            <span class="miudo">${escapar(c.nome)}</span>
+            <span class="quantia ${saldo < 0 ? 'negativo' : ''}">${dinheiroHTML(saldo)}</span>
+            <span class="tipo">${escapar(NOME_DO_TIPO[c.tipo] ?? c.tipo)}</span>
+          </div>`;
         })
         .join('')
     : '<p class="vazio">Nenhuma conta. Crie na bancada.</p>';
@@ -38,6 +53,11 @@ async function pintar() {
           const conta = app.contas[l.contaId];
           const entrada = l.tipo === 'receita';
           const transferencia = l.tipo === 'transferencia';
+
+          // O sinal diz a direção do dinheiro antes de qualquer cor — e
+          // sobrevive em preto e branco, que é a regra (08-telas §3.1).
+          const sinal = transferencia ? '→' : entrada ? '+' : '−';
+          const tom = transferencia ? 'neutro' : entrada ? 'entrada' : 'saida';
 
           // Uma ação da vida real é UMA linha (08-telas §4): a transferência
           // aparece como origem → destino, nunca como despesa numa conta mais
@@ -62,7 +82,7 @@ async function pintar() {
               <span class="cat">${escapar(oque)}${etiquetas.length ? etiquetas.map((e) => `<span class="etiqueta">${escapar(e)}</span>`).join('') : ''}</span>
               <span class="onde">${escapar(onde)}${est === 'realizado' ? '' : ' · ' + est}</span>
             </span>
-            <span class="quanto ${transferencia ? 'neutro' : entrada ? 'entrada' : ''}">${dinheiroHTML(l.valor, { sinal: entrada ? '+' : '' })}</span>
+            <span class="quanto ${tom}">${dinheiroHTML(l.valor, { sinal })}</span>
           </button></li>`;
         })
         .join('')
