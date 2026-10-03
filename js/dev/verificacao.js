@@ -1473,7 +1473,8 @@ caso('dívida', 'os juros de cada parcela, pelo contrato', async () => {
 
 // O empréstimo das verificações abaixo: 12 parcelas de R$ 1.000,00 a partir de
 // 10/10/2024, incluído no app em 15/01/2025 — tudo no passado, para o teste
-// não depender do dia em que roda.
+// não depender do dia em que roda. O mês da inclusão conta inteiro: a parcela
+// de 10/01 cai.
 const EMPRESTIMO = {
   valorTomado: 1000000, data: '2024-09-10', parcelas: 12, valorParcela: 100000,
   primeira: '2024-10-10', taxa: 0.02, incluidoEm: '2025-01-15',
@@ -1489,18 +1490,18 @@ async function comEmprestimo(pagaCom = 'cc', extra = {}) {
   return estado.calcular();
 }
 
-caso('dívida', 'a parcela cai sozinha, e o que venceu antes da inclusão não mexe em conta nenhuma', async () => {
+caso('dívida', 'a parcela cai sozinha, e o que venceu antes do mês da inclusão não mexe em conta nenhuma', async () => {
   const e = await comEmprestimo();
   const doEmp = lanc.visiveis(e, '2025-12-31').filter((l) => l.contaDestinoId === 'emp');
-  igual(doEmp.map((l) => l.parcelaDe.k), [5, 6, 7, 8, 9, 10, 11, 12],
-    'as 4 de out/2024 a jan/2025 venceram até a inclusão (15/01): pagas para a análise, fora das contas');
+  igual(doEmp.map((l) => l.parcelaDe.k), [4, 5, 6, 7, 8, 9, 10, 11, 12],
+    'as 3 de out a dez/2024 ficam fora das contas; a de 10/01 cai — o mês da inclusão (15/01) conta inteiro');
   verdade(doEmp.every((l) => l.confirmado && l.automatico), 'realizadas sem ninguém confirmar');
-  igual(lanc.saldoReal(e, 'cc'), 2000000 - 8 * 100000, 'a corrente perdeu só as 8 depois da inclusão');
+  igual(lanc.saldoReal(e, 'cc'), 2000000 - 9 * 100000, 'a corrente perdeu só as 9 do mês da inclusão em diante');
   igual(Object.keys(e.lancamentos).length, 0, 'e nada foi gravado: a parcela sai do contrato');
   igual(pendencias.pendencias(e, '2025-12-31').filter((p) => p.tipo !== 'conferir'), [],
     'parcela automática nunca vira pendência');
   const s = divida.situacao(e, 'emp', '2025-06-01');
-  igual([s.parcelasPagas, s.antesDoApp, s.restantes], [8, 4, 4], 'a análise conta as anteriores como pagas');
+  igual([s.parcelasPagas, s.antesDoApp, s.restantes], [8, 3, 4], 'a análise conta as anteriores como pagas');
 });
 
 caso('dívida', 'a parcela que ainda vai cair é prevista, e no dia vira realizada', async () => {
@@ -1529,19 +1530,19 @@ caso('dívida', 'a exceção, pela linha: corrigir uma parcela, ou dizer que nã
   await estado.aplicarEvento('divida.parcelaPulada', { id: 'emp', k: 7 });
   e = await estado.calcular();
   const ks = lanc.visiveis(e, '2025-12-31').filter((l) => l.contaDestinoId === 'emp').map((l) => l.parcelaDe.k).sort((a, b) => a - b);
-  igual(ks, [5, 6, 8, 9, 10, 11, 12], 'a 7ª não caiu');
+  igual(ks, [4, 5, 6, 8, 9, 10, 11, 12], 'a 7ª não caiu');
   const sexta = lanc.visiveis(e, '2025-12-31').find((l) => l.parcelaDe?.k === 6);
   igual([sexta.valor, sexta.dataCaixa, sexta.automatico, sexta.corrigida], [105000, '2025-03-12', true, true],
     'a 6ª corrigida continua automática, com o valor e o dia do banco');
   igual(Object.keys(e.lancamentos).length, 0, 'e nada virou lançamento gravado — nem pendência quando a data passar');
-  igual(lanc.saldoReal(e, 'cc'), 2000000 - 6 * 100000 - 105000, 'só aquela parcela mudou de valor');
+  igual(lanc.saldoReal(e, 'cc'), 2000000 - 7 * 100000 - 105000, 'só aquela parcela mudou de valor');
   igual(divida.situacao(e, 'emp', '2025-12-31').parcelasTotal, 12, 'o contrato continua igual');
   verdade(!lanc.visiveis(e, '2025-03-11').some((l) => l.parcelaDe?.k === 6), 'no dia 11 ainda não tinha caído');
 
   await estado.aplicarEvento('divida.parcelaCorrigida', { id: 'emp', k: 6, desfazer: true });
   await estado.aplicarEvento('divida.parcelaPulada', { id: 'emp', k: 7, pulada: false });
   e = await estado.calcular();
-  igual(lanc.saldoReal(e, 'cc'), 2000000 - 8 * 100000, 'desfeitas as duas, as automáticas voltam');
+  igual(lanc.saldoReal(e, 'cc'), 2000000 - 9 * 100000, 'desfeitas as duas, as automáticas voltam');
 });
 
 caso('dívida', 'amortizar: reduzir prazo e reduzir parcela, lado a lado', async () => {
@@ -1563,7 +1564,7 @@ caso('dívida', 'amortizar: reduzir prazo e reduzir parcela, lado a lado', async
   const parcelas = lanc.visiveis(depois, '2025-12-31').filter((l) => l.automatico && l.contaDestinoId === 'emp');
   igual(parcelas.filter((l) => l.dataCompetencia > '2025-05-15').map((l) => l.valor),
     Array(4).fill(sim.parcela.parcela), 'reduzir parcela: as 4 que faltam com o valor novo');
-  igual(parcelas.filter((l) => l.dataCompetencia < '2025-05-15').map((l) => l.valor), Array(4).fill(100000),
+  igual(parcelas.filter((l) => l.dataCompetencia < '2025-05-15').map((l) => l.valor), Array(5).fill(100000),
     'as de antes não mudam');
 
   await estado.aplicarEvento('lancamento.removido', { id: 'am' });
@@ -1641,7 +1642,7 @@ caso('dívida', 'a série que a primeira versão criava não projeta mais nem re
   const e = await estado.calcular();
   igual(previsto.ocorrenciasPrevistas(e, '2025-03-01', '2025-03-31', '2025-03-01').map((o) => o.id), ['auto:emp:6'],
     'março: só a parcela do contrato, não a da série velha');
-  const fev = lanc.visiveis(e, '2025-02-28').filter((l) => l.contaDestinoId === 'emp');
+  const fev = lanc.visiveis(e, '2025-02-28').filter((l) => l.contaDestinoId === 'emp' && l.dataCompetencia >= '2025-02-01');
   igual(fev.map((l) => l.id), ['pela-serie'], 'fevereiro já lançado pela série: não cai de novo');
 });
 

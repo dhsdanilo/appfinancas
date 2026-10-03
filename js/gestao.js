@@ -30,7 +30,7 @@ import { AREAS, areaDaConta, AREAS_COM_CATEGORIA, opcoesDeConta } from './app/ar
 import { salvarContrato, fotografar, excluirDivida } from './app/contrato.js';
 import { situacao, saldoDevedor } from './core/divida.js';
 import { calendarioDePagamento } from './core/contrato.js';
-import { somarMeses } from './core/datas.js';
+import { somarMeses, inicioDoMes } from './core/datas.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -880,12 +880,18 @@ function conferirContrato(form) {
   const pagas = calendario.filter((p) => p.data <= hoje()).length;
   const proxima = calendario.find((p) => p.data > hoje());
   const ultima = calendario[calendario.length - 1];
-  const resumo = proxima
-    ? `${pagas} de ${parcelas} já pagas · próxima em ${proxima.data.slice(8, 10)}/${mesAno(proxima.data)} · termina em ${mesAno(ultima.data)}`
+  // O mês corrente conta inteiro: a parcela dele cai, mesmo já vencida.
+  const doMes = calendario.find((p) => p.data.slice(0, 7) === hoje().slice(0, 7) && p.data <= hoje());
+  const antes = calendario.filter((p) => p.data < inicioDoMes(hoje())).length;
+  const resumo = proxima || doMes
+    ? `${pagas} de ${parcelas} já pagas${proxima ? ` · próxima em ${proxima.data.slice(8, 10)}/${mesAno(proxima.data)}` : ''} · termina em ${mesAno(ultima.data)}`
     : `as ${parcelas} já venceram`;
-  const explica = pagas && proxima
-    ? ` As ${pagas} já pagas não mexem em conta nenhuma; daqui pra frente, cada parcela cai sozinha na conta que paga. Atraso ou carência? Corrija o "já pagas".`
-    : proxima ? ' Cada parcela cai sozinha na conta que paga, no dia.' : '';
+  const partes = [];
+  if (antes) partes.push(`As ${antes} de antes deste mês não mexem em conta nenhuma.`);
+  if (doMes) partes.push(`A deste mês (${doMes.data.slice(8, 10)}/${doMes.data.slice(5, 7)}) já cai na conta que paga.`);
+  if (proxima) partes.push('Daqui pra frente, cada parcela cai sozinha no dia.');
+  if (antes) partes.push('Atraso ou carência? Corrija o "já pagas".');
+  const explica = partes.length ? ` ${partes.join(' ')}` : '';
   saida.innerHTML = `<strong>${escapar(resumo)}</strong>${escapar(explica)}`;
   saida.hidden = false;
 }

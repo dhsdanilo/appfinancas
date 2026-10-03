@@ -6,12 +6,14 @@
 // na própria dívida: a parcela corrigida (`parcelasCorrigidas`, que continua
 // automática) e a que não foi debitada (`parcelasPuladas`).
 //
-// O que venceu até o dia da inclusão não entra: o empréstimo antigo já está no
-// saldo de hoje da conta que paga, e repetir as parcelas dele seria cobrar duas
-// vezes.
+// O que venceu antes do MÊS da inclusão não entra: o empréstimo antigo já está
+// no saldo da conta que paga, e repetir as parcelas dele seria cobrar duas
+// vezes. O mês corrente conta inteiro (pedido dele, 03/10/2026): cadastrado no
+// dia 3, a parcela do dia 1 cai — o mês é a unidade em que ele pensa.
 
 import { calendarioDePagamento } from './contrato.js';
 import { datarNoCartao } from './cartao.js';
+import { inicioDoMes } from './datas.js';
 
 /** As amortizações que valem: as que não tiveram a transferência apagada. */
 export function amortizacoesValidas(estado, conta) {
@@ -23,12 +25,17 @@ export function calendarioDaDivida(estado, conta) {
   return calendarioDePagamento(conta?.contrato, conta ? amortizacoesValidas(estado, conta) : []);
 }
 
-/** A partir de quando a parcela cai sozinha: depois da inclusão e do marco zero de quem paga. */
-export function caiDepoisDe(estado, conta) {
+/**
+ * A partir de que dia a parcela cai sozinha: o dia 1 do mês da inclusão — mas
+ * nunca antes do marco zero da conta que paga, porque o saldo informado ali já
+ * tinha descontado o que veio antes.
+ */
+export function caiAPartirDe(estado, conta) {
   const pagadora = estado.contas[conta.pagaCom];
   const inclusao = conta.contrato?.incluidoEm ?? conta.dataInicial ?? '';
+  const mes = inclusao ? inicioDoMes(inclusao) : '';
   const marco = pagadora?.dataInicial ?? '';
-  return inclusao > marco ? inclusao : marco;
+  return mes > marco ? mes : marco;
 }
 
 const memoria = new WeakMap();
@@ -56,7 +63,7 @@ export function parcelasAutomaticas(estado, lancados, dia) {
     if (conta.tipo !== 'divida' || !conta.contrato || !conta.pagaCom) continue;
     const pagadora = estado.contas[conta.pagaCom];
     if (!pagadora) continue;
-    const desde = caiDepoisDe(estado, conta);
+    const desde = caiAPartirDe(estado, conta);
     const puladas = new Set(conta.parcelasPuladas ?? []);
     const serieAntiga = conta.contrato.recorrenciaId ?? null;
     // Parcela que já tem lançamento de verdade — corrigida pela linha, ou
@@ -71,7 +78,7 @@ export function parcelasAutomaticas(estado, lancados, dia) {
     const calendario = calendarioDaDivida(estado, conta);
     const total = calendario.length;
     for (const p of calendario) {
-      if (p.data <= desde || puladas.has(p.k) || cobertas.has(p.k)) continue;
+      if (p.data < desde || puladas.has(p.k) || cobertas.has(p.k)) continue;
       if (mesesDaSerie.has(p.data.slice(0, 7))) continue;
       const correcao = corrigidas[p.k] ?? null;
       const data = correcao?.data ?? p.data;

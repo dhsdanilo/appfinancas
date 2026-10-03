@@ -13,7 +13,7 @@
 import { hoje } from './datas.js';
 import { visiveis } from './lancamentos.js';
 import { saldoPrice, parcelaPrice, taxaImplicita } from './contrato.js';
-import { calendarioDaDivida, amortizacoesValidas, caiDepoisDe } from './parcelas.js';
+import { calendarioDaDivida, amortizacoesValidas, caiAPartirDe } from './parcelas.js';
 
 export { taxaImplicita };
 
@@ -72,7 +72,7 @@ export function cronograma(estado, dividaId) {
   const c = conta?.contrato;
   if (!c || !c.parcelas || !c.valorParcela) return null;
   const { taxa } = taxaDoContrato(estado, conta);
-  const desde = caiDepoisDe(estado, conta);
+  const desde = caiAPartirDe(estado, conta);
   const marcos = marcosDaDivida(estado, conta);
 
   let saldo = c.valorTomado;
@@ -86,7 +86,7 @@ export function cronograma(estado, dividaId) {
     const juros = Math.min(p.valor, Math.round(saldo * taxa));
     const amortizacao = p.valor - juros;
     saldo = Math.max(0, saldo - amortizacao);
-    parcelas.push({ ...p, juros, amortizacao, saldoDepois: saldo, antesDoApp: p.data <= desde });
+    parcelas.push({ ...p, juros, amortizacao, saldoDepois: saldo, antesDoApp: p.data < desde });
   }
   return { parcelas, marcos, taxa };
 }
@@ -154,7 +154,7 @@ export function situacao(estado, dividaId, dia = hoje()) {
     .filter((a) => a.data <= dia)
     .reduce((t, a) => t + a.valor, 0);
   const pagoNoCalendario = vencidas.reduce((t, p) => t + p.valor, 0) + amortizado;
-  const desde = caiDepoisDe(estado, conta);
+  const desde = caiAPartirDe(estado, conta);
   return {
     conta,
     contrato: c,
@@ -166,7 +166,7 @@ export function situacao(estado, dividaId, dia = hoje()) {
     parcelasTotal: calendario.length,
     // As que venceram antes de o empréstimo entrar no app: contam como pagas,
     // mas não mexeram em conta nenhuma (design/10 §4.4).
-    antesDoApp: calendario.filter((p) => p.data <= desde).length,
+    antesDoApp: calendario.filter((p) => p.data < desde).length,
     restantes: porVir.length,
     somaRestante,
     valorParcela: porVir[0]?.valor ?? c.valorParcela,
