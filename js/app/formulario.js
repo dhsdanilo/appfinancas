@@ -20,6 +20,7 @@ import {
   hoje, nasceConfirmado, nomeDaCategoria, correcao, detalhesDaCategoria, dataVista, estornado,
 } from '../core/lancamentos.js';
 import { somarDias, somarMeses } from '../core/datas.js';
+import { temCiclo, cicloDaCompra } from '../core/cartao.js';
 import { MARCACAO_CAMPO_VALOR, ligarCampoValor } from './campo-valor.js';
 import { ligarZonaDePerigo } from './zona-perigo.js';
 import { areaDaConta, opcoesDeConta, categoriaNaArea, areasParaConta } from './areas.js';
@@ -38,6 +39,15 @@ const MARCACAO = `
       <button type="button" class="passo" data-papel="dia-mais" aria-label="Um dia depois">+</button>
       <input type="date" class="data-exata" data-papel="data-exata" aria-label="Data do lançamento" tabindex="-1">
     </div>
+  </div>
+
+  <!-- No cartão: em qual fatura a compra cai, e um passo para a vizinha
+       quando o banco a processou noutra. -->
+  <div class="linha-fatura" data-papel="linha-fatura" hidden>
+    <span class="miudo">fatura</span>
+    <button type="button" class="passo" data-papel="fatura-antes" aria-label="Fatura anterior">‹</button>
+    <span data-papel="fatura-rotulo"></span>
+    <button type="button" class="passo" data-papel="fatura-depois" aria-label="Fatura seguinte">›</button>
   </div>
 
   <p class="recado" data-papel="recado" hidden></p>
@@ -150,6 +160,8 @@ export async function criarFormulario({
   let todasAbertas = false;
   let realcada = 0;
   let repete = 'nao';
+  // No cartão: quantas faturas a compra anda da que a data dela daria.
+  let faturaDesloca = 0;
   // Na correção: como o lançamento estava quando abriu ('nao', 'fixa' ou
   // 'estimada'). Mudou, salvar mexe na série (cria, encerra ou troca o tipo).
   let repeteAntes = 'nao';
@@ -431,6 +443,21 @@ export async function criarFormulario({
     const piso = pisoDaConta();
     el('data-exata').min = piso ?? '';
     el('dia-menos').disabled = Boolean(piso) && data <= piso;
+    pintarFatura();
+  }
+
+  /** "fatura · vence 05/11", com ‹ › para a vizinha — só em cartão com ciclo. */
+  function pintarFatura() {
+    const conta = app?.contas[contaId];
+    const tem = temCiclo(conta);
+    el('linha-fatura').hidden = !tem;
+    if (!tem) return;
+    const { vencimento } = cicloDaCompra(conta, data, faturaDesloca);
+    const movida = faturaDesloca
+      ? ` · movida ${Math.abs(faturaDesloca) > 1 ? `${Math.abs(faturaDesloca)} faturas` : ''} ${faturaDesloca > 0 ? 'pra frente' : 'pra trás'}`.replace('  ', ' ')
+      : '';
+    el('fatura-rotulo').textContent = `vence ${vencimento.slice(8, 10)}/${vencimento.slice(5, 7)}${movida}`;
+    el('linha-fatura').classList.toggle('movida', Boolean(faturaDesloca));
   }
 
   function rotuloDoDia(dia) {
@@ -774,6 +801,7 @@ export async function criarFormulario({
       detalheId,
       etiquetas: [...etiquetas],
       observacao: el('observacao').value.trim(),
+      faturaDesloca: app.contas[contaId]?.tipo === 'cartao' ? faturaDesloca : 0,
       dataCaixa: data,
     });
 
@@ -808,7 +836,7 @@ export async function criarFormulario({
   async function propagarParaAsIrmas(mudancas) {
     if (!editando.parcela?.compraId) return;
 
-    const DA_COMPRA = ['tipo', 'categoriaId', 'detalheId', 'etiquetas', 'observacao'];
+    const DA_COMPRA = ['tipo', 'categoriaId', 'detalheId', 'etiquetas', 'observacao', 'faturaDesloca'];
     const comuns = Object.fromEntries(
       Object.entries(mudancas).filter(([campo]) => DA_COMPRA.includes(campo))
     );
@@ -847,6 +875,8 @@ export async function criarFormulario({
       observacao: el('observacao').value.trim(),
       recorrenciaId,
       lancadoPor: ap?.id ?? null,
+      // A compra inteira anda junto: cada parcela, uma fatura a mais.
+      faturaDesloca: noCartao ? faturaDesloca : 0,
       ...procedencia(),
     };
 
@@ -1093,6 +1123,9 @@ export async function criarFormulario({
 
   el('parcelas').addEventListener('input', pintarParcelas);
 
+  el('fatura-antes').addEventListener('click', () => { faturaDesloca -= 1; pintarFatura(); });
+  el('fatura-depois').addEventListener('click', () => { faturaDesloca += 1; pintarFatura(); });
+
   raiz.querySelector('[data-papel="linha-repete"] .pilulas').addEventListener('click', (e) => {
     const botao = e.target.closest('[data-repete]');
     if (!botao) return;
@@ -1246,6 +1279,7 @@ export async function criarFormulario({
      */
     async carregar(l) {
       editando = l;
+      faturaDesloca = l.faturaDesloca ?? 0;
       daSerie = null;
       tipo = l.tipo;
       // No cartão, a data que se corrige é a da compra (03-alimentacao §6.2).
@@ -1299,6 +1333,7 @@ export async function criarFormulario({
       etiquetas = [];
       repete = 'nao';
       repeteAntes = 'nao';
+      faturaDesloca = 0;
       el('parcelas').value = '1';
       el('observacao').value = '';
       valor.definir(o.valor);
@@ -1317,6 +1352,7 @@ export async function criarFormulario({
       detalheId = null;
       repete = 'nao';
       repeteAntes = 'nao';
+      faturaDesloca = 0;
       todasAbertas = false;
       el('parcelas').value = '1';
       el('observacao').value = '';

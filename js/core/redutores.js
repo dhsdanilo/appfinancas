@@ -25,7 +25,7 @@ export const AREAS_PADRAO = ['caixa', 'cartoes'];
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 14;
+export const VERSAO_ESTADO = 15;
 
 export function estadoVazio() {
   return {
@@ -447,6 +447,9 @@ export const redutores = {
       // A parcela de um contrato de dívida que este lançamento substitui —
       // a automática corrigida pela linha (design/10 §4.4).
       parcelaDe: d.parcelaDe ?? null,
+      // No cartão: quantas faturas a compra anda para frente (+) ou para trás
+      // (−) da que a data dela daria — o banco às vezes processa na vizinha.
+      faturaDesloca: d.faturaDesloca ?? 0,
       estornoDe: d.estornoDe ?? null,
       custeadoPor: d.custeadoPor ?? null,
       envelopeId: d.envelopeId ?? null,
@@ -472,7 +475,7 @@ export const redutores = {
       if (l.cicloFatura && (campo === 'dataCaixa' || campo === 'dataVencimento')) continue;
       if (campo !== 'id' && valor !== undefined) l[campo] = valor;
     }
-    if (d.contaId !== undefined || d.dataCompetencia !== undefined || d.devolvidoEm !== undefined) {
+    if (d.contaId !== undefined || d.dataCompetencia !== undefined || d.devolvidoEm !== undefined || d.faturaDesloca !== undefined) {
       // Estorno fora do cartão: o caixa é quando o dinheiro voltou.
       if (d.devolvidoEm !== undefined && !l.cicloFatura) l.dataCaixa = d.devolvidoEm;
       datarNoCartao(l, e.contas[l.contaId]);

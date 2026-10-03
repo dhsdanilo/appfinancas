@@ -1657,6 +1657,24 @@ caso('dívida', 'a série que a primeira versão criava não projeta mais nem re
   igual(fev.map((l) => l.id), ['pela-serie'], 'fevereiro já lançado pela série: não cai de novo');
 });
 
+caso('cartão', 'a compra pode cair na fatura vizinha, sem mudar a data dela', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', { id: 'ct', nome: 'Cartão', tipo: 'cartao', diaFechamento: 25, diaVencimento: 5 });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'c1', tipo: 'despesa', valor: 10000, contaId: 'ct', dataCompetencia: '2027-03-24', confirmado: true,
+  });
+  let e = await estado.calcular();
+  igual([e.lancamentos.c1.cicloFatura, e.lancamentos.c1.dataCaixa], ['2027-03-25', '2027-04-05'], 'pela data: fecha 25/03');
+  await estado.aplicarEvento('lancamento.alterado', { id: 'c1', faturaDesloca: 1 });
+  e = await estado.calcular();
+  igual([e.lancamentos.c1.dataCompetencia, e.lancamentos.c1.cicloFatura, e.lancamentos.c1.dataCaixa],
+    ['2027-03-24', '2027-04-25', '2027-05-05'], 'movida: a data fica, a fatura é a seguinte');
+  await estado.aplicarEvento('lancamento.alterado', { id: 'c1', faturaDesloca: -1 });
+  e = await estado.calcular();
+  igual(e.lancamentos.c1.cicloFatura, '2027-02-25', 'e para trás também');
+});
+
 // ── apoio ─────────────────────────────────────────────────────────────────
 
 async function limpar() {

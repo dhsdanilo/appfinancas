@@ -16,10 +16,16 @@ export function temCiclo(conta) {
  * fecha naquele mês; no dia do fechamento ou depois, na seguinte — é como os
  * bancos fazem. O ciclo é identificado pela data em que fecha.
  */
-export function cicloDaCompra(conta, dataCompra) {
+export function cicloDaCompra(conta, dataCompra, desloca = 0) {
   const [ano, mes] = dataCompra.split('-').map(Number);
   let fechamento = diaNoMes(ano, mes, conta.diaFechamento);
   if (dataCompra >= fechamento) fechamento = diaNoMes(ano, mes + 1, conta.diaFechamento);
+  // A compra que o banco processou numa fatura vizinha: a data dela fica, a
+  // fatura anda (pedido dele, 03/10/2026).
+  if (desloca) {
+    const [a, m] = fechamento.split('-').map(Number);
+    fechamento = diaNoMes(a, m + desloca, conta.diaFechamento);
+  }
   return { fechamento, vencimento: vencimentoDoCiclo(conta, fechamento) };
 }
 
@@ -56,7 +62,7 @@ export function datarNoCartao(l, conta) {
     }
     return;
   }
-  const { fechamento, vencimento } = cicloDaCompra(conta, base);
+  const { fechamento, vencimento } = cicloDaCompra(conta, base, l.faturaDesloca ?? 0);
   l.cicloFatura = fechamento;
   l.dataCaixa = vencimento;
   l.dataVencimento = vencimento;

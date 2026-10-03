@@ -252,7 +252,8 @@ input[type="text"].nova-etiqueta {
 
 .quando { position: relative; display: flex; align-items: center; gap: 2px; }
 
-.quando .passo {
+.quando .passo,
+.linha-fatura .passo {
   width: 32px;
   min-height: 32px;
   padding: 0;
@@ -263,7 +264,8 @@ input[type="text"].nova-etiqueta {
   font-size: var(--t-corpo);
   line-height: 1;
 }
-.quando .passo:hover:not(:disabled) { color: var(--tinta); border-color: var(--borda-forte); }
+.quando .passo:hover:not(:disabled),
+.linha-fatura .passo:hover { color: var(--tinta); border-color: var(--borda-forte); }
 .quando .elo { min-width: 64px; text-align: center; }
 
 /* O campo real fica atrás do rótulo, invisível: é nele que o calendário do
@@ -490,3 +492,8 @@ input[type="text"].observacao {
 .fim-contrato { display: flex; flex-wrap: wrap; gap: var(--e2) var(--e3); align-items: center; }
 .fim-contrato [hidden] { display: none; }
 .recado-parcela { display: flex; flex-wrap: wrap; gap: var(--e2); align-items: baseline; color: var(--tinta-fraca); }
+
+/* Em qual fatura a compra do cartão cai, com o passo para a vizinha. */
+.linha-fatura { display: flex; align-items: center; gap: var(--e2); margin: var(--e2) 0 0; color: var(--tinta-fraca); font-size: var(--t-apoio); }
+.linha-fatura[hidden] { display: none; }
+.linha-fatura.movida [data-papel="fatura-rotulo"] { color: var(--tinta); font-weight: 600; }
