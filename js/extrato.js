@@ -54,10 +54,13 @@ async function pintar() {
           const entrada = l.tipo === 'receita';
           const transferencia = l.tipo === 'transferencia';
 
-          // O sinal diz a direção do dinheiro antes de qualquer cor — e
-          // sobrevive em preto e branco, que é a regra (08-telas §3.1).
-          const sinal = transferencia ? '→' : entrada ? '+' : '−';
-          const tom = transferencia ? 'neutro' : entrada ? 'entrada' : 'saida';
+          // Tipo tem código próprio: marca, cor e sinal (09-identidade §3).
+          // A marca vem antes da cor — é ela que carrega o sentido em preto e
+          // branco e pra quem não distingue vermelho de verde.
+          const tom = transferencia ? 'transferencia' : entrada ? 'receita' : 'despesa';
+          const marca = transferencia ? '→' : entrada ? '↑' : '↓';
+          const sinal = transferencia ? '' : entrada ? '+' : '−';
+          const nomeDoTom = transferencia ? 'Transferência' : entrada ? 'Receita' : 'Despesa';
 
           // Uma ação da vida real é UMA linha (08-telas §4): a transferência
           // aparece como origem → destino, nunca como despesa numa conta mais
@@ -74,9 +77,10 @@ async function pintar() {
 
           // A linha inteira é o botão de corrigir: no celular o alvo é o dedo,
           // e no PC o teclado chega nela sem mouse.
-          return `<li><button type="button" class="linha ${est === 'realizado' ? '' : est}"
+          return `<li><button type="button" class="linha ${tom} ${est === 'realizado' ? '' : est}"
               data-lanc="${escapar(l.id)}" data-tipo="${escapar(l.tipo)}"
-              aria-label="Corrigir lançamento de ${escapar(l.dataCaixa)}">
+              aria-label="Corrigir ${nomeDoTom.toLowerCase()} de ${escapar(l.dataCaixa)}">
+            <span class="marca" title="${nomeDoTom}" aria-hidden="true">${marca}</span>
             <span class="quando">${escapar(l.dataCaixa.slice(8))}/${escapar(l.dataCaixa.slice(5, 7))}</span>
             <span class="oque">
               <span class="cat">${escapar(oque)}${etiquetas.length ? etiquetas.map((e) => `<span class="etiqueta">${escapar(e)}</span>`).join('') : ''}</span>

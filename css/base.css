@@ -19,7 +19,12 @@
   --alerta: #9b2c2c;
   --alerta-fundo: #9b2c2c14;
   --positivo: #1f6b3a;
+  --positivo-fundo: #1f6b3a14;
   --atencao: #8a5a12;
+  /* Transferência não é gasto nem ganho: precisa de cor própria, fora do eixo
+     vermelho/verde, senão vira uma das duas coisas que ela não é. */
+  --transferencia: #3f5d8a;
+  --transferencia-fundo: #3f5d8a14;
 
   /* ── tipografia ──────────────────────────────────────────────────────── */
   --fonte: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -64,7 +69,10 @@
     --alerta: #f08c8c;
     --alerta-fundo: #f08c8c1a;
     --positivo: #5fc98a;
+    --positivo-fundo: #5fc98a1a;
     --atencao: #e0b263;
+    --transferencia: #8fb3e0;
+    --transferencia-fundo: #8fb3e01a;
   }
 }
 

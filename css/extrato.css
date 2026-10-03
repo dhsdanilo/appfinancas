@@ -15,7 +15,7 @@
 .lista { list-style: none; margin: 0; padding: 0; }
 .linha {
   display: grid;
-  grid-template-columns: 44px 1fr auto;
+  grid-template-columns: 26px 40px 1fr auto;
   align-items: baseline;
   gap: var(--e3);
   padding: var(--e2) 0;
@@ -128,17 +128,50 @@ button.linha.vencido { border-left: 3px solid var(--alerta); background: var(--a
 .saldo .quantia.negativo,
 .saldo .quantia.negativo .moeda,
 .saldo .quantia.negativo .centavos { color: var(--alerta); }
+/* Agora que despesa é vermelha, o saldo negativo precisa de mais que cor pra
+   continuar gritando: ele é o único com fundo. */
+.saldo .quantia.negativo {
+  padding: 2px var(--e2);
+  border-radius: var(--raio-controle);
+  background: var(--alerta-fundo);
+}
 
 /* Receita sobe em verde; despesa desce em tinta normal, com o sinal dizendo a
    direção. Pintar TODA despesa de vermelho apagaria o vermelho do saldo
    negativo, que é onde ele precisa gritar. */
-.linha .quanto.entrada,
-.linha .quanto.entrada .moeda,
-.linha .quanto.entrada .centavos { color: var(--positivo); }
+/* ── o código de tipo: marca, cor e sinal ───────────────────────────────── */
+/* Num extrato cheio é preciso saber o que é cada linha ANTES de ler — então a
+   marca vem na frente de tudo, até da data. Ela carrega o sentido em preto e
+   branco; a cor só acelera (09-identidade §3). */
 
-.linha .quanto.saida { color: var(--tinta); }
+.linha .marca {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--raio-controle);
+  font-size: var(--t-apoio);
+  line-height: 1;
+  align-self: center;
+}
 
-/* Transferência não é gasto nem ganho: tom apagado e seta, nunca sinal. */
-.linha .quanto.neutro,
-.linha .quanto.neutro .moeda,
-.linha .quanto.neutro .centavos { color: var(--tinta-fraca); font-weight: 500; }
+.linha.despesa .marca { background: var(--alerta-fundo); color: var(--alerta); }
+.linha.receita .marca { background: var(--positivo-fundo); color: var(--positivo); }
+.linha.transferencia .marca { background: var(--transferencia-fundo); color: var(--transferencia); }
+
+.linha.despesa .quanto,
+.linha.despesa .quanto .moeda,
+.linha.despesa .quanto .centavos { color: var(--alerta); }
+
+.linha.receita .quanto,
+.linha.receita .quanto .moeda,
+.linha.receita .quanto .centavos { color: var(--positivo); }
+
+.linha.transferencia .quanto,
+.linha.transferencia .quanto .moeda,
+.linha.transferencia .quanto .centavos { color: var(--transferencia); }
+
+/* O nome fica em tinta normal: colorir o texto também deixaria a lista
+   ilegível, e o que precisa de cor é a natureza do movimento, não a palavra. */
+.linha .cat { color: var(--tinta); }
