@@ -519,89 +519,131 @@ function pintarDividas(contas) {
     $('resumo').innerHTML = `<p class="vazio">${escapar(VAZIO_DA_AREA.dividas)}</p>`;
     return;
   }
-  const blocos = contas.map(blocoDeDivida);
+
+  // O total é uma faixa na largura da tela, não mais um cartão na grade: com
+  // três empréstimos ele desalinhava a primeira linha, e com um só repetiria
+  // o próprio cartão — então só aparece a partir de dois.
+  let faixa = '';
   if (contas.length > 1) {
     const total = contas.reduce((t, c) => t + (saldoDevedor(app, c.id) ?? -saldoReal(app, c.id)), 0);
     const parcelas = contas.reduce((t, c) => {
       const s = situacao(app, c.id);
       return t + (s?.restantes ? s.valorParcela : 0);
     }, 0);
-    blocos.unshift(`<div class="bloco total">
-      <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>dívidas</p>
-      <dl>${linhaDeResumo('saldo devedor somado', dinheiroHTML(total, { estimado: contas.some((c) => situacao(app, c.id)?.estimado) }))}
-      ${parcelas ? linhaDeResumo('parcelas por mês', dinheiroHTML(parcelas), 'abate') : ''}</dl>
-    </div>`);
+    const estimado = contas.some((c) => situacao(app, c.id)?.estimado);
+    faixa = `<div class="faixa-dividas">
+      ${numeroDaFaixa('saldo devedor somado', `${estimado ? '~' : ''}${formatar(total)}`)}
+      ${numeroDaFaixa('parcelas por mês', formatar(parcelas))}
+      ${numeroDaFaixa('empréstimos', String(contas.length))}
+    </div>`;
   }
+
+  const blocos = contas.map(blocoDeDivida);
   if (arquivadas.length) {
     blocos.push(`<div class="bloco arquivadas-divida">
       <p class="nome-bloco">quitados e arquivados</p>
       <p class="fino">${arquivadas.map((c) => `<button type="button" class="elo" data-corrigir-divida="${escapar(c.id)}">${escapar(c.nome)}</button>`).join(' · ')}</p>
     </div>`);
   }
-  $('resumo').innerHTML = `<div class="blocos">${blocos.join('')}</div>`;
+  $('resumo').innerHTML = `${faixa}<div class="blocos">${blocos.join('')}</div>`;
   guardarVista();
 }
 
+const numeroDaFaixa = (rotulo, valor) =>
+  `<div class="numero-faixa"><span class="rotulo-numero">${escapar(rotulo)}</span><span class="valor-numero">${escapar(valor)}</span></div>`;
+
+const dataCheia = (dia) => `${dia.slice(8, 10)}/${dia.slice(5, 7)}/${dia.slice(0, 4)}`;
+
+// Os contratos com os detalhes abertos.
+const detalhesAbertos = new Set();
+
+/**
+ * O cartão do contrato: só os quatro números que ele quer ver primeiro —
+ * parcela, quantas, saldo devedor e a última parcela. O resto (juros, taxa,
+ * cronograma, amortizar, foto, corrigir) mora em "detalhes".
+ */
 function blocoDeDivida(c) {
   const s = situacao(app, c.id);
   const pagadora = app.contas[c.pagaCom];
   const id = escapar(c.id);
-  const aberto = s && cronogramasAbertos.has(c.id);
-  const emAmortizacao = s && amortizando === c.id && !s.quitada;
-  const acoes = `<div class="acoes-contrato">
-      ${s ? `<button type="button" class="elo" data-cronograma="${id}" aria-expanded="${aberto}">${aberto ? 'fechar cronograma' : 'cronograma'}</button>` : ''}
-      ${s && !s.quitada ? `<button type="button" class="elo" data-amortizar="${id}">amortizar</button>` : ''}
-      <span class="foto-divida" data-foto-de="${id}">
-        <button type="button" class="elo" data-foto="${id}">saldo do banco</button>
-      </span>
-      <button type="button" class="elo" data-corrigir-divida="${id}">${s ? 'corrigir' : 'cadastrar contrato'}</button>
+  const cabeca = `<div class="cabeca-contrato">
+      <span class="ponto-area" aria-hidden="true"></span>
+      <span class="nome-contrato">${escapar(c.nome)}</span>
+      ${pagadora ? `<span class="etiqueta-paga" title="As parcelas caem sozinhas nesta conta">${escapar(pagadora.nome)}</span>` : ''}
     </div>`;
-  const quemPaga = pagadora
-    ? `<p class="paga-com fino">paga com ${escapar(pagadora.nome)} · cada parcela cai sozinha no dia</p>`
-    : '<p class="aviso-bloco">Sem conta que paga: as parcelas não caem em lugar nenhum. Escolha em "corrigir".</p>';
 
   if (!s) {
     const devedor = saldoDevedor(app, c.id);
     return `<div class="bloco contrato">
-      <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(c.nome)}</p>
-      <dl>${linhaDeResumo('saldo devedor', devedor != null ? dinheiroHTML(devedor) : '—')}</dl>
-      <p class="aviso-bloco">Sem contrato: o app não sabe as parcelas nem estima o saldo.</p>
-      ${acoes}
+      ${cabeca}
+      <div class="numeros-contrato">
+        ${numeroDaFaixa('saldo devedor', devedor != null ? formatar(devedor) : '—')}
+      </div>
+      <p class="aviso-bloco">Sem contrato: o app não sabe as parcelas.</p>
+      <div class="acoes-contrato">
+        <button type="button" class="elo" data-corrigir-divida="${id}">cadastrar contrato</button>
+      </div>
     </div>`;
   }
 
+  const aberto = detalhesAbertos.has(c.id);
+  const cronogramaAberto = aberto && cronogramasAbertos.has(c.id);
+  const emAmortizacao = aberto && amortizando === c.id && !s.quitada;
+  const numeros = `<div class="numeros-contrato">
+      ${numeroDaFaixa('parcela', s.restantes ? formatar(s.valorParcela) : '—')}
+      ${numeroDaFaixa('parcelas', `${s.parcelasPagas} de ${s.parcelasTotal}`)}
+      ${numeroDaFaixa('saldo devedor', `${s.estimado ? '~' : ''}${formatar(s.saldoDevedor)}`)}
+      ${numeroDaFaixa('última parcela', s.termina ? dataCheia(s.termina) : '—')}
+    </div>`;
+  const semPagadora = pagadora
+    ? ''
+    : '<p class="aviso-bloco">Sem conta que paga: as parcelas não caem em lugar nenhum. Escolha em "corrigir".</p>';
+
+  return `<div class="bloco contrato ${cronogramaAberto || emAmortizacao ? 'largo' : ''}">
+    ${cabeca}
+    ${numeros}
+    ${semPagadora}
+    ${aberto ? detalhesDoContrato(c, s) : ''}
+    <div class="pe-contrato">
+      <button type="button" class="elo" data-detalhes-divida="${id}" aria-expanded="${aberto}">${aberto ? 'fechar detalhes' : 'detalhes'}</button>
+    </div>
+    ${emAmortizacao ? painelDeAmortizacao(c, s) : ''}
+    ${cronogramaAberto ? tabelaDoCronograma(c) : ''}
+  </div>`;
+}
+
+/** O que fica atrás de "detalhes": a análise e as ações do contrato. */
+function detalhesDoContrato(c, s) {
+  const id = escapar(c.id);
   const base = s.foto
     ? s.amortizouDepois
       ? `foto de ${diaCurto(s.foto.data)} − amortização`
       : s.estimado ? `foto de ${diaCurto(s.foto.data)} + parcelas` : 'informado hoje'
-    : 'pelo contrato';
+    : 'estimado pelo contrato';
   const origem = s.origemTaxa === 'contratual'
     ? 'contratual'
     : s.origemTaxa === 'observada'
       ? `observada em ${s.mesesObservados} ${s.mesesObservados > 1 ? 'meses' : 'mês'}`
       : 'implícita no contrato';
-  const antes = s.antesDoApp ? ` (${s.antesDoApp} antes do app)` : '';
-  const linhas = [
-    linhaDeResumo(`saldo devedor · ${base}`, dinheiroHTML(s.saldoDevedor, { estimado: s.estimado }), 'fecho-topo'),
-    linhaDeResumo(
-      s.restantes
-        ? `${s.parcelasPagas} de ${s.parcelasTotal} pagas${antes} · faltam ${s.restantes} × ${formatar(s.valorParcela)}`
-        : `${s.parcelasTotal} de ${s.parcelasTotal} pagas`,
-      dinheiroHTML(s.somaRestante)
-    ),
-    linhaDeResumo('juros que ainda vêm', dinheiroHTML(s.jurosFuturos, { estimado: s.estimado }), 'abate'),
-    linhaDeResumo('juros já pagos', dinheiroHTML(s.jurosPagos, { estimado: s.estimado }), 'abate'),
-    s.amortizado ? linhaDeResumo('amortizado', dinheiroHTML(s.amortizado), 'abate') : '',
-    linhaDeResumo(`taxa ${origem}`, pct(s.taxa), 'abate'),
-    linhaDeResumo(s.proxima ? `próxima ${diaCurto(s.proxima)}` : 'quitada pelo calendário', s.termina ? `termina ${mesAno(s.termina)}` : '', 'abate'),
-  ];
-  return `<div class="bloco contrato ${aberto || emAmortizacao ? 'largo' : ''}">
-    <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(c.nome)}</p>
-    ${quemPaga}
-    <dl>${linhas.join('')}</dl>
-    ${acoes}
-    ${emAmortizacao ? painelDeAmortizacao(c, s) : ''}
-    ${aberto ? tabelaDoCronograma(c) : ''}
+  const linha = (rotulo, valor) => `<div class="linha-detalhe"><span>${escapar(rotulo)}</span><span>${escapar(valor)}</span></div>`;
+  const cronogramaAberto = cronogramasAbertos.has(c.id);
+  return `<div class="detalhes-contrato">
+    ${linha('saldo devedor', base)}
+    ${linha('falta pagar até o fim', formatar(s.somaRestante))}
+    ${linha('juros que ainda vêm', `${s.estimado ? '~' : ''}${formatar(s.jurosFuturos)}`)}
+    ${linha('juros já pagos', `${s.estimado ? '~' : ''}${formatar(s.jurosPagos)}`)}
+    ${s.amortizado ? linha('amortizado', formatar(s.amortizado)) : ''}
+    ${linha(`taxa ${origem}`, pct(s.taxa))}
+    ${s.proxima ? linha('próxima parcela', dataCheia(s.proxima)) : ''}
+    ${s.antesDoApp ? linha('pagas antes do app', String(s.antesDoApp)) : ''}
+    <div class="acoes-contrato">
+      <button type="button" class="elo" data-cronograma="${id}" aria-expanded="${cronogramaAberto}">${cronogramaAberto ? 'fechar cronograma' : 'cronograma'}</button>
+      ${s.quitada ? '' : `<button type="button" class="elo" data-amortizar="${id}">amortizar</button>`}
+      <span class="foto-divida" data-foto-de="${id}">
+        <button type="button" class="elo" data-foto="${id}">saldo do banco</button>
+      </span>
+      <button type="button" class="elo" data-corrigir-divida="${id}">corrigir</button>
+    </div>
   </div>`;
 }
 
@@ -1152,6 +1194,19 @@ document.addEventListener('click', async (e) => {
     return;
   }
 
+  const detalhes = e.target.closest('[data-detalhes-divida]');
+  if (detalhes) {
+    const id = detalhes.dataset.detalhesDivida;
+    if (detalhesAbertos.has(id)) {
+      detalhesAbertos.delete(id);
+      cronogramasAbertos.delete(id);
+      if (amortizando === id) amortizando = null;
+    } else {
+      detalhesAbertos.add(id);
+    }
+    pintar();
+    return;
+  }
   const cron = e.target.closest('[data-cronograma]');
   if (cron) {
     const id = cron.dataset.cronograma;

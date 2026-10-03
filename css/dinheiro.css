@@ -644,3 +644,51 @@ body[data-pagina="dividas"] .bloco { min-width: 0; }
 .opcao-amortizar p.economia { color: var(--tinta); font-weight: 600; }
 .opcao-amortizar button { align-self: flex-start; margin-top: var(--e2); }
 .pe-amortizar { margin: var(--e2) 0 0; }
+
+/* O cartão do contrato: quatro números, um tamanho só (pedido dele,
+   03/10). Rótulo miúdo em cima, valor embaixo — sem centavos em
+   sobrescrito, sem frase quebrando em duas linhas. */
+.faixa-dividas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--e3) var(--e6);
+  margin-bottom: var(--e4);
+  padding: var(--e3) var(--e4);
+  border-radius: var(--raio-cartao);
+  background: var(--fundo);
+  border: 1px solid color-mix(in srgb, var(--area, var(--borda)) 40%, var(--borda));
+}
+.numero-faixa { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rotulo-numero { color: var(--tinta-fraca); font-size: var(--t-miudo); }
+.valor-numero { font-size: var(--t-corpo); font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.cabeca-contrato { display: flex; align-items: center; gap: var(--e2); margin-bottom: var(--e3); min-width: 0; }
+.cabeca-contrato .ponto-area { width: 8px; height: 8px; flex: none; }
+.nome-contrato { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.etiqueta-paga {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 var(--e2);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-controle);
+  color: var(--tinta-fraca);
+  font-size: var(--t-miudo);
+}
+.numeros-contrato { display: grid; grid-template-columns: 1fr 1fr; gap: var(--e3) var(--e4); }
+
+.detalhes-contrato { margin-top: var(--e3); padding-top: var(--e2); border-top: 1px solid var(--borda); }
+.linha-detalhe {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--e3);
+  padding: 2px 0;
+  font-size: var(--t-apoio);
+  font-variant-numeric: tabular-nums;
+}
+.linha-detalhe span:first-child { color: var(--tinta-fraca); }
+.linha-detalhe span:last-child { white-space: nowrap; text-align: right; }
+.pe-contrato { margin-top: var(--e3); padding-top: var(--e2); border-top: 1px solid var(--borda); }
+.detalhes-contrato .acoes-contrato { border-top: 0; padding-top: 0; }
