@@ -407,6 +407,10 @@ button.linha.vencido { border-left: 3px solid var(--alerta); background: var(--a
 
 .form-simples { display: flex; flex-direction: column; gap: var(--e3); padding-top: var(--e3); }
 .campo-simples { display: flex; flex-direction: column; gap: var(--e1); }
+/* O campo de texto da base cresce (flex 1 1 200px) — certo numa linha, mas
+   num rótulo em coluna ele crescia para baixo e virava uma caixa enorme. */
+.campo-simples > input,
+.campo-simples > select { flex: none; min-width: 0; }
 .campo-simples input,
 .campo-simples select {
   font: inherit;
