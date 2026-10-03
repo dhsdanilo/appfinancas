@@ -8,7 +8,7 @@
 
 import { hoje, inicioDoMes, fimDoMes, diaNoMes, proximoMes, somarMeses } from './datas.js';
 import { temCiclo, cicloDaCompra, vencimentoDoCiclo } from './cartao.js';
-import { visiveis, saldoReal, sinalDeSaida } from './lancamentos.js';
+import { visiveis, lancados, parcelasPorVir, saldoReal, sinalDeSaida } from './lancamentos.js';
 
 // ── faturas ───────────────────────────────────────────────────────────────
 
@@ -46,7 +46,7 @@ export function faturas(estado, cartaoId, dia = hoje()) {
     return porCiclo.get(fechamento);
   };
 
-  const doCartao = visiveis(estado);
+  const doCartao = visiveis(estado, dia);
   for (const l of doCartao) {
     if (l.contaId === cartaoId && l.cicloFatura) ciclo(l.cicloFatura, l.dataVencimento);
   }
@@ -137,11 +137,16 @@ export function ocorrenciasPrevistas(estado, de, ate, dia = hoje(), { comPassado
   const piso = comPassado || de > inicioDoMes(dia) ? de : inicioDoMes(dia);
   if (piso > ate) return [];
 
-  const todos = visiveis(estado);
+  const todos = lancados(estado);
   const saida = [];
+  // A série que a primeira versão do contrato criava deixou de projetar: a
+  // parcela agora sai do próprio contrato (design/10 §4.4).
+  const seriesDeContrato = new Set(
+    Object.values(estado.contas).map((c) => c.contrato?.recorrenciaId).filter(Boolean)
+  );
   for (const r of Object.values(estado.recorrencias ?? {})) {
     const periodicidade = r.periodicidade ?? 'mensal';
-    if (r.arquivada || (periodicidade !== 'mensal' && periodicidade !== 'anual')) continue;
+    if (r.arquivada || seriesDeContrato.has(r.id) || (periodicidade !== 'mensal' && periodicidade !== 'anual')) continue;
     // Anual (IPVA, seguro, matrícula): uma vez por ano, no mês do início.
     const mesDoAno = periodicidade === 'anual' && r.inicio ? Number(r.inicio.slice(5, 7)) : null;
     const conta = estado.contas[r.contaId];
@@ -186,6 +191,11 @@ export function ocorrenciasPrevistas(estado, de, ate, dia = hoje(), { comPassado
         parcela: null,
       });
     }
+  }
+  // As parcelas de dívida que ainda vão cair. Previstas, mas nunca pendência:
+  // no dia, caem sozinhas (design/10 §4.4).
+  for (const p of parcelasPorVir(estado, piso, ate, dia)) {
+    saida.push({ ...p, projetado: true, estimado: false });
   }
   return saida;
 }
@@ -237,7 +247,7 @@ export function saldoPrevisto(estado, contaId, dia = hoje()) {
 
   // Agendados e vencidos: o que foi lançado e ainda não saiu.
   let aSair = 0;
-  for (const l of visiveis(estado)) {
+  for (const l of visiveis(estado, dia)) {
     if (l.confirmado || l.contaId !== contaId || l.dataCaixa > ate) continue;
     const saida = sinalDeSaida(l);
     if (saida > 0) aSair += saida;

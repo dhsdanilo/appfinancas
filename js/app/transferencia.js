@@ -21,6 +21,7 @@ import { hoje, nasceConfirmado, correcao, tipoDaTransferencia } from '../core/la
 import { MARCACAO_CAMPO_VALOR, ligarCampoValor } from './campo-valor.js';
 import { ligarZonaDePerigo } from './zona-perigo.js';
 import { areaDaConta, opcoesDeConta } from './areas.js';
+import { pularParcela, corrigirParcela, voltarAoContrato } from './contrato.js';
 
 // Todas as contas que não estão arquivadas. Cartão, dívida e folha entram
 // porque o dinheiro passa por elas de verdade: pagar a fatura é corrente →
@@ -51,6 +52,14 @@ const MARCACAO = `
 
   <p class="recado" data-papel="recado" hidden></p>
 
+  <!-- A parcela de uma dívida cai sozinha; aqui só se corrige a exceção
+       (design/10 §4.4). -->
+  <p class="recado recado-parcela" data-papel="recado-parcela" hidden>
+    <span data-papel="texto-parcela"></span>
+    <button type="button" class="elo" data-papel="b-pular">não foi debitada</button>
+    <button type="button" class="elo" data-papel="b-voltar-contrato" hidden>voltar ao contrato</button>
+  </p>
+
   <div class="acoes">
     <button type="button" class="principal" data-papel="b-salvar" disabled>Transferir</button>
   </div>
@@ -77,6 +86,8 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
   let editando = null;
   // A série de que esta transferência é a ocorrência, quando veio de um previsto.
   let daSerie = null;
+  // A parcela automática de uma dívida que esta transferência corrige.
+  let daParcela = null;
 
   const valor = ligarCampoValor(raiz, {
     aoMudar: () => pintarAcao(),
@@ -104,8 +115,9 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
   function pintarAcao() {
     pintarAreas();
     el('b-salvar').disabled = !pronto();
-    el('b-salvar').textContent = editando ? 'Salvar' : pagandoFatura() ? 'Pagar fatura' : 'Transferir';
-    if (aoMudarTitulo) aoMudarTitulo(pagandoFatura() ? 'Pagar fatura' : 'Transferência');
+    el('b-salvar').textContent = editando || daParcela ? 'Salvar' : pagandoFatura() ? 'Pagar fatura' : 'Transferir';
+    if (aoMudarTitulo) aoMudarTitulo(daParcela ? 'Corrigir parcela' : pagandoFatura() ? 'Pagar fatura' : 'Transferência');
+    el('recado-parcela').hidden = !daParcela;
 
     // A recusa diz o que resolve, nunca só que não dá.
     const mesma = origem() && origem() === destino();
@@ -155,7 +167,23 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
 
   async function salvar() {
     if (!pronto()) return false;
+    if (daParcela) return salvarParcela();
     return editando ? salvarCorrecao() : registrar();
+  }
+
+  /**
+   * A parcela automática corrigida continua automática: a correção fica na
+   * dívida, e a parcela segue caindo no dia (design/10 §4.4).
+   */
+  async function salvarParcela() {
+    const p = daParcela;
+    const mudou = valor.centavos() !== p.valor || data !== p.data || origem() !== p.contaId;
+    if (mudou) {
+      await corrigirParcela(p.dividaId, p.k, { valor: valor.centavos(), data, contaId: origem() });
+      if (aoSalvar) await aoSalvar();
+    }
+    daParcela = null;
+    return true;
   }
 
   async function registrar() {
@@ -204,6 +232,22 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
     if (salvou && aoFechar) aoFechar();
   });
 
+  el('b-pular').addEventListener('click', async () => {
+    if (!daParcela) return;
+    await pularParcela(daParcela.dividaId, daParcela.k);
+    daParcela = null;
+    if (aoSalvar) await aoSalvar();
+    if (aoFechar) aoFechar();
+  });
+
+  el('b-voltar-contrato').addEventListener('click', async () => {
+    if (!daParcela) return;
+    await voltarAoContrato(daParcela.dividaId, daParcela.k);
+    daParcela = null;
+    if (aoSalvar) await aoSalvar();
+    if (aoFechar) aoFechar();
+  });
+
   el('origem').addEventListener('change', pintarAcao);
   el('destino').addEventListener('change', pintarAcao);
   el('data').addEventListener('change', () => {
@@ -230,6 +274,7 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
 
     async carregar(l) {
       editando = l;
+      daParcela = null;
       data = l.dataCaixa;
       valor.definir(l.valor);
       await recarregar();
@@ -238,6 +283,7 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
     limpar: () => {
       editando = null;
       daSerie = null;
+      daParcela = null;
       data = hoje();
       valor.limpar();
       el('origem').value = '';
@@ -254,8 +300,18 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
     async preencher(o) {
       editando = null;
       daSerie = o.recorrenciaId;
+      daParcela = o.parcelaDe
+        ? { ...o.parcelaDe, valor: o.valor, data: o.dataCompetencia, contaId: o.contaId }
+        : null;
       data = o.dataCompetencia;
       await recarregar();
+      if (daParcela) {
+        const divida = app.contas[daParcela.dividaId]?.nome ?? 'a dívida';
+        el('texto-parcela').textContent = o.corrigida
+          ? `Parcela ${daParcela.k}/${daParcela.total} de ${divida}, corrigida (no contrato: ${formatar(o.valorDoContrato)}). Continua caindo sozinha.`
+          : `Parcela ${daParcela.k}/${daParcela.total} de ${divida}: cai sozinha. Mude valor ou data se o banco cobrou diferente — só esta parcela muda.`;
+        el('b-voltar-contrato').hidden = !o.corrigida;
+      }
       el('origem').value = o.contaId ?? '';
       el('destino').value = o.contaDestinoId ?? '';
       valor.definir(o.valor);
@@ -269,6 +325,7 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
      */
     async pagarFatura({ cartaoId, origemId, centavos }) {
       editando = null;
+      daParcela = null;
       data = hoje();
       await recarregar();
       el('origem').value = origemId ?? '';

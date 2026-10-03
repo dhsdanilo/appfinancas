@@ -82,6 +82,10 @@ export const NOVA_CONTA = `
         <input type="date" id="div-primeira" name="primeira">
       </div>
       <div class="campo estreito">
+        <label for="div-ja-pagas">Já pagas</label>
+        <input type="number" id="div-ja-pagas" name="jaPagas" min="0" max="600" data-papel="ja-pagas">
+      </div>
+      <div class="campo estreito">
         <label for="div-taxa">Taxa % a.m.</label>
         <input type="text" id="div-taxa" name="taxa" inputmode="decimal" autocomplete="off" placeholder="opcional">
       </div>
@@ -89,6 +93,7 @@ export const NOVA_CONTA = `
         <label for="div-paga">Paga com</label>
         <select id="div-paga" name="pagaComDivida" data-papel="paga-divida"></select>
       </div>
+      <p class="conferencia-contrato" data-papel="conferencia-contrato" hidden></p>
     </div>
 
     <div class="campo acao">
@@ -142,6 +147,10 @@ export const CONTRATO = `
 <dialog id="dialogo-contrato" class="dialogo-ciclo" data-area="dividas" aria-labelledby="titulo-contrato">
   <form class="formulario" id="f-contrato" method="dialog">
     <p class="titulo-bloco" id="titulo-contrato">contrato</p>
+      <div class="campo largo">
+        <label for="ct-nome">Nome</label>
+        <input type="text" id="ct-nome" name="nome" autocomplete="off">
+      </div>
       <div class="campo">
         <label for="ct-tomado">Valor tomado</label>
         <input type="text" id="ct-tomado" name="tomado" inputmode="decimal" autocomplete="off" placeholder="0,00">
@@ -163,6 +172,10 @@ export const CONTRATO = `
         <input type="date" id="ct-primeira" name="primeira">
       </div>
       <div class="campo estreito">
+        <label for="ct-ja-pagas">Já pagas</label>
+        <input type="number" id="ct-ja-pagas" name="jaPagas" min="0" max="600" data-papel="ja-pagas">
+      </div>
+      <div class="campo estreito">
         <label for="ct-taxa">Taxa % a.m.</label>
         <input type="text" id="ct-taxa" name="taxa" inputmode="decimal" autocomplete="off" placeholder="opcional">
       </div>
@@ -170,6 +183,7 @@ export const CONTRATO = `
         <label for="ct-paga">Paga com</label>
         <select id="ct-paga" name="pagaComDivida" data-papel="paga-divida"></select>
       </div>
+      <p class="conferencia-contrato" data-papel="conferencia-contrato" hidden></p>
     <div class="campo">
       <label for="ct-foto">Saldo devedor hoje</label>
       <input type="text" id="ct-foto" name="foto" inputmode="decimal" autocomplete="off" placeholder="o que o banco mostra">
@@ -185,5 +199,16 @@ export const CONTRATO = `
     <div class="campo acao">
       <button type="submit" value="cancelar" formnovalidate>Cancelar</button>
     </div>
+    <!-- Quitado, arquiva com a história; cadastrado errado, exclui com tudo
+         que gerou (design/10 §4.4). -->
+    <p class="zona-perigo fim-contrato" id="fim-contrato">
+      <button type="button" class="elo" id="b-arquivar-divida"></button>
+      <button type="button" class="elo perigo" id="b-excluir-divida">excluir empréstimo</button>
+      <span id="confirma-exclusao" hidden>
+        <span id="texto-exclusao"></span>
+        <button type="button" class="perigo" id="b-excluir-sim">excluir</button>
+        <button type="button" class="elo" id="b-excluir-nao">não</button>
+      </span>
+    </p>
   </form>
 </dialog>`;

@@ -530,3 +530,117 @@ button.linha.vencido { border-left: 3px solid var(--alerta); background: var(--a
 @media (max-width: 899px) {
   #b-novo, .acoes-topo .atalho { display: none; }
 }
+
+/* ── Dívidas: só contratos (design/10 §4.4) ──────────────────────────────── */
+/* A parcela cai sozinha na conta que paga: aqui não se lança nem transfere. */
+
+body[data-pagina="dividas"] #b-novo,
+body[data-pagina="dividas"] #b-transferir,
+body[data-pagina="dividas"] .acoes-topo .atalho { display: none; }
+
+/* Contratos têm alturas diferentes (um com cronograma aberto, outro não):
+   cada um com a sua, sem esticar o vizinho. */
+body[data-pagina="dividas"] .blocos { align-items: start; }
+/* Item de grade não encolhe abaixo do conteúdo: sem isto, a tabela do
+   cronograma alargava o cartão para fora da tela no celular. */
+body[data-pagina="dividas"] .bloco { min-width: 0; }
+.bloco.largo { grid-column: 1 / -1; }
+.bloco .fino { color: var(--tinta-fraca); font-size: var(--t-miudo); }
+.bloco .paga-com { margin: calc(-1 * var(--e1)) 0 var(--e2); }
+.bloco.arquivadas-divida { background: var(--fundo); }
+.bloco.arquivadas-divida .fino { margin: 0; }
+
+.acoes-contrato {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--e1) var(--e3);
+  margin-top: var(--e3);
+  padding-top: var(--e2);
+  border-top: 1px solid var(--borda);
+}
+.acoes-contrato .foto-divida { display: inline-flex; gap: var(--e2); align-items: center; }
+.acoes-contrato .foto-divida input { flex: none; width: 170px; min-width: 0; }
+
+/* O cronograma: uma tabela que rola por dentro, para 72 parcelas não
+   empurrarem o resto da tela. */
+.cronograma { margin-top: var(--e3); }
+.cronograma .rolagem { max-height: 360px; overflow: auto; }
+.cronograma table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-apoio);
+  font-variant-numeric: tabular-nums;
+}
+.cronograma thead th {
+  position: sticky;
+  top: 0;
+  padding: var(--e1) var(--e2);
+  background: var(--superficie);
+  border-bottom: 1px solid var(--borda-forte);
+  color: var(--tinta-fraca);
+  font-size: var(--t-miudo);
+  font-weight: 600;
+  text-align: right;
+}
+.cronograma td { padding: 3px var(--e2); text-align: right; white-space: nowrap; border-bottom: 1px solid var(--borda); }
+.cronograma th:nth-child(-n+2),
+.cronograma td:nth-child(-n+2) { text-align: left; }
+.cronograma tr.antes td,
+.cronograma tr.paga td { color: var(--tinta-fraca); }
+.cronograma tr.proxima td { font-weight: 600; background: var(--area-fundo, transparent); }
+.cronograma tr.marco td { color: var(--area, var(--tinta)); font-style: italic; }
+.cronograma .selo {
+  margin-left: var(--e1);
+  padding: 0 var(--e1);
+  border-radius: var(--raio-controle);
+  background: var(--fundo);
+  color: var(--tinta-fraca);
+  font-size: var(--t-miudo);
+  font-style: normal;
+  font-weight: 400;
+}
+.cronograma .nota { margin: var(--e2) 0 0; }
+
+/* Amortizar: as duas saídas do banco lado a lado, e escolhe-se a que foi feita. */
+.amortizar {
+  margin-top: var(--e3);
+  padding: var(--e3);
+  border: 1px solid var(--area, var(--borda));
+  border-radius: var(--raio-controle);
+}
+.amortizar .titulo-amortizar { margin: 0 0 var(--e2); font-weight: 600; }
+.campos-amortizar { display: flex; flex-wrap: wrap; gap: var(--e2) var(--e3); margin-bottom: var(--e3); }
+.campos-amortizar label { display: flex; flex-direction: column; gap: 2px; color: var(--tinta-fraca); font-size: var(--t-miudo); }
+/* O input de texto da base cresce (flex 1 1 200px): no rótulo em coluna,
+   cresceria para baixo. */
+.campos-amortizar input,
+.campos-amortizar select { flex: none; min-width: 0; }
+.campos-amortizar input[data-am-valor] { width: 140px; }
+.campos-amortizar select,
+.campos-amortizar input[type="date"] {
+  min-height: var(--alvo);
+  padding: 0 var(--e2);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-controle);
+  background: var(--superficie);
+  color: var(--tinta);
+  font: inherit;
+  font-size: var(--t-apoio);
+}
+.opcoes-amortizar { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--e3); }
+.opcoes-amortizar .nota { grid-column: 1 / -1; margin: 0; }
+.opcao-amortizar {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--e3);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-controle);
+  background: var(--fundo);
+}
+.opcao-amortizar strong { margin-bottom: var(--e1); }
+.opcao-amortizar p { margin: 0; color: var(--tinta-fraca); font-size: var(--t-apoio); }
+.opcao-amortizar p.economia { color: var(--tinta); font-weight: 600; }
+.opcao-amortizar button { align-self: flex-start; margin-top: var(--e2); }
+.pe-amortizar { margin: var(--e2) 0 0; }

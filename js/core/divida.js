@@ -6,41 +6,22 @@
 // com ~. A foto do banco sempre manda.
 //
 // A estimativa segue o calendário do contrato (sistema Price): assume as
-// parcelas pagas em dia. Amortização extra ou atraso aparecem na próxima foto —
-// é ela que corrige, nunca uma fórmula mais esperta.
+// parcelas pagas em dia. Atraso aparece na próxima foto — é ela que corrige,
+// nunca uma fórmula mais esperta. A amortização entra no calendário pelo
+// resultado escolhido no dia (js/core/contrato.js).
 
-import { hoje, somarMeses } from './datas.js';
+import { hoje } from './datas.js';
 import { visiveis } from './lancamentos.js';
+import { saldoPrice, parcelaPrice, taxaImplicita } from './contrato.js';
+import { calendarioDaDivida, amortizacoesValidas, caiDepoisDe } from './parcelas.js';
+
+export { taxaImplicita };
 
 const DIAS_NO_MES = 30.4375;
 
-/** Taxa mensal que faz `parcela` pagar `valor` em `n` meses (Price), por bisseção. */
-export function taxaImplicita(valor, n, parcela) {
-  if (!valor || !n || !parcela || parcela * n <= valor) return 0;
-  let baixo = 0;
-  let alto = 1;
-  for (let i = 0; i < 100; i += 1) {
-    const meio = (baixo + alto) / 2;
-    const pmt = (valor * meio) / (1 - (1 + meio) ** -n);
-    if (pmt > parcela) alto = meio;
-    else baixo = meio;
-  }
-  return (baixo + alto) / 2;
-}
-
-/** Saldo de `pv` depois de `k` parcelas de `pmt` a `i` ao mês (Price). */
-function saldoPrice(pv, i, pmt, k) {
-  if (k <= 0) return pv;
-  if (!i) return Math.max(0, pv - pmt * k);
-  const f = (1 + i) ** k;
-  return Math.max(0, pv * f - (pmt * (f - 1)) / i);
-}
-
-/** As datas de vencimento do contrato, da primeira à última. */
+/** As datas de vencimento do contrato, da primeira à última, sem amortização. */
 export function calendario(contrato) {
-  const datas = [];
-  for (let k = 0; k < contrato.parcelas; k += 1) datas.push(somarMeses(contrato.primeira, k));
-  return datas;
+  return calendarioDaDivida({ lancamentos: {} }, { contrato }).map((p) => p.data);
 }
 
 const mesesEntre = (de, ate) => (new Date(ate + 'T12:00:00') - new Date(de + 'T12:00:00')) / 86400000 / DIAS_NO_MES;
@@ -54,7 +35,7 @@ export function taxaObservada(estado, conta) {
   if (fotos.length < 2) return null;
   const a = fotos[fotos.length - 2];
   const b = fotos[fotos.length - 1];
-  const pagos = pagamentos(estado, conta.id).filter((l) => l.dataCaixa > a.data && l.dataCaixa <= b.data);
+  const pagos = pagamentos(estado, conta.id, b.data).filter((l) => l.dataCaixa > a.data && l.dataCaixa <= b.data);
   const pago = pagos.reduce((t, l) => t + l.valor, 0);
   const meses = mesesEntre(a.data, b.data);
   if (!pago || meses <= 0 || !a.valor) return null;
@@ -63,9 +44,85 @@ export function taxaObservada(estado, conta) {
   return { taxa: juros / a.valor / meses, meses: Math.max(1, Math.round(meses)) };
 }
 
-/** O que foi pago para esta dívida: tudo que entrou nela, confirmado. */
-export function pagamentos(estado, dividaId) {
-  return visiveis(estado).filter((l) => l.confirmado && l.contaDestinoId === dividaId);
+/** O que foi pago para esta dívida: tudo que entrou nela, confirmado — parcelas automáticas inclusive. */
+export function pagamentos(estado, dividaId, dia = hoje()) {
+  return visiveis(estado, dia).filter((l) => l.confirmado && l.contaDestinoId === dividaId);
+}
+
+/** A taxa usada, e de onde ela veio: contratual, observada nas fotos, ou implícita no contrato. */
+function taxaDoContrato(estado, conta) {
+  const c = conta.contrato;
+  const observada = taxaObservada(estado, conta);
+  const implicita = taxaImplicita(c.valorTomado, c.parcelas, c.valorParcela);
+  return {
+    taxa: c.taxa ?? observada?.taxa ?? implicita,
+    origemTaxa: c.taxa != null ? 'contratual' : observada ? 'observada' : 'implicita',
+    mesesObservados: observada?.meses ?? null,
+  };
+}
+
+/**
+ * O cronograma inteiro, parcela a parcela: { k, data, valor, juros,
+ * amortizacao, saldoDepois, antesDoApp }. Andando no tempo: cada foto do banco
+ * repõe o saldo (manda), cada amortização o abate. No mesmo dia de uma
+ * parcela, a parcela vem primeiro — a foto daquele dia já a inclui.
+ */
+export function cronograma(estado, dividaId) {
+  const conta = estado.contas[dividaId];
+  const c = conta?.contrato;
+  if (!c || !c.parcelas || !c.valorParcela) return null;
+  const { taxa } = taxaDoContrato(estado, conta);
+  const desde = caiDepoisDe(estado, conta);
+  const marcos = marcosDaDivida(estado, conta);
+
+  let saldo = c.valorTomado;
+  let m = 0;
+  const parcelas = [];
+  for (const p of calendarioDaDivida(estado, conta)) {
+    while (m < marcos.length && marcos[m].data < p.data) {
+      saldo = marcos[m].foto ?? Math.max(0, saldo - marcos[m].abate);
+      m += 1;
+    }
+    const juros = Math.min(p.valor, Math.round(saldo * taxa));
+    const amortizacao = p.valor - juros;
+    saldo = Math.max(0, saldo - amortizacao);
+    parcelas.push({ ...p, juros, amortizacao, saldoDepois: saldo, antesDoApp: p.data <= desde });
+  }
+  return { parcelas, marcos, taxa };
+}
+
+/**
+ * As fotos e as amortizações, em ordem. No mesmo dia, vale a ordem em que
+ * aconteceram (o relógio lógico do evento): a foto tirada antes de amortizar
+ * não apaga a amortização, e a tirada depois já a inclui.
+ */
+function marcosDaDivida(estado, conta) {
+  return [
+    ...(conta.fotos ?? []).map((f) => ({ data: f.data, foto: f.valor, lc: f.lc ?? 0 })),
+    ...amortizacoesValidas(estado, conta).map((a) => ({ data: a.data, abate: a.valor, lc: a.lc ?? 0 })),
+  ].sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : a.lc - b.lc));
+}
+
+/**
+ * O saldo devedor num dia, andando pelo cronograma: a última foto até ali, e
+ * as parcelas e amortizações depois dela. A parcela do dia vem antes dos
+ * marcos do dia — a foto daquele dia já a inclui.
+ */
+function saldoNoDia(estado, conta, taxa, dia) {
+  const c = conta.contrato;
+  const marcos = [
+    ...calendarioDaDivida(estado, conta).map((p) => ({ data: p.data, parcela: p.valor, ordem: 0, lc: 0 })),
+    ...marcosDaDivida(estado, conta).map((m) => ({ ...m, ordem: 1 })),
+  ]
+    .filter((x) => x.data <= dia)
+    .sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : a.ordem - b.ordem || a.lc - b.lc));
+  let saldo = c.valorTomado;
+  for (const x of marcos) {
+    if (x.foto != null) saldo = x.foto;
+    else if (x.abate != null) saldo = Math.max(0, saldo - x.abate);
+    else saldo = Math.max(0, saldoPrice(saldo, taxa, x.parcela, 1));
+  }
+  return Math.round(saldo);
 }
 
 /**
@@ -78,48 +135,51 @@ export function situacao(estado, dividaId, dia = hoje()) {
   const c = conta?.contrato;
   if (!c || !c.parcelas || !c.valorParcela) return null;
 
-  const datas = calendario(c);
-  const devidas = datas.filter((d) => d <= dia).length;
-  const restantes = c.parcelas - devidas;
+  const { taxa, origemTaxa, mesesObservados } = taxaDoContrato(estado, conta);
+  const calendario = calendarioDaDivida(estado, conta);
+  const vencidas = calendario.filter((p) => p.data <= dia);
+  const porVir = calendario.filter((p) => p.data > dia);
 
-  const observada = taxaObservada(estado, conta);
-  const implicita = taxaImplicita(c.valorTomado, c.parcelas, c.valorParcela);
-  const taxa = c.taxa ?? observada?.taxa ?? implicita;
-  const origemTaxa = c.taxa != null ? 'contratual' : observada ? 'observada' : 'implicita';
-
-  // A base é a última foto até o dia; sem foto, o próprio contrato.
   const fotos = (conta.fotos ?? []).filter((f) => f.data <= dia);
   const foto = fotos[fotos.length - 1] ?? null;
-  let saldo;
-  if (foto) {
-    const depois = datas.filter((d) => d > foto.data && d <= dia).length;
-    saldo = saldoPrice(foto.valor, taxa, c.valorParcela, depois);
-  } else {
-    saldo = saldoPrice(c.valorTomado, taxa, c.valorParcela, devidas);
-  }
-  saldo = Math.round(saldo);
-  const estimado = !foto || foto.data !== dia;
+  const saldo = saldoNoDia(estado, conta, taxa, dia);
+  // Amortização depois da última foto: o número é a foto menos ela — conta
+  // do app, até o banco mostrar o novo.
+  const ultimoMarco = marcosDaDivida(estado, conta).filter((m) => m.data <= dia).pop();
+  const amortizouDepois = Boolean(foto && ultimoMarco && ultimoMarco.abate != null);
+  const estimado = !foto || foto.data !== dia || amortizouDepois;
 
-  const somaRestante = restantes * c.valorParcela;
-  const pagoNoCalendario = devidas * c.valorParcela;
+  const somaRestante = porVir.reduce((t, p) => t + p.valor, 0);
+  const amortizado = amortizacoesValidas(estado, conta)
+    .filter((a) => a.data <= dia)
+    .reduce((t, a) => t + a.valor, 0);
+  const pagoNoCalendario = vencidas.reduce((t, p) => t + p.valor, 0) + amortizado;
+  const desde = caiDepoisDe(estado, conta);
   return {
     conta,
     contrato: c,
     saldoDevedor: saldo,
     estimado,
     foto,
-    parcelasPagas: devidas,
-    parcelasTotal: c.parcelas,
-    restantes,
+    amortizouDepois,
+    parcelasPagas: vencidas.length,
+    parcelasTotal: calendario.length,
+    // As que venceram antes de o empréstimo entrar no app: contam como pagas,
+    // mas não mexeram em conta nenhuma (design/10 §4.4).
+    antesDoApp: calendario.filter((p) => p.data <= desde).length,
+    restantes: porVir.length,
     somaRestante,
+    valorParcela: porVir[0]?.valor ?? c.valorParcela,
     // Os dois "quanto falta" (D22): quitar hoje × desembolsar até o fim.
     jurosFuturos: Math.max(0, somaRestante - saldo),
     jurosPagos: Math.max(0, pagoNoCalendario - (c.valorTomado - saldo)),
+    amortizado,
     taxa,
     origemTaxa,
-    mesesObservados: observada?.meses ?? null,
-    proxima: datas.find((d) => d > dia) ?? null,
-    termina: datas[datas.length - 1],
+    mesesObservados,
+    proxima: porVir[0]?.data ?? null,
+    termina: calendario[calendario.length - 1]?.data ?? null,
+    quitada: porVir.length === 0 || saldo === 0,
   };
 }
 
@@ -133,14 +193,67 @@ export function saldoDevedor(estado, dividaId, dia = hoje()) {
 }
 
 /**
- * Quanto de uma parcela é juros, pelo calendário do contrato (Price): o saldo
- * antes dela vezes a taxa. É informação — juros aparecem como juros, não como
- * gasto (decidido 03/10/2026). `k` começa em 1.
+ * Quanto de uma parcela é juros, pelo cronograma (Price): o saldo antes dela
+ * vezes a taxa. É informação — juros aparecem como juros, não como gasto
+ * (decidido 03/10/2026). `k` começa em 1.
  */
 export function jurosDaParcela(estado, dividaId, k) {
-  const s = situacao(estado, dividaId);
-  if (!s || k < 1 || k > s.parcelasTotal) return null;
-  const c = s.contrato;
-  const antes = saldoPrice(c.valorTomado, s.taxa, c.valorParcela, k - 1);
-  return Math.min(c.valorParcela, Math.round(antes * s.taxa));
+  const cr = cronograma(estado, dividaId);
+  return cr?.parcelas.find((p) => p.k === k)?.juros ?? null;
+}
+
+/**
+ * Amortizar `valor` no `dia`: as duas saídas que o banco oferece, lado a lado
+ * (design/10 §4.4). Devolve null quando não há o que amortizar.
+ *
+ *   prazo:   a parcela fica, o fim chega antes — { restantes, ultima, termina, economia, mesesAMenos }
+ *   parcela: o fim fica, a parcela cai          — { parcela, economia }
+ *   quita:   o valor paga tudo                  — { quita: true, economia }
+ */
+export function simularAmortizacao(estado, dividaId, valor, dia = hoje()) {
+  const conta = estado.contas[dividaId];
+  if (!conta?.contrato || !valor || valor <= 0) return null;
+  const { taxa: i } = taxaDoContrato(estado, conta);
+  const saldo = saldoNoDia(estado, conta, i, dia);
+  const porVir = calendarioDaDivida(estado, conta).filter((p) => p.data > dia);
+  if (!saldo || !porVir.length) return null;
+
+  const desembolsoAntes = porVir.reduce((t, p) => t + p.valor, 0);
+  const jurosAntes = Math.max(0, desembolsoAntes - saldo);
+  const novo = saldo - valor;
+  if (novo <= 0) {
+    return { saldo, valor: Math.min(valor, saldo), quita: true, economia: jurosAntes };
+  }
+
+  // Reduzir prazo: a parcela de agora, até acabar. A última é o resto.
+  const pmt = porVir[0].valor;
+  let n = porVir.length;
+  if (pmt > novo * i) {
+    const exato = i ? -Math.log(1 - (novo * i) / pmt) / Math.log(1 + i) : novo / pmt;
+    n = Math.min(porVir.length, Math.max(1, Math.ceil(exato - 1e-9)));
+  }
+  const resto = saldoPrice(novo, i, pmt, n - 1);
+  const ultima = Math.max(1, Math.round(resto * (1 + i)));
+  const desembolsoPrazo = (n - 1) * pmt + ultima;
+
+  // Reduzir parcela: o mesmo número de parcelas, uma parcela menor.
+  const parcela = Math.round(parcelaPrice(novo, i, porVir.length));
+  const desembolsoParcela = parcela * porVir.length;
+
+  return {
+    saldo,
+    valor,
+    quita: false,
+    prazo: {
+      restantes: n,
+      ultima: ultima === pmt ? null : ultima,
+      termina: porVir[n - 1].data,
+      mesesAMenos: porVir.length - n,
+      economia: Math.max(0, jurosAntes - (desembolsoPrazo - novo)),
+    },
+    parcela: {
+      parcela,
+      economia: Math.max(0, jurosAntes - (desembolsoParcela - novo)),
+    },
+  };
 }

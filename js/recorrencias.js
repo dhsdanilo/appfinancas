@@ -25,7 +25,10 @@ const NOME_DO_TIPO = { despesa: '↓ despesa', receita: '↑ receita', transfere
 
 async function pintar() {
   app = await estado.calcular();
-  const todas = Object.values(app.recorrencias ?? {}).filter((r) => !r.arquivada);
+  // A série que a primeira versão do contrato de dívida criava não é mais
+  // recorrência: a parcela sai do contrato (design/10 §4.4).
+  const deContrato = new Set(Object.values(app.contas).map((c) => c.contrato?.recorrenciaId).filter(Boolean));
+  const todas = Object.values(app.recorrencias ?? {}).filter((r) => !r.arquivada && !deContrato.has(r.id));
   const ativas = todas.filter((r) => !r.fim || r.fim >= hoje());
   const encerradas = todas.filter((r) => r.fim && r.fim < hoje());
 

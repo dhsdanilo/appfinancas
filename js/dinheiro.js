@@ -18,8 +18,8 @@ import { criarDevolucao } from './app/devolucao.js';
 import { criarConferencia } from './app/conferencia.js';
 import { criarHolerite } from './app/holerite.js';
 import { linhasDoHolerite, lancadosNoMes } from './core/holerite.js';
-import { situacao, saldoDevedor, jurosDaParcela } from './core/divida.js';
-import { fotografar } from './app/contrato.js';
+import { situacao, saldoDevedor, jurosDaParcela, cronograma, simularAmortizacao } from './core/divida.js';
+import { fotografar, amortizar, pularParcela } from './app/contrato.js';
 import { aoLancar } from './app/pagina.js';
 import { enderecoDa } from './app/rotas.js';
 import { BARRA, PRINCIPAL, DIALOGOS } from './app/marcacao-dinheiro.js';
@@ -155,6 +155,7 @@ function pintarArea() {
   $('painel').dataset.area = aba.id;
   $('barra-acoes').dataset.area = aba.id;
   document.body.dataset.area = aba.id;
+  if (aba.id === 'dividas') return pintarDividas(contas);
   pintarSubabas(contas);
   pintarPeriodo();
 
@@ -175,7 +176,6 @@ function pintarArea() {
     pintarListaDeCartoes(foco);
   } else {
     if (aba.id === 'caixa') pintarResumoDeCaixa(foco);
-    else if (aba.id === 'dividas') pintarResumoDeDividas(foco);
     else pintarResumoDeSaldos(aba, foco);
     pintarLista(aba, foco);
   }
@@ -238,7 +238,7 @@ function cartaoDoInicio(area, contas) {
       (l) => contas.some((c) => c.id === l.contaId) && l.dataCompetencia.slice(0, 7) === mes
     );
     linhas.push(linhaDeResumo(`renda disponível de ${nomeDoMes(mes).split(' ')[0]}`, dinheiroHTML(rendaDisponivel(app, doMes))));
-    const faltam = contas.filter((c) => linhasDoHolerite(app, c.id, mes).length).length;
+    const faltam = contas.filter((c) => linhasDoHolerite(app, c.id, mes).some((l) => !l.automatico)).length;
     if (faltam) linhas.push(linhaDeResumo('holerites a lançar', String(faltam), 'abate'));
   }
   if (area.id === 'investimentos') {
@@ -489,7 +489,7 @@ function blocoDeCartao(c) {
  */
 function peDaFolha(c) {
   const mes = vista.mes;
-  const faltam = linhasDoHolerite(app, c.id, mes).length;
+  const faltam = linhasDoHolerite(app, c.id, mes).filter((l) => !l.automatico).length;
   const lancados = lancadosNoMes(app, c.id, mes).length;
   const nome = nomeDoMes(mes).split(' ')[0];
   const feito = !faltam && lancados;
@@ -499,68 +499,225 @@ function peDaFolha(c) {
   </div>`;
 }
 
-// ── dívidas: um cartão por contrato (design/10 §4.3) ──────────────────────
+// ── dívidas: um cartão por contrato (design/10 §4.3 e §4.4) ────────────────
+//
+// A tela de Dívidas não lança nem transfere: a parcela cai sozinha na conta
+// que paga, e os movimentos moram lá. Aqui é inclusão, análise, amortização e
+// a foto do banco.
 
 const pct = (taxa) => `${(taxa * 100).toFixed(2).replace('.', ',')}% ao mês`;
+const mesAno = (dia) => `${dia.slice(5, 7)}/${dia.slice(0, 4)}`;
 
-function pintarResumoDeDividas(contas) {
+// O que está aberto em cada cartão: o cronograma, e o contrato sendo amortizado.
+const cronogramasAbertos = new Set();
+let amortizando = null;
+
+function pintarDividas(contas) {
+  for (const parte of ['subabas', 'periodo', 'parte-lista', 'filtros']) $(parte).hidden = true;
+  const arquivadas = Object.values(app.contas).filter((c) => c.tipo === 'divida' && c.arquivada);
+  if (!contas.length && !arquivadas.length) {
+    $('resumo').innerHTML = `<p class="vazio">${escapar(VAZIO_DA_AREA.dividas)}</p>`;
+    return;
+  }
   const blocos = contas.map(blocoDeDivida);
   if (contas.length > 1) {
     const total = contas.reduce((t, c) => t + (saldoDevedor(app, c.id) ?? -saldoReal(app, c.id)), 0);
+    const parcelas = contas.reduce((t, c) => {
+      const s = situacao(app, c.id);
+      return t + (s?.restantes ? s.valorParcela : 0);
+    }, 0);
     blocos.unshift(`<div class="bloco total">
       <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>dívidas</p>
-      <dl>${linhaDeResumo('saldo devedor somado', dinheiroHTML(total, { estimado: contas.some((c) => situacao(app, c.id)?.estimado) }))}</dl>
+      <dl>${linhaDeResumo('saldo devedor somado', dinheiroHTML(total, { estimado: contas.some((c) => situacao(app, c.id)?.estimado) }))}
+      ${parcelas ? linhaDeResumo('parcelas por mês', dinheiroHTML(parcelas), 'abate') : ''}</dl>
+    </div>`);
+  }
+  if (arquivadas.length) {
+    blocos.push(`<div class="bloco arquivadas-divida">
+      <p class="nome-bloco">quitados e arquivados</p>
+      <p class="fino">${arquivadas.map((c) => `<button type="button" class="elo" data-corrigir-divida="${escapar(c.id)}">${escapar(c.nome)}</button>`).join(' · ')}</p>
     </div>`);
   }
   $('resumo').innerHTML = `<div class="blocos">${blocos.join('')}</div>`;
+  guardarVista();
 }
 
 function blocoDeDivida(c) {
   const s = situacao(app, c.id);
   const pagadora = app.contas[c.pagaCom];
-  const pe = `<div class="pe-bloco">
-      <span class="fino">${pagadora ? `paga com ${escapar(pagadora.nome)}` : 'sem conta que paga'}</span>
-      <span class="foto-divida" data-foto-de="${escapar(c.id)}">
-        <button type="button" class="elo" data-foto="${escapar(c.id)}">saldo do banco</button>
+  const id = escapar(c.id);
+  const aberto = s && cronogramasAbertos.has(c.id);
+  const emAmortizacao = s && amortizando === c.id && !s.quitada;
+  const acoes = `<div class="acoes-contrato">
+      ${s ? `<button type="button" class="elo" data-cronograma="${id}" aria-expanded="${aberto}">${aberto ? 'fechar cronograma' : 'cronograma'}</button>` : ''}
+      ${s && !s.quitada ? `<button type="button" class="elo" data-amortizar="${id}">amortizar</button>` : ''}
+      <span class="foto-divida" data-foto-de="${id}">
+        <button type="button" class="elo" data-foto="${id}">saldo do banco</button>
       </span>
+      <button type="button" class="elo" data-corrigir-divida="${id}">${s ? 'corrigir' : 'cadastrar contrato'}</button>
     </div>`;
+  const quemPaga = pagadora
+    ? `<p class="paga-com fino">paga com ${escapar(pagadora.nome)} · cada parcela cai sozinha no dia</p>`
+    : '<p class="aviso-bloco">Sem conta que paga: as parcelas não caem em lugar nenhum. Escolha em "corrigir".</p>';
 
   if (!s) {
     const devedor = saldoDevedor(app, c.id);
-    return `<div class="bloco">
+    return `<div class="bloco contrato">
       <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(c.nome)}</p>
       <dl>${linhaDeResumo('saldo devedor', devedor != null ? dinheiroHTML(devedor) : '—')}</dl>
-      <p class="aviso-bloco">Sem contrato: o app não sabe as parcelas nem estima o saldo.
-        <a href="#gestao">Cadastre o contrato em "Seus empréstimos"</a>.</p>
-      ${pe}
+      <p class="aviso-bloco">Sem contrato: o app não sabe as parcelas nem estima o saldo.</p>
+      ${acoes}
     </div>`;
   }
 
   const base = s.foto
-    ? s.estimado ? `foto de ${diaCurto(s.foto.data)}${s.parcelasPagas ? ' + parcelas' : ''}` : 'informado hoje'
+    ? s.amortizouDepois
+      ? `foto de ${diaCurto(s.foto.data)} − amortização`
+      : s.estimado ? `foto de ${diaCurto(s.foto.data)} + parcelas` : 'informado hoje'
     : 'pelo contrato';
   const origem = s.origemTaxa === 'contratual'
     ? 'contratual'
     : s.origemTaxa === 'observada'
       ? `observada em ${s.mesesObservados} ${s.mesesObservados > 1 ? 'meses' : 'mês'}`
       : 'implícita no contrato';
+  const antes = s.antesDoApp ? ` (${s.antesDoApp} antes do app)` : '';
   const linhas = [
     linhaDeResumo(`saldo devedor · ${base}`, dinheiroHTML(s.saldoDevedor, { estimado: s.estimado }), 'fecho-topo'),
     linhaDeResumo(
-      `${s.parcelasPagas} de ${s.parcelasTotal} pagas · faltam ${s.restantes} × ${formatar(s.contrato.valorParcela)}`,
+      s.restantes
+        ? `${s.parcelasPagas} de ${s.parcelasTotal} pagas${antes} · faltam ${s.restantes} × ${formatar(s.valorParcela)}`
+        : `${s.parcelasTotal} de ${s.parcelasTotal} pagas`,
       dinheiroHTML(s.somaRestante)
     ),
     linhaDeResumo('juros que ainda vêm', dinheiroHTML(s.jurosFuturos, { estimado: s.estimado }), 'abate'),
     linhaDeResumo('juros já pagos', dinheiroHTML(s.jurosPagos, { estimado: s.estimado }), 'abate'),
+    s.amortizado ? linhaDeResumo('amortizado', dinheiroHTML(s.amortizado), 'abate') : '',
     linhaDeResumo(`taxa ${origem}`, pct(s.taxa), 'abate'),
-    linhaDeResumo(s.proxima ? `próxima ${diaCurto(s.proxima)}` : 'quitada pelo calendário', `termina ${nomeDoMes(s.termina.slice(0, 7))}`, 'abate'),
+    linhaDeResumo(s.proxima ? `próxima ${diaCurto(s.proxima)}` : 'quitada pelo calendário', s.termina ? `termina ${mesAno(s.termina)}` : '', 'abate'),
   ];
-  return `<div class="bloco">
+  return `<div class="bloco contrato ${aberto || emAmortizacao ? 'largo' : ''}">
     <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(c.nome)}</p>
+    ${quemPaga}
     <dl>${linhas.join('')}</dl>
-    ${pe}
+    ${acoes}
+    ${emAmortizacao ? painelDeAmortizacao(c, s) : ''}
+    ${aberto ? tabelaDoCronograma(c) : ''}
   </div>`;
 }
+
+/**
+ * O cronograma, parcela a parcela: juros, amortização e saldo depois. As
+ * anteriores à inclusão aparecem — contam para a análise —, marcadas como de
+ * antes do app. Fotos e amortizações entram na linha do tempo.
+ */
+function tabelaDoCronograma(c) {
+  const cr = cronograma(app, c.id);
+  if (!cr) return '';
+  const dia = hoje();
+  const proxima = cr.parcelas.find((p) => p.data > dia)?.k;
+  const linhas = [];
+  let m = 0;
+  const marco = (x) => x.foto != null
+    ? `<tr class="marco"><td></td><td>${escapar(diaCurto(x.data))}/${x.data.slice(2, 4)}</td><td colspan="3">saldo do banco</td><td>${formatar(x.foto)}</td></tr>`
+    : `<tr class="marco"><td></td><td>${escapar(diaCurto(x.data))}/${x.data.slice(2, 4)}</td><td colspan="3">amortização de ${formatar(x.abate)}</td><td></td></tr>`;
+  for (const p of cr.parcelas) {
+    while (m < cr.marcos.length && cr.marcos[m].data < p.data) linhas.push(marco(cr.marcos[m++]));
+    const situacaoDaParcela = p.antesDoApp ? 'antes' : p.data <= dia ? 'paga' : p.k === proxima ? 'proxima' : 'futura';
+    const rotulo = { antes: 'antes do app', paga: 'paga', proxima: 'próxima', futura: '' }[situacaoDaParcela];
+    linhas.push(`<tr class="${situacaoDaParcela}">
+      <td>${p.k}</td>
+      <td>${escapar(diaCurto(p.data))}/${p.data.slice(2, 4)}${rotulo ? ` <span class="selo">${rotulo}</span>` : ''}</td>
+      <td>${formatar(p.valor)}</td>
+      <td>${formatar(p.juros)}</td>
+      <td>${formatar(p.amortizacao)}</td>
+      <td>${formatar(p.saldoDepois)}</td>
+    </tr>`);
+  }
+  while (m < cr.marcos.length) linhas.push(marco(cr.marcos[m++]));
+  return `<div class="cronograma">
+    <div class="rolagem"><table>
+      <thead><tr><th>nº</th><th>vence</th><th>parcela</th><th>juros</th><th>amortiza</th><th>saldo depois</th></tr></thead>
+      <tbody>${linhas.join('')}</tbody>
+    </table></div>
+    <p class="nota">Juros e saldo são estimados pelo contrato (Price, taxa ${escapar(pct(cr.taxa))}); a foto do banco corrige.</p>
+  </div>`;
+}
+
+// ── amortizar: as duas saídas lado a lado (design/10 §4.4) ───────────────
+
+function painelDeAmortizacao(c, s) {
+  const caixa = Object.values(app.contas)
+    .filter((o) => !o.arquivada && (o.tipo === 'corrente' || o.tipo === 'especie'))
+    .sort((a, b) => (a.nome < b.nome ? -1 : 1));
+  const padrao = caixa.some((o) => o.id === c.pagaCom) ? c.pagaCom : caixa[0]?.id;
+  return `<div class="amortizar" data-amortizacao="${escapar(c.id)}">
+    <p class="titulo-amortizar">Amortizar · saldo hoje ${dinheiroHTML(s.saldoDevedor, { estimado: s.estimado })}</p>
+    <div class="campos-amortizar">
+      <label>valor <input type="text" inputmode="decimal" data-am-valor autocomplete="off" placeholder="0,00"></label>
+      <label>sai de <select data-am-origem>${caixa.map((o) => `<option value="${escapar(o.id)}" ${o.id === padrao ? 'selected' : ''}>${escapar(o.nome)}</option>`).join('')}</select></label>
+      <label>em <input type="date" data-am-data value="${hoje()}"></label>
+    </div>
+    <div class="opcoes-amortizar" data-am-opcoes><p class="nota">Digite o valor: o app mostra as duas opções que o banco oferece.</p></div>
+    <p class="pe-amortizar"><button type="button" class="elo" data-am-cancelar>cancelar</button></p>
+  </div>`;
+}
+
+function lerAmortizacao(painel) {
+  return {
+    dividaId: painel.dataset.amortizacao,
+    valor: Math.abs(deTexto(painel.querySelector('[data-am-valor]').value)),
+    origemId: painel.querySelector('[data-am-origem]').value,
+    data: painel.querySelector('[data-am-data]').value || hoje(),
+  };
+}
+
+function pintarOpcoesDeAmortizacao(painel) {
+  const pedido = lerAmortizacao(painel);
+  const lugar = painel.querySelector('[data-am-opcoes]');
+  const sim = pedido.valor ? simularAmortizacao(app, pedido.dividaId, pedido.valor, pedido.data) : null;
+  if (!sim) {
+    lugar.innerHTML = '<p class="nota">Digite o valor: o app mostra as duas opções que o banco oferece.</p>';
+    return;
+  }
+  if (!pedido.origemId) {
+    lugar.innerHTML = '<p class="nota">Crie uma conta em Contas para dizer de onde sai o dinheiro.</p>';
+    return;
+  }
+  if (sim.quita) {
+    lugar.innerHTML = `<div class="opcao-amortizar">
+      <strong>Quita o empréstimo</strong>
+      <p>paga ${dinheiroHTML(sim.valor)}, o saldo de hoje</p>
+      <p>economiza ~${dinheiroHTML(sim.economia)} de juros</p>
+      <button type="button" class="principal" data-am-confirmar="prazo">quitar</button>
+    </div>`;
+    return;
+  }
+  const atual = situacao(app, pedido.dividaId, pedido.data);
+  lugar.innerHTML = `
+    <div class="opcao-amortizar">
+      <strong>Reduzir prazo</strong>
+      <p>a parcela continua ${dinheiroHTML(atual.valorParcela)}</p>
+      <p>termina em ${mesAno(sim.prazo.termina)}${sim.prazo.mesesAMenos ? ` · ${sim.prazo.mesesAMenos} ${sim.prazo.mesesAMenos > 1 ? 'meses' : 'mês'} antes` : ''}</p>
+      <p class="economia">economiza ~${dinheiroHTML(sim.prazo.economia)} de juros</p>
+      <button type="button" class="principal" data-am-confirmar="prazo">foi assim</button>
+    </div>
+    <div class="opcao-amortizar">
+      <strong>Reduzir parcela</strong>
+      <p>a parcela cai para ${dinheiroHTML(sim.parcela.parcela)}</p>
+      <p>termina igual, em ${mesAno(atual.termina)}</p>
+      <p class="economia">economiza ~${dinheiroHTML(sim.parcela.economia)} de juros</p>
+      <button type="button" class="principal" data-am-confirmar="parcela">foi assim</button>
+    </div>`;
+}
+
+document.addEventListener('input', (e) => {
+  const painel = e.target.closest?.('[data-amortizacao]');
+  if (painel) pintarOpcoesDeAmortizacao(painel);
+});
+document.addEventListener('change', (e) => {
+  const painel = e.target.closest?.('[data-amortizacao]');
+  if (painel) pintarOpcoesDeAmortizacao(painel);
+});
 
 /** Investimentos, dívidas e folha: o saldo, e na folha o aviso do zero (D25). */
 function pintarResumoDeSaldos(aba, contas) {
@@ -822,7 +979,8 @@ function linhaHTML(l, ids, saldoApos = null) {
     const voltou = l.tipo === 'despesa' && !l.projetado ? estornado(app, l.id) : 0;
     if (voltou) onde += ` · devolvido ${formatar(voltou)} de ${formatar(l.valor)}`;
   }
-  const rotuloEstado = est === 'realizado' ? '' : ` · ${l.projetado ? 'previsto' : est}`;
+  const rotuloEstado = (l.corrigida ? ' · corrigida' : '') +
+    (est === 'realizado' ? (l.automatico ? ' · automática' : '') : ` · ${l.projetado ? 'previsto' : est}`);
 
   const parcela = l.parcela ? `<span class="parcela">${l.parcela.numero}/${l.parcela.total}</span>` : '';
   const etiquetas = (l.etiquetas ?? [])
@@ -835,13 +993,15 @@ function linhaHTML(l, ids, saldoApos = null) {
     ? `<span class="saldo-apos ${saldoApos.get(l.id) < 0 ? 'negativo' : ''}">${dinheiroHTML(saldoApos.get(l.id))}</span>`
     : '<span class="saldo-apos"></span>';
 
-  if (l.projetado) previstosNaTela.set(l.id, l);
+  // A parcela automática de uma dívida não é gravada: tocada, abre a
+  // correção daquela parcela (design/10 §4.4).
+  if (l.projetado || l.automatico) previstosNaTela.set(l.id, l);
   const alvo = l.fatura
     ? `data-pagar="${escapar(l.cartaoId)}" data-valor="${l.valor}"`
-    : l.projetado
+    : l.projetado || l.automatico
       ? `data-previsto="${escapar(l.id)}"`
       : `data-lanc="${escapar(l.id)}"`;
-  const acao = l.fatura ? 'Pagar' : l.projetado ? 'Lançar' : 'Corrigir';
+  const acao = l.fatura ? 'Pagar' : l.automatico ? 'Corrigir' : l.projetado ? 'Lançar' : 'Corrigir';
 
   return `<li><button type="button" class="linha ${tom} ${est === 'realizado' ? '' : est} ${saldoApos ? 'com-saldo' : ''}"
       ${alvo} aria-label="${acao} ${escapar(nomeDoTom.toLowerCase())} de ${escapar(diaCurto(dia))}">
@@ -871,6 +1031,8 @@ function nomeDaTransferencia(l, direcaoNoFoco, conta, destino) {
 
 /** Qual parcela do contrato é esta transferência (1 em diante), ou 0. */
 function indiceDaParcela(l, destino) {
+  if (l.parcelaDe?.dividaId === destino?.id) return l.parcelaDe.k;
+  if (l.observacao === 'amortização') return 0;
   const c = destino?.contrato;
   if (!c?.parcelas || !c.primeira) return 0;
   const mes = l.dataCompetencia.slice(0, 7);
@@ -880,7 +1042,8 @@ function indiceDaParcela(l, destino) {
 /** " · parcela 17/72", quando a transferência é parcela de um contrato. */
 function numeroDaParcela(l, destino) {
   const k = indiceDaParcela(l, destino);
-  return k ? ` · parcela ${k}/${destino.contrato.parcelas}` : '';
+  if (!k) return l.contaDestinoId === destino?.id && destino?.tipo === 'divida' && l.observacao === 'amortização' ? ' · amortização' : '';
+  return ` · parcela ${k}/${l.parcelaDe?.total ?? destino.contrato.parcelas}`;
 }
 
 // ── os diálogos ───────────────────────────────────────────────────────────
@@ -989,6 +1152,39 @@ document.addEventListener('click', async (e) => {
     return;
   }
 
+  const cron = e.target.closest('[data-cronograma]');
+  if (cron) {
+    const id = cron.dataset.cronograma;
+    if (cronogramasAbertos.has(id)) cronogramasAbertos.delete(id); else cronogramasAbertos.add(id);
+    pintar();
+    return;
+  }
+  const amort = e.target.closest('[data-amortizar]');
+  if (amort) {
+    amortizando = amort.dataset.amortizar;
+    await pintar();
+    document.querySelector(`[data-amortizacao="${CSS.escape(amortizando)}"] [data-am-valor]`)?.focus();
+    return;
+  }
+  if (e.target.closest('[data-am-cancelar]')) {
+    amortizando = null;
+    pintar();
+    return;
+  }
+  const confirmar = e.target.closest('[data-am-confirmar]');
+  if (confirmar) {
+    const pedido = lerAmortizacao(confirmar.closest('[data-amortizacao]'));
+    confirmar.disabled = true;
+    amortizando = null;
+    await amortizar(app, { ...pedido, modo: confirmar.dataset.amConfirmar });
+    return;
+  }
+  const corrigirDivida = e.target.closest('[data-corrigir-divida]');
+  if (corrigirDivida) {
+    document.dispatchEvent(new CustomEvent('divida:corrigir', { detail: corrigirDivida.dataset.corrigirDivida }));
+    return;
+  }
+
   const doHolerite = e.target.closest('[data-holerite]');
   if (doHolerite) {
     await holerite.abrir(doHolerite.dataset.holerite, vista.mes);
@@ -1007,7 +1203,7 @@ document.addEventListener('click', async (e) => {
     // previsto some (03-alimentacao §4).
     const o = previstosNaTela.get(previsto.dataset.previsto);
     if (!o) return;
-    if (o.tipo === 'transferencia') {
+    if (o.tipo === 'transferencia' || o.automatico) {
       transferencia.limpar();
       await transferencia.preencher(o);
       dialogoTransferencia.showModal();
@@ -1056,6 +1252,11 @@ $('b-fechar-edicao').addEventListener('click', () => dialogoEdicao.close());
 $('b-fechar-transferencia').addEventListener('click', () => dialogoTransferencia.close());
 
 async function abrir() {
+  // Em Dívidas não se lança: o "+" e o N criam um empréstimo.
+  if (AREA === 'dividas') {
+    $('b-nova-conta')?.click();
+    return;
+  }
   formulario.limpar();
   await formulario.usarConta(contaDaVista());
   dialogo.showModal();
@@ -1162,7 +1363,7 @@ document.addEventListener('keydown', (e) => {
   const alvo = e.target;
   if (alvo instanceof Element && alvo.closest('input, textarea, select, [contenteditable]')) return;
   if (e.key === 'n' || e.key === 'N') { e.preventDefault(); abrir(); }
-  if (e.key === 't' || e.key === 'T') { e.preventDefault(); abrirTransferencia(); }
+  if ((e.key === 't' || e.key === 'T') && AREA !== 'dividas') { e.preventDefault(); abrirTransferencia(); }
 });
 
 // O "+" da barra de baixo do celular abre a captura da tela em que se está.

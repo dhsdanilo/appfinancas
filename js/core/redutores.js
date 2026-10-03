@@ -25,7 +25,7 @@ export const AREAS_PADRAO = ['caixa', 'cartoes'];
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 11;
+export const VERSAO_ESTADO = 14;
 
 export function estadoVazio() {
   return {
@@ -92,6 +92,11 @@ export const redutores = {
       // uma e outra.
       contrato: d.contrato ?? null,
       fotos: d.foto ? [d.foto] : [],
+      // As amortizações feitas, com o resultado escolhido no dia, e as
+      // parcelas que não foram debitadas (design/10 §4.4).
+      amortizacoes: [],
+      parcelasPuladas: [],
+      parcelasCorrigidas: {},
       // Só em investimento (D16)
       risco: d.risco ?? null,
       liquidez: d.liquidez ?? null,
@@ -148,13 +153,58 @@ export const redutores = {
     if (c) c.arquivada = d.arquivada !== false;
   },
 
-  'conta.fotografada'(e, d) {
+  'conta.fotografada'(e, d, evento) {
     // A foto do saldo: o número que o banco mostra, com a data. Uma por dia —
-    // a mais nova do dia substitui a anterior.
+    // a mais nova do dia substitui a anterior. O `lc` diz o que veio antes no
+    // mesmo dia: a foto tirada antes de amortizar não apaga a amortização.
     const c = e.contas[d.id];
     if (!c) return;
-    c.fotos = [...(c.fotos ?? []).filter((f) => f.data !== d.data), { data: d.data, valor: d.valor }]
+    c.fotos = [...(c.fotos ?? []).filter((f) => f.data !== d.data), { data: d.data, valor: d.valor, lc: evento?.lc ?? null }]
       .sort((a, b) => (a.data < b.data ? -1 : 1));
+  },
+
+  'divida.amortizada'(e, d, evento) {
+    // A amortização guarda o resultado escolhido no dia — quantas parcelas
+    // sobraram, ou a parcela nova —, e o calendário passa a segui-lo. A
+    // transferência que levou o dinheiro é lançamento comum, à parte.
+    const c = e.contas[d.id];
+    if (!c) return;
+    c.amortizacoes = [
+      ...(c.amortizacoes ?? []).filter((a) => a.lancamentoId !== d.lancamentoId),
+      {
+        lancamentoId: d.lancamentoId ?? null,
+        data: d.data,
+        valor: d.valor,
+        modo: d.modo,
+        restantes: d.restantes ?? null,
+        ultima: d.ultima ?? null,
+        parcela: d.parcela ?? null,
+        lc: evento?.lc ?? null,
+      },
+    ].sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : 0));
+  },
+
+  'divida.parcelaCorrigida'(e, d) {
+    // A parcela que o banco cobrou diferente — valor, dia ou conta. Continua
+    // automática (cai no dia, sem pendência); só ela muda, o contrato não.
+    // Com d.desfazer, volta a ser a do contrato.
+    const c = e.contas[d.id];
+    if (!c) return;
+    const corrigidas = { ...(c.parcelasCorrigidas ?? {}) };
+    if (d.desfazer) delete corrigidas[d.k];
+    else corrigidas[d.k] = { valor: d.valor ?? null, data: d.data ?? null, contaId: d.contaId ?? null };
+    c.parcelasCorrigidas = corrigidas;
+  },
+
+  'divida.parcelaPulada'(e, d) {
+    // "Não foi debitada": a parcela automática daquele número não cai. Volta
+    // com d.pulada === false.
+    const c = e.contas[d.id];
+    if (!c) return;
+    const puladas = new Set(c.parcelasPuladas ?? []);
+    if (d.pulada === false) puladas.delete(d.k);
+    else puladas.add(d.k);
+    c.parcelasPuladas = [...puladas].sort((a, b) => a - b);
   },
 
   'conta.conferida'(e, d) {
@@ -394,6 +444,9 @@ export const redutores = {
       valorEstimadoOriginal: d.valorEstimadoOriginal ?? null,
       recorrenciaId: d.recorrenciaId ?? null,
       parcela: d.parcela ?? null,
+      // A parcela de um contrato de dívida que este lançamento substitui —
+      // a automática corrigida pela linha (design/10 §4.4).
+      parcelaDe: d.parcelaDe ?? null,
       estornoDe: d.estornoDe ?? null,
       custeadoPor: d.custeadoPor ?? null,
       envelopeId: d.envelopeId ?? null,

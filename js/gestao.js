@@ -27,8 +27,10 @@ import { usos, podeRemover, podeArquivarConta, acharPorNome } from './core/lista
 import { dinheiroHTML } from './app/dinheiro-html.js';
 import { NOVA_CONTA, CICLO, CONTRATO } from './app/marcacao-gestao.js';
 import { AREAS, areaDaConta, AREAS_COM_CATEGORIA, opcoesDeConta } from './app/areas.js';
-import { salvarContrato, fotografar } from './app/contrato.js';
+import { salvarContrato, fotografar, excluirDivida } from './app/contrato.js';
 import { situacao, saldoDevedor } from './core/divida.js';
+import { calendarioDePagamento } from './core/contrato.js';
+import { somarMeses } from './core/datas.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -61,7 +63,9 @@ function montarArea(area) {
   confirmando = null;
   fundindo = null;
   $('b-nova-conta')?.remove();
-  $('gestao').hidden = !area;
+  // Em Dívidas, cada contrato já é um cartão com as ações dele (corrigir,
+  // arquivar, excluir) — a lista "Seus empréstimos" repetiria a tela.
+  $('gestao').hidden = !area || area === 'dividas';
   if (!area) return;
 
   const t = TEXTOS[area];
@@ -80,12 +84,15 @@ function montarArea(area) {
   $('f-conta').elements.nome.placeholder = t.exemplo;
   // A fonte de renda não guarda saldo: é passagem, e zera a cada holerite (D25).
   for (const nome of ['saldo', 'data']) $('f-conta').elements[nome].closest('.campo').hidden = area === 'folha';
+  // A dívida entra no app hoje: não há "conferido em" para perguntar.
+  $('f-conta').elements.data.closest('.campo').hidden = area === 'folha' || area === 'dividas';
   $('b-criar-conta').textContent = t.criar;
 
   // O botão de criar mora na barra da tela, ao lado de lançar e transferir.
   document.querySelector('.acoes-topo')?.insertAdjacentHTML(
     'beforeend',
-    `<button type="button" id="b-nova-conta">${t.novo}</button>`
+    // Em Dívidas é a única ação da tela: lançar e transferir não existem lá.
+    `<button type="button" id="b-nova-conta" ${area === 'dividas' ? 'class="principal"' : ''}>${t.novo}</button>`
   );
   $('b-nova-conta').addEventListener('click', abrirNovaConta);
   if (app) pintar();
@@ -696,6 +703,8 @@ $('f-conta')?.addEventListener('submit', (e) =>
       // inicial (design/10 §4.2).
       const devedor = Math.abs(deTexto(campos.saldo.value));
       dados.saldoInicial = 0;
+      // A dívida entra no app hoje: o que venceu até aqui não cai de novo.
+      dados.dataInicial = hoje();
       if (devedor) dados.foto = { data: dados.dataInicial, valor: devedor };
       const contrato = lerContrato(campos);
       if (contrato.erro) {
@@ -764,6 +773,10 @@ async function criar(e, especie, montar) {
     // reescolher "receita" três vezes, e a data da conta é a mesma na leva toda.
     const natureza = campos.natureza?.value;
     e.target.reset();
+    if (campos.jaPagas) {
+      delete campos.jaPagas.dataset.mexido;
+      e.target.querySelector('[data-papel="conferencia-contrato"]').hidden = true;
+    }
     if (especie === 'contas') {
       campos.data.value = hoje();
       mostrarCamposDeCartao();
@@ -821,11 +834,67 @@ function lerContrato(campos) {
       data: campos.dataContrato.value || primeira,
       parcelas,
       valorParcela,
-      primeira,
+      primeira: primeiraConferida(campos),
       // "1,82" % ao mês → 0,0182. Vazio: o app usa a observada ou a implícita.
       taxa: taxaTexto ? Math.abs(deTexto(taxaTexto)) / 10000 : null,
     },
   };
+}
+
+// ── "pelo calendário, 18 de 42 já pagas" (design/10 §4.4) ─────────────────
+
+/** Quantas parcelas venceram até hoje, se a primeira for `primeira`. */
+function vencidasAteHoje(primeira, parcelas) {
+  return calendarioDePagamento({ primeira, parcelas, valorParcela: 1 }).filter((p) => p.data <= hoje()).length;
+}
+
+/**
+ * A primeira parcela que vale: a do contrato, deslocada quando a pessoa
+ * corrigiu o "já pagas" (atraso, carência). Pagou uma a menos do que o
+ * calendário diz, o calendário anda um mês.
+ */
+function primeiraConferida(campos) {
+  const primeira = campos.primeira.value;
+  const parcelas = Number(campos.parcelas.value) || 0;
+  const texto = campos.jaPagas?.value ?? '';
+  if (!primeira || !parcelas || texto === '' || !campos.jaPagas.dataset.mexido) return primeira;
+  const pagas = Math.min(parcelas, Math.max(0, Number(texto) || 0));
+  return somarMeses(primeira, vencidasAteHoje(primeira, parcelas) - pagas);
+}
+
+const mesAno = (dia) => `${dia.slice(5, 7)}/${dia.slice(0, 4)}`;
+
+/** A frase que confere o calendário, embaixo dos campos do contrato. */
+function conferirContrato(form) {
+  const campos = form.elements;
+  const saida = form.querySelector('[data-papel="conferencia-contrato"]');
+  if (!saida) return;
+  const parcelas = Number(campos.parcelas.value) || 0;
+  if (!campos.primeira.value || !parcelas) {
+    saida.hidden = true;
+    return;
+  }
+  // O "já pagas" acompanha o calendário até a pessoa mexer nele.
+  if (!campos.jaPagas.dataset.mexido) campos.jaPagas.value = String(vencidasAteHoje(campos.primeira.value, parcelas));
+  const calendario = calendarioDePagamento({ primeira: primeiraConferida(campos), parcelas, valorParcela: 1 });
+  const pagas = calendario.filter((p) => p.data <= hoje()).length;
+  const proxima = calendario.find((p) => p.data > hoje());
+  const ultima = calendario[calendario.length - 1];
+  const resumo = proxima
+    ? `${pagas} de ${parcelas} já pagas · próxima em ${proxima.data.slice(8, 10)}/${mesAno(proxima.data)} · termina em ${mesAno(ultima.data)}`
+    : `as ${parcelas} já venceram`;
+  const explica = pagas && proxima
+    ? ` As ${pagas} já pagas não mexem em conta nenhuma; daqui pra frente, cada parcela cai sozinha na conta que paga. Atraso ou carência? Corrija o "já pagas".`
+    : proxima ? ' Cada parcela cai sozinha na conta que paga, no dia.' : '';
+  saida.innerHTML = `<strong>${escapar(resumo)}</strong>${escapar(explica)}`;
+  saida.hidden = false;
+}
+
+for (const form of [$('f-conta'), $('f-contrato')]) {
+  form?.addEventListener('input', (e) => {
+    if (e.target.name === 'jaPagas') e.target.dataset.mexido = '1';
+    if (['primeira', 'parcelas', 'jaPagas'].includes(e.target.name)) conferirContrato(form);
+  });
 }
 
 // ── o contrato de uma dívida que já existe ────────────────────────────────
@@ -837,7 +906,9 @@ function abrirContrato(id) {
   contratoDe = id;
   const f = $('f-contrato').elements;
   const ct = c.contrato ?? {};
-  $('titulo-contrato').textContent = c.nome;
+  $('titulo-contrato').textContent = 'contrato';
+  f.nome.value = c.nome;
+  delete f.jaPagas.dataset.mexido;
   f.tomado.value = ct.valorTomado ? formatarSimples(ct.valorTomado).replace('R$ ', '') : '';
   f.dataContrato.value = ct.data ?? '';
   f.parcelas.value = ct.parcelas ?? '';
@@ -848,9 +919,56 @@ function abrirContrato(id) {
   pintarPagadoras();
   f.pagaComDivida.value = c.pagaCom ?? '';
   $('aviso-contrato').hidden = true;
+  conferirContrato($('f-contrato'));
+  pintarFimDoContrato();
   $('dialogo-contrato').showModal();
   f.tomado.focus();
 }
+
+/** Arquivar (quitado) e excluir (cadastro errado), ao pé da janela do contrato. */
+function pintarFimDoContrato() {
+  const c = app.contas[contratoDe];
+  if (!c) return;
+  const s = situacao(app, c.id);
+  const arquivar = $('b-arquivar-divida');
+  arquivar.textContent = c.arquivada ? 'desarquivar' : 'arquivar (quitado)';
+  arquivar.hidden = !c.arquivada && !s?.quitada;
+  $('b-excluir-divida').hidden = false;
+  $('confirma-exclusao').hidden = true;
+}
+
+$('b-arquivar-divida')?.addEventListener('click', async () => {
+  const c = app.contas[contratoDe];
+  await estado.aplicarEvento('conta.arquivada', { id: c.id, arquivada: !c.arquivada });
+  $('dialogo-contrato').close();
+  await recarregar();
+});
+
+$('b-excluir-divida')?.addEventListener('click', () => {
+  const c = app.contas[contratoDe];
+  const ligados = Object.values(app.lancamentos).filter(
+    (l) => !l.removido && (l.contaId === c.id || l.contaDestinoId === c.id)
+  ).length;
+  const extra = ligados
+    ? ` e ${ligados} lançamento${ligados > 1 ? 's' : ''} ligado${ligados > 1 ? 's' : ''} a ele (amortizações)`
+    : '';
+  $('texto-exclusao').textContent = `Excluir ${c.nome}${extra}? As parcelas automáticas somem junto.`;
+  $('b-excluir-divida').hidden = true;
+  $('confirma-exclusao').hidden = false;
+});
+$('b-excluir-nao')?.addEventListener('click', pintarFimDoContrato);
+$('b-excluir-sim')?.addEventListener('click', async () => {
+  await excluirDivida(app, contratoDe);
+  $('dialogo-contrato').close();
+  contratoDe = null;
+  await recarregar();
+});
+
+// O cartão do contrato, na tela de Dívidas, pede a janela por aqui.
+document.addEventListener('divida:corrigir', async (e) => {
+  app = await estado.calcular();
+  if (app.contas[e.detail]) abrirContrato(e.detail);
+});
 
 $('f-contrato')?.addEventListener('submit', async (e) => {
   if (e.submitter?.value !== 'salvar') return;
@@ -864,6 +982,8 @@ $('f-contrato')?.addEventListener('submit', async (e) => {
     return;
   }
   await salvarContrato(app, id, contrato.valor, f.pagaComDivida.value || null);
+  const nome = f.nome.value.trim();
+  if (nome && nome !== app.contas[id].nome) await estado.aplicarEvento('conta.alterada', { id, nome });
   const foto = Math.abs(deTexto(f.foto.value));
   if (foto) await fotografar(id, foto);
   $('dialogo-contrato').close();

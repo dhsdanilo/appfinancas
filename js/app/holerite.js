@@ -71,9 +71,9 @@ export function criarHolerite({ janela, raiz, aoSalvar }) {
             const obrig = l.tipo === 'despesa' && app.categorias[l.categoriaId]?.obrigatoria;
             return `<li class="linha-holerite ${tom} ${l.fora ? 'fora' : ''}" data-chave="${escapar(l.chave)}">
               <span class="marca" aria-hidden="true">${marca}</span>
-              <span class="nome-linha">${escapar(nomeDaLinha(l))}${obrig ? ' <span class="selo">obrigatória</span>' : ''}${l.estimado ? ' <span class="selo">estimado</span>' : ''}</span>
-              <input type="text" inputmode="decimal" data-valor value="${escapar(formatar(l.valor, { comPrefixo: false }))}" ${l.fora ? 'disabled' : ''} aria-label="Valor de ${escapar(nomeDaLinha(l))}">
-              <button type="button" class="elo" data-fora title="${l.fora ? 'Volta para este mês' : 'Não veio este mês'}">${l.fora ? 'voltar' : 'não veio'}</button>
+              <span class="nome-linha">${escapar(nomeDaLinha(l))}${obrig ? ' <span class="selo">obrigatória</span>' : ''}${l.estimado ? ' <span class="selo">estimado</span>' : ''}${l.automatico ? ' <span class="selo">cai sozinha</span>' : ''}</span>
+              <input type="text" inputmode="decimal" data-valor value="${escapar(formatar(l.valor, { comPrefixo: false }))}" ${l.fora || l.automatico ? 'disabled' : ''} aria-label="Valor de ${escapar(nomeDaLinha(l))}">
+              ${l.automatico ? '<span></span>' : `<button type="button" class="elo" data-fora title="${l.fora ? 'Volta para este mês' : 'Não veio este mês'}">${l.fora ? 'voltar' : 'não veio'}</button>`}
               ${reajustavel(l) ? `<label class="reajuste"><input type="checkbox" data-reajuste ${l.reajuste ? 'checked' : ''}> vale daqui pra frente</label>` : ''}
             </li>`;
           })
@@ -130,6 +130,9 @@ export function criarHolerite({ janela, raiz, aoSalvar }) {
       contaDestinoId: o.contaDestinoId,
       valor: o.valor,
       estimado: o.estimado,
+      // A parcela do consignado cai sozinha (design/10 §4.4): conta no
+      // líquido, mas não se lança nem se edita aqui.
+      automatico: Boolean(o.automatico),
       fora: false,
     }));
 
@@ -190,6 +193,7 @@ export function criarHolerite({ janela, raiz, aoSalvar }) {
     const comum = { contaId: folha.id, dataCompetencia: data, dataCaixa: data, confirmado, lancadoPor: ap?.id ?? null };
 
     for (const l of linhas) {
+      if (l.automatico) continue;
       if (l.fora) {
         // Não veio este mês: a série segue, só este mês sai da projeção.
         if (l.ocorrencia) await estado.aplicarEvento('recorrencia.pulada', { id: l.ocorrencia.recorrenciaId, mes });
