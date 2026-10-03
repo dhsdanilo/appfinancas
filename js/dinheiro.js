@@ -743,6 +743,8 @@ function detalhesDoContrato(c, s) {
   return `<div class="detalhes-contrato">
     ${linha('saldo devedor', base)}
     ${linha('falta pagar até o fim', formatar(s.somaRestante))}
+    ${linha('total pago no empréstimo', formatar(s.totalDoContrato))}
+    ${linha('juros no empréstimo inteiro', `${formatar(s.jurosDoContrato)} · ${(s.jurosDoContrato / s.contrato.valorTomado * 100).toFixed(1).replace('.', ',')}% do tomado`)}
     ${linha('juros que ainda vêm', `${s.estimado ? '~' : ''}${formatar(s.jurosFuturos)}`)}
     ${linha('juros já pagos', `${s.estimado ? '~' : ''}${formatar(s.jurosPagos)}`)}
     ${s.amortizado ? linha('amortizado', formatar(s.amortizado)) : ''}

@@ -1503,6 +1503,7 @@ caso('dívida', 'a parcela cai sozinha, e o que venceu antes do mês da inclusã
     'parcela automática nunca vira pendência');
   const s = divida.situacao(e, 'emp', '2025-06-01');
   igual([s.parcelasPagas, s.antesDoApp, s.restantes], [8, 3, 4], 'a análise conta as anteriores como pagas');
+  igual([s.totalDoContrato, s.jurosDoContrato], [1200000, 200000], '12 × 1.000 = 12.000, sobre 10.000 tomados');
 });
 
 caso('dívida', 'a parcela que ainda vai cair é prevista, e no dia vira realizada', async () => {

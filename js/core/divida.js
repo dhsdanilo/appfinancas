@@ -155,9 +155,15 @@ export function situacao(estado, dividaId, dia = hoje()) {
     .reduce((t, a) => t + a.valor, 0);
   const pagoNoCalendario = vencidas.reduce((t, p) => t + p.valor, 0) + amortizado;
   const desde = caiAPartirDe(estado, conta);
+  // O empréstimo inteiro, pagando mês a mês até a última parcela: todas as
+  // parcelas do calendário (as de antes do app também) e o que foi amortizado.
+  const amortizadoTudo = amortizacoesValidas(estado, conta).reduce((t, a) => t + a.valor, 0);
+  const totalDoContrato = calendario.reduce((t, p) => t + p.valor, 0) + amortizadoTudo;
   return {
     conta,
     contrato: c,
+    totalDoContrato,
+    jurosDoContrato: Math.max(0, totalDoContrato - c.valorTomado),
     saldoDevedor: saldo,
     estimado,
     foto,
