@@ -18,7 +18,7 @@ const TELAS = {
   configuracoes: {
     grupo: 'configuracoes',
     titulo: 'Configurações',
-    sub: 'Categorias, etiquetas, detalhes e a sincronização entre os aparelhos.',
+    sub: 'Categorias, etiquetas, descrições e a sincronização entre os aparelhos.',
   },
 };
 

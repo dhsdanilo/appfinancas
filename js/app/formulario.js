@@ -65,10 +65,10 @@ const MARCACAO = `
 
   <div class="refino" data-papel="refino" hidden>
     <div class="detalhes" data-papel="detalhes">
-      <span class="rotulo-etiquetas">detalhe</span>
-      <div class="chips" data-papel="chips-detalhe" role="group" aria-label="Detalhe"></div>
+      <span class="rotulo-etiquetas">descrição</span>
+      <div class="chips" data-papel="chips-detalhe" role="group" aria-label="Descrição"></div>
       <input type="text" class="nova-etiqueta" data-papel="novo-detalhe" autocomplete="off"
-             placeholder="qual?" aria-label="Qual, dentro desta categoria">
+             aria-label="Descrição">
     </div>
 
     <div class="etiquetas" data-papel="etiquetas">
@@ -709,7 +709,7 @@ export async function criarFormulario({
               `<button type="button" data-detalhe="${escapar(d.id)}" aria-pressed="${d.id === detalheId}">${escapar(d.nome)}</button>`
           )
           .join('')
-      : '<span class="vazio">digite o primeiro ao lado</span>';
+      : '';
   }
 
   const nomeDoDetalhe = () => (detalheId ? app.detalhes[detalheId]?.nome : null);

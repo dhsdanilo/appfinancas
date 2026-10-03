@@ -20,7 +20,7 @@ export const PRINCIPAL = `
 
   <section class="cartao painel" id="painel">
     <div class="filtros" id="filtros" hidden>
-      <input type="search" id="filtro-busca" placeholder="buscar: categoria, detalhe, conta, observação" aria-label="Buscar lançamentos" autocomplete="off">
+      <input type="search" id="filtro-busca" placeholder="buscar: categoria, descrição, conta, observação" aria-label="Buscar lançamentos" autocomplete="off">
       <select id="filtro-area" aria-label="Área"></select>
       <select id="filtro-conta" aria-label="Conta"></select>
       <select id="filtro-categoria" aria-label="Categoria"></select>

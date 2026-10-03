@@ -385,7 +385,7 @@ function pintarDetalhes() {
     onde.get(l.detalheId).add(app.categorias[l.categoriaId].nome);
   }
   $('lista-detalhes').innerHTML = detalhes.length
-    ? cabecalhoDeColunas(['detalhe', 'categorias', '', 'uso']) +
+    ? cabecalhoDeColunas(['descrição', 'categorias', '', 'uso']) +
       emBlocos(detalhes, (d) =>
         linha({
           especie: 'detalhes',
@@ -396,7 +396,7 @@ function pintarDetalhes() {
           arquivada: d.arquivado,
         })
       )
-    : vazio('Nenhum ainda. Eles nascem na captura, no bloco "detalhes".');
+    : vazio('Nenhuma ainda. Elas nascem na captura, no campo "descrição".');
 }
 
 /**
