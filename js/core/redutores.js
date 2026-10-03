@@ -20,7 +20,7 @@
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 4;
+export const VERSAO_ESTADO = 5;
 
 export function estadoVazio() {
   return {
@@ -29,6 +29,7 @@ export function estadoVazio() {
     categorias: {},
     etiquetas: {},
     detalhes: {},
+    recorrencias: {},
     lancamentos: {},
     // Tipos de evento que este app não conhece. Não é erro fatal (um aparelho
     // mais novo pode ter emitido algo), mas precisa ficar VISÍVEL — dado
@@ -196,6 +197,52 @@ export const redutores = {
 
   'detalhe.removido'(e, d) {
     delete e.detalhes[d.id];
+  },
+
+  // ── recorrência ─────────────────────────────────────────────────────────
+  //
+  // Entidade separada do lançamento que ela gera (exigência F4): a série
+  // precisa existir sozinha pra projetar os meses à frente, inclusive os meses
+  // em que ninguém lançou nada.
+
+  'recorrencia.criada'(e, d) {
+    e.recorrencias[d.id] = {
+      id: d.id,
+      nome: d.nome,
+      tipo: d.tipo,                       // despesa · receita · transferencia
+      contaId: d.contaId,
+      contaDestinoId: d.contaDestinoId ?? null,
+      categoriaId: d.categoriaId ?? null,
+      detalheId: d.detalheId ?? null,
+      // fixa = valor travado; estimada = média das últimas 3 cobranças (E2), e
+      // o valor aparece sempre com ~, porque total com estimativa dentro leva ~.
+      tipoValor: d.tipoValor ?? 'fixa',
+      valor: d.valor ?? null,
+      periodicidade: d.periodicidade ?? 'mensal',
+      dia: d.dia ?? 1,
+      inicio: d.inicio,
+      fim: d.fim ?? null,                 // nulo = indeterminada
+      esporadica: d.esporadica ?? false,
+      envelopeId: d.envelopeId ?? null,
+      arquivada: false,
+    };
+  },
+
+  'recorrencia.alterada'(e, d) {
+    const r = e.recorrencias[d.id];
+    if (!r) return;
+    for (const [campo, valor] of Object.entries(d)) {
+      if (campo !== 'id' && valor !== undefined) r[campo] = valor;
+    }
+  },
+
+  'recorrencia.arquivada'(e, d) {
+    const r = e.recorrencias[d.id];
+    if (r) r.arquivada = d.arquivada !== false;
+  },
+
+  'recorrencia.removida'(e, d) {
+    delete e.recorrencias[d.id];
   },
 
   // ── lançamento ──────────────────────────────────────────────────────────

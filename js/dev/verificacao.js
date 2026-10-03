@@ -708,6 +708,62 @@ caso('lançamento', 'corrigir etiqueta é lista, e a ordem não é informação'
   igual(lanc.correcao(l, { etiquetas: [] }, '2027-03-20'), { etiquetas: [] }, 'tirar todas também é mudança');
 });
 
+caso('lançamento', 'a compra parcelada é N parcelas iguais, sem linha-mãe', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', { id: 'c1', nome: 'Cartão', tipo: 'cartao' });
+
+  // 10× de R$ 299,00 — o valor digitado é o da PARCELA (03-alimentacao §6.1).
+  const compraId = 'cmp1';
+  for (let i = 0; i < 10; i += 1) {
+    const mes = String(10 + i).padStart(2, '0');
+    const ano = 2027 + (10 + i > 12 ? 1 : 0);
+    const dia = `${ano}-${String(((9 + i) % 12) + 1).padStart(2, '0')}-05`;
+    await estado.aplicarEvento('lancamento.registrado', {
+      id: 'l' + i, tipo: 'despesa', valor: 29900, contaId: 'c1', categoriaId: 'k1',
+      dataCompetencia: dia, dataCaixa: dia, confirmado: i === 0,
+      parcela: { compraId, numero: i + 1, total: 10 },
+    });
+    void mes;
+  }
+
+  const e = await estado.calcular();
+  const daCompra = lanc.visiveis(e).filter((l) => l.parcela?.compraId === compraId);
+  igual(daCompra.length, 10, 'dez parcelas, e nenhuma linha-mãe com o total');
+  igual(daCompra.reduce((t, l) => t + l.valor, 0), 299000, 'o total é a soma, não um campo');
+  igual(lanc.saldoReal(e, 'c1'), -29900,
+    'só a parcela confirmada mexeu no saldo — as nove seguintes são compromisso, não gasto');
+  verdade(
+    new Set(daCompra.map((l) => l.dataCompetencia.slice(0, 7))).size === 10,
+    'cada parcela no SEU mês de competência, senão a R2 veria um pico que não houve'
+  );
+});
+
+caso('estado', 'a recorrência é entidade separada do lançamento que ela gera', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('recorrencia.criada', {
+    id: 'r1', nome: 'Energia', tipo: 'despesa', contaId: 'c1', categoriaId: 'k1',
+    tipoValor: 'variavel', periodicidade: 'mensal', dia: 10, inicio: '2027-03-10',
+  });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'l1', tipo: 'despesa', valor: 28700, contaId: 'c1', categoriaId: 'k1',
+    dataCompetencia: '2027-03-10', dataCaixa: '2027-03-10', confirmado: true,
+    recorrenciaId: 'r1',
+  });
+
+  const e = await estado.calcular();
+  igual(e.recorrencias.r1.tipoValor, 'variavel', 'estimada = média das últimas 3 (E2)');
+  igual(e.recorrencias.r1.valor, null, 'variável não trava valor');
+  igual(e.lancamentos.l1.recorrenciaId, 'r1', 'e o lançamento sabe de que série nasceu');
+
+  // Apagar o lançamento não apaga a série: ela existe sozinha, e é o que
+  // permite projetar o mês que vem mesmo sem ninguém ter lançado nada.
+  await estado.aplicarEvento('lancamento.removido', { id: 'l1' });
+  const depois = await estado.calcular();
+  verdade(depois.recorrencias.r1, 'a série continua de pé');
+});
+
 caso('lançamento', 'as três datas existem mesmo quando são iguais', async () => {
   await limpar();
   await log.registrarAparelho('meu-pc');

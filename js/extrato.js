@@ -74,6 +74,7 @@ async function pintar() {
             ? `${conta?.nome ?? '—'} → ${destino?.nome ?? '—'}`
             : conta?.nome ?? '—';
 
+          const parcela = l.parcela ? ` ${l.parcela.numero}/${l.parcela.total}` : '';
           const etiquetas = (l.etiquetas ?? [])
             .map((t) => app.etiquetas?.[t]?.nome)
             .filter(Boolean);
@@ -86,7 +87,7 @@ async function pintar() {
             <span class="marca" title="${nomeDoTom}" aria-hidden="true">${marca}</span>
             <span class="quando">${escapar(l.dataCaixa.slice(8))}/${escapar(l.dataCaixa.slice(5, 7))}</span>
             <span class="oque">
-              <span class="cat">${escapar(oque)}${etiquetas.length ? etiquetas.map((e) => `<span class="etiqueta">${escapar(e)}</span>`).join('') : ''}</span>
+              <span class="cat">${escapar(oque)}${parcela ? `<span class="parcela">${escapar(parcela.trim())}</span>` : ''}${etiquetas.length ? etiquetas.map((e) => `<span class="etiqueta">${escapar(e)}</span>`).join('') : ''}</span>
               <span class="onde">${escapar(onde)}${est === 'realizado' ? '' : ' · ' + est}</span>
             </span>
             <span class="quanto ${tom}">${dinheiroHTML(l.valor, { sinal })}</span>

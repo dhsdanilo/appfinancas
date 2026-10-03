@@ -374,3 +374,42 @@ input[type="text"].nova-etiqueta {
 /* A ficha aplicada carrega o × de tirar: aplicar e remover no mesmo lugar. */
 .etiquetas .chips button .tirar { margin-left: var(--e1); color: var(--tinta-fraca); }
 .etiquetas .chips.todas { flex: 1 1 100%; }
+
+/* ── o bloco de refino ──────────────────────────────────────────────────── */
+/* Etiqueta, parcela, recorrência e observação são refino, não captura: no PC
+   nascem abertas, no celular a um toque (design/03-alimentacao.md §1). */
+
+.refino {
+  display: flex;
+  flex-direction: column;
+  gap: var(--e2);
+  padding-top: var(--e3);
+  border-top: 1px solid var(--borda);
+}
+
+.linha-refino { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e2); }
+.linha-refino .rotulo-etiquetas { min-width: 62px; }
+
+input[type="number"].parcelas {
+  width: 64px;
+  min-height: 30px;
+  padding: var(--e1) var(--e2);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-controle);
+  background: var(--superficie);
+  color: var(--tinta);
+  font: inherit;
+  font-size: var(--t-apoio);
+}
+
+.conta-parcela, .pista-repete { color: var(--tinta-fraca); font-size: var(--t-miudo); }
+
+.linha-refino .pilulas button { min-height: 30px; font-size: var(--t-miudo); }
+
+input[type="text"].observacao {
+  flex: 1 1 200px;
+  min-width: 140px;
+  min-height: 30px;
+  padding: var(--e1) var(--e2);
+  font-size: var(--t-apoio);
+}

@@ -175,3 +175,14 @@ button.linha.vencido { border-left: 3px solid var(--alerta); background: var(--a
 /* O nome fica em tinta normal: colorir o texto também deixaria a lista
    ilegível, e o que precisa de cor é a natureza do movimento, não a palavra. */
 .linha .cat { color: var(--tinta); }
+
+/* A parcela se anuncia na linha: 3/10 diz, de relance, que ainda vêm sete. */
+.linha .parcela {
+  margin-left: var(--e2);
+  padding: 0 var(--e1);
+  border-radius: var(--raio-controle);
+  background: var(--fundo);
+  color: var(--tinta-fraca);
+  font-size: var(--t-miudo);
+  font-variant-numeric: tabular-nums;
+}

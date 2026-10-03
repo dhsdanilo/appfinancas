@@ -47,17 +47,18 @@ const MARCACAO = `
       <span class="miudo">conta</span>
       <select data-papel="conta" aria-label="Conta do lançamento"></select>
     </label>
-    <button type="button" class="elo" data-papel="b-detalhe">+ detalhe</button>
+    <button type="button" class="elo" data-papel="b-refino" aria-expanded="false">detalhes</button>
   </div>
 
-  <div class="detalhes" data-papel="detalhes" hidden>
-    <span class="rotulo-etiquetas">detalhe</span>
-    <div class="chips" data-papel="chips-detalhe" role="group" aria-label="Detalhe"></div>
-    <input type="text" class="nova-etiqueta" data-papel="novo-detalhe" autocomplete="off"
-           placeholder="qual?" aria-label="Qual, dentro desta categoria">
-  </div>
+  <div class="refino" data-papel="refino" hidden>
+    <div class="detalhes" data-papel="detalhes">
+      <span class="rotulo-etiquetas">detalhe</span>
+      <div class="chips" data-papel="chips-detalhe" role="group" aria-label="Detalhe"></div>
+      <input type="text" class="nova-etiqueta" data-papel="novo-detalhe" autocomplete="off"
+             placeholder="qual?" aria-label="Qual, dentro desta categoria">
+    </div>
 
-  <div class="etiquetas" data-papel="etiquetas" hidden>
+    <div class="etiquetas" data-papel="etiquetas">
     <span class="rotulo-etiquetas">etiquetas</span>
     <div class="chips" data-papel="chips" role="group" aria-label="Etiquetas aplicadas"></div>
     <div class="busca">
@@ -66,8 +67,32 @@ const MARCACAO = `
              role="combobox" aria-expanded="false" aria-autocomplete="list">
       <ul class="sugestoes" data-papel="sugestoes" role="listbox" hidden></ul>
     </div>
-    <button type="button" class="elo" data-papel="b-todas">ver todas</button>
-    <div class="chips todas" data-papel="todas" role="group" aria-label="Todas as etiquetas" hidden></div>
+      <button type="button" class="elo" data-papel="b-todas">ver todas</button>
+      <div class="chips todas" data-papel="todas" role="group" aria-label="Todas as etiquetas" hidden></div>
+    </div>
+
+    <div class="linha-refino" data-papel="linha-parcelas">
+      <span class="rotulo-etiquetas">parcelas</span>
+      <input type="number" class="parcelas" data-papel="parcelas" min="1" max="99" value="1"
+             aria-label="Número de parcelas">
+      <span class="conta-parcela" data-papel="conta-parcela"></span>
+    </div>
+
+    <div class="linha-refino" data-papel="linha-repete">
+      <span class="rotulo-etiquetas">repete</span>
+      <div class="pilulas" role="group" aria-label="Recorrência">
+        <button type="button" data-repete="nao" aria-pressed="true">não</button>
+        <button type="button" data-repete="fixa" aria-pressed="false">fixa</button>
+        <button type="button" data-repete="estimada" aria-pressed="false">estimada</button>
+      </div>
+      <span class="pista-repete" data-papel="pista-repete"></span>
+    </div>
+
+    <div class="linha-refino">
+      <span class="rotulo-etiquetas">obs</span>
+      <input type="text" class="observacao" data-papel="observacao" autocomplete="off"
+             placeholder="o que mais importa lembrar" aria-label="Observação">
+    </div>
   </div>
 
   <p class="desfazer" data-papel="desfazer" hidden></p>
@@ -101,9 +126,12 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
   let data = hoje();
   let etiquetas = [];
   let detalheId = null;
-  let detalheAberto = false;
   let todasAbertas = false;
   let realcada = 0;
+  let repete = 'nao';
+  // Dedo ou mouse — é o contexto que muda a pressa, não a marca do aparelho.
+  // No PC o refino nasce aberto; no celular, a um toque (03-alimentacao §1).
+  let refinoAberto = !matchMedia('(pointer: coarse)').matches;
   let ultimo = null;
   let sumir = null;
   // O lançamento que está sendo corrigido, ou null — é só isso que separa as
@@ -115,6 +143,7 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
   const valor = ligarCampoValor(raiz, {
     aoMudar: () => {
       for (const b of raiz.querySelectorAll('[data-acao]')) b.disabled = !pronto();
+      if (app) pintarParcelas();
     },
     aoConfirmar: async (e) => {
       if (!pronto()) { valor.desfocar(); return; }
@@ -339,7 +368,7 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
     if (!etiquetas.includes(id)) etiquetas.push(id);
     el('nova-etiqueta').value = '';
     fecharSugestoes();
-    pintarEtiquetas();
+    pintarRefino();
   }
 
   /** Digitar um nome novo cria a etiqueta e já aplica (03-alimentacao §10). */
@@ -366,12 +395,58 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
   // pela categoria e ordenada pelo mais usado (E3) — depois de duas semanas,
   // é um toque na primeira opção.
 
+  function pintarRefino() {
+    el('refino').hidden = !refinoAberto;
+    el('b-refino').setAttribute('aria-expanded', String(refinoAberto));
+    el('b-refino').textContent = refinoAberto ? 'detalhes' : resumoDoRefino();
+    if (!refinoAberto) return;
+
+    pintarDetalhes();
+    pintarEtiquetas();
+    pintarParcelas();
+    pintarRepete();
+  }
+
+  /** Fechado, o botão conta o que tem dentro — senão ninguém abre. */
+  function resumoDoRefino() {
+    const partes = [];
+    if (nomeDoDetalhe()) partes.push(nomeDoDetalhe());
+    if (etiquetas.length) partes.push(`${etiquetas.length} etiqueta${etiquetas.length > 1 ? 's' : ''}`);
+    if (parcelas() > 1) partes.push(`${parcelas()}×`);
+    if (repete !== 'nao') partes.push(repete);
+    return partes.length ? partes.join(' · ') : 'detalhes';
+  }
+
+  const parcelas = () => Math.max(1, Math.min(99, Number(el('parcelas').value) || 1));
+
+  function pintarParcelas() {
+    // O valor digitado é o da PARCELA, como a loja anuncia e o cartão cobra
+    // (03-alimentacao §6.1). O total é o app que faz.
+    const quantas = parcelas();
+    el('linha-parcelas').hidden = Boolean(editando);
+    el('conta-parcela').textContent =
+      quantas > 1 && valor.centavos() > 0
+        ? `${quantas}× de ${formatar(valor.centavos())} = ${formatar(valor.centavos() * quantas)}`
+        : '';
+  }
+
+  function pintarRepete() {
+    el('linha-repete').hidden = Boolean(editando);
+    for (const b of raiz.querySelectorAll('[data-repete]')) {
+      b.setAttribute('aria-pressed', String(b.dataset.repete === repete));
+    }
+    el('pista-repete').textContent =
+      repete === 'fixa'
+        ? 'todo mês, mesmo valor'
+        : repete === 'estimada'
+          ? 'todo mês, média das últimas 3'
+          : '';
+  }
+
   function pintarDetalhes() {
-    el('detalhes').hidden = !detalheAberto;
-    el('b-detalhe').textContent = nomeDoDetalhe() ?? '+ detalhe';
-    if (!detalheAberto) return;
 
     const sugeridos = detalhesDaCategoria(app, categoriaId);
+    el('detalhes').hidden = false;
     if (detalheId && app.detalhes[detalheId] && !sugeridos.some((d) => d.id === detalheId)) {
       sugeridos.unshift(app.detalhes[detalheId]);
     }
@@ -403,7 +478,7 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
       detalhe = app.detalhes[id];
     }
     detalheId = detalhe.id;
-    pintarDetalhes();
+    pintarRefino();
   }
 
   // ── apagar ──────────────────────────────────────────────────────────────
@@ -437,6 +512,7 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
       contaId,
       detalheId,
       etiquetas: [...etiquetas],
+      observacao: el('observacao').value.trim(),
       dataCaixa: data,
     });
 
@@ -444,33 +520,87 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
     if (Object.keys(mudancas).length === 0) return true;
 
     await estado.aplicarEvento('lancamento.alterado', { id: editando.id, ...mudancas });
+    await propagarParaAsIrmas(mudancas);
     await recarregar();
     editando = app.lancamentos[editando.id] ?? editando;
     if (aoSalvar) await aoSalvar();
     return true;
   }
 
+  /**
+   * Numa compra parcelada, o que é da COMPRA vale para todas as parcelas —
+   * elas são a mesma compra, paga em pedaços. O que é da parcela (valor dela,
+   * data dela, conta que pagou) fica só nela (03-alimentacao §6.1).
+   *
+   * Sem perguntar "aplicar a todas?": o app sabe qual campo é de quem, e a
+   * pergunta apareceria também nas vezes em que a resposta é óbvia.
+   */
+  async function propagarParaAsIrmas(mudancas) {
+    if (!editando.parcela?.compraId) return;
+
+    const DA_COMPRA = ['tipo', 'categoriaId', 'detalheId', 'etiquetas', 'observacao'];
+    const comuns = Object.fromEntries(
+      Object.entries(mudancas).filter(([campo]) => DA_COMPRA.includes(campo))
+    );
+    if (!Object.keys(comuns).length) return;
+
+    const irmas = Object.values(app.lancamentos).filter(
+      (l) =>
+        !l.removido &&
+        l.id !== editando.id &&
+        l.parcela?.compraId === editando.parcela.compraId
+    );
+    for (const irma of irmas) {
+      await estado.aplicarEvento('lancamento.alterado', { id: irma.id, ...comuns });
+    }
+  }
+
   async function registrar() {
     const ap = await log.aparelho();
-    const id = novoId('lan');
-    const resumo = `${formatar(valor.centavos())} · ${nomeDaCategoria(app, categoriaId)}`;
+    const quantas = parcelas();
+    // A compra é o conjunto das parcelas, amarradas pelo mesmo id — não existe
+    // linha-mãe com o total, que seria a forma mais fácil de contar o mesmo
+    // dinheiro duas vezes (03-alimentacao §6.1).
+    const compraId = quantas > 1 ? novoId('cmp') : null;
+    const recorrenciaId = await garantirRecorrencia();
 
-    await estado.aplicarEvento('lancamento.registrado', {
-      id,
+    const comum = {
       tipo,
       valor: valor.centavos(),
-      dataCompetencia: data,
-      dataCaixa: data,
       contaId,
       categoriaId,
       detalheId,
       etiquetas: [...etiquetas],
-      // Não é escolha de ninguém: vem da origem e da data (D2).
-      confirmado: nasceConfirmado({ manual: true, dataCaixa: data }),
+      observacao: el('observacao').value.trim(),
+      recorrenciaId,
       lancadoPor: ap?.id ?? null,
-    });
+    };
 
-    ultimo = { id, resumo };
+    const ids = [];
+    for (let i = 0; i < quantas; i += 1) {
+      // Cada parcela tem competência no SEU mês: é assim que o mês fecha com o
+      // que a pessoa sente, e é o que impede um pico falso na R2 (§6.1).
+      const dia = somarMeses(data, i);
+      const id = novoId('lan');
+      ids.push(id);
+      await estado.aplicarEvento('lancamento.registrado', {
+        id,
+        ...comum,
+        dataCompetencia: dia,
+        dataCaixa: dia,
+        // Não é escolha de ninguém: vem da origem e da data (D2).
+        confirmado: nasceConfirmado({ manual: true, dataCaixa: dia }),
+        parcela: compraId ? { compraId, numero: i + 1, total: quantas } : null,
+      });
+    }
+
+    const quanto = formatar(valor.centavos());
+    ultimo = {
+      ids,
+      resumo:
+        (quantas > 1 ? `${quantas}× de ${quanto}` : quanto) +
+        ` · ${nomeDaCategoria(app, categoriaId)}`,
+    };
     await recarregar();
 
     // "Salvar e nova" preserva tudo e zera só o valor: é o que torna cinco
@@ -481,12 +611,48 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
     return true;
   }
 
+  /**
+   * Marcar "repete" na captura cria a série, que é entidade separada (F4) —
+   * ela precisa existir sozinha pra projetar os meses à frente, inclusive os
+   * meses em que ninguém lançou nada (03-alimentacao §4).
+   */
+  async function garantirRecorrencia() {
+    if (repete === 'nao') return null;
+    const id = novoId('rec');
+    await estado.aplicarEvento('recorrencia.criada', {
+      id,
+      nome: [nomeDaCategoria(app, categoriaId), nomeDoDetalhe()].filter(Boolean).join(' · ') || tipo,
+      tipo,
+      contaId,
+      categoriaId,
+      detalheId,
+      tipoValor: repete === 'fixa' ? 'fixa' : 'variavel',
+      valor: repete === 'fixa' ? valor.centavos() : null,
+      periodicidade: 'mensal',
+      dia: Number(data.slice(8, 10)),
+      inicio: data,
+    });
+    app = await estado.calcular();
+    return id;
+  }
+
+  /** Mês cheio, sem estourar: 31/01 + 1 mês é 28/02, não 03/03. */
+  function somarMeses(dia, quantos) {
+    const [ano, mes, d] = dia.split('-').map(Number);
+    const alvo = new Date(ano, mes - 1 + quantos, 1);
+    const ultimoDia = new Date(alvo.getFullYear(), alvo.getMonth() + 1, 0).getDate();
+    alvo.setDate(Math.min(d, ultimoDia));
+    const dois = (n) => String(n).padStart(2, '0');
+    return `${alvo.getFullYear()}-${dois(alvo.getMonth() + 1)}-${dois(alvo.getDate())}`;
+  }
+
   function mostrarDesfazer() {
     const faixa = el('desfazer');
     faixa.innerHTML = `<span>salvo · ${escapar(ultimo.resumo)}</span><button type="button" data-papel="b-desfazer">desfazer</button>`;
     faixa.hidden = false;
     faixa.querySelector('[data-papel="b-desfazer"]').addEventListener('click', async () => {
-      await estado.aplicarEvento('lancamento.removido', { id: ultimo.id });
+      // Desfazer uma compra em 10× desfaz as dez: foi um ato só.
+      for (const id of ultimo.ids) await estado.aplicarEvento('lancamento.removido', { id });
       faixa.hidden = true;
       await recarregar();
       if (aoSalvar) await aoSalvar();
@@ -524,7 +690,7 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
     }
     // O detalhe é escopado pela categoria: trocar de categoria recomeça a lista.
     detalheId = null;
-    pintarDetalhes();
+    pintarRefino();
     // Tocar na categoria fecha o teclado do celular — e é esse toque que revela
     // o botão de lançar, sem precisar de um passo só pra dispensar.
     valor.desfocar();
@@ -536,7 +702,7 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
     if (!botao) return;
     const id = botao.dataset.etiqueta;
     etiquetas = etiquetas.includes(id) ? etiquetas.filter((t) => t !== id) : [...etiquetas, id];
-    pintarEtiquetas();
+    pintarRefino();
   });
 
   el('nova-etiqueta').addEventListener('input', () => {
@@ -590,7 +756,7 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
 
   el('b-todas').addEventListener('click', () => {
     todasAbertas = !todasAbertas;
-    pintarEtiquetas();
+    pintarRefino();
   });
 
   el('todas').addEventListener('click', (e) => {
@@ -598,7 +764,7 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
     if (!botao) return;
     const id = botao.dataset.etiqueta;
     etiquetas = etiquetas.includes(id) ? etiquetas.filter((t) => t !== id) : [...etiquetas, id];
-    pintarEtiquetas();
+    pintarRefino();
   });
 
   el('conta').addEventListener('change', () => {
@@ -607,17 +773,26 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
     pintarData();
   });
 
-  el('b-detalhe').addEventListener('click', () => {
-    detalheAberto = !detalheAberto;
-    pintarDetalhes();
-    if (detalheAberto) el('novo-detalhe').focus();
+  el('b-refino').addEventListener('click', () => {
+    refinoAberto = !refinoAberto;
+    pintarRefino();
+    if (refinoAberto) el('novo-detalhe').focus();
+  });
+
+  el('parcelas').addEventListener('input', pintarParcelas);
+
+  raiz.querySelector('[data-papel="linha-repete"] .pilulas').addEventListener('click', (e) => {
+    const botao = e.target.closest('[data-repete]');
+    if (!botao) return;
+    repete = botao.dataset.repete;
+    pintarRepete();
   });
 
   el('chips-detalhe').addEventListener('click', (e) => {
     const botao = e.target.closest('[data-detalhe]');
     if (!botao) return;
     detalheId = botao.dataset.detalhe === detalheId ? null : botao.dataset.detalhe;
-    pintarDetalhes();
+    pintarRefino();
   });
 
   el('novo-detalhe').addEventListener('keydown', async (e) => {
@@ -676,8 +851,7 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
     pintarConta();
     pintarData();
     pintarTipo();
-    pintarDetalhes();
-    pintarEtiquetas();
+    pintarRefino();
     perigo.mostrar(Boolean(editando));
     valor.pintar();
   }
@@ -699,7 +873,9 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
       contaId = l.contaId;
       categoriaId = l.categoriaId;
       detalheId = l.detalheId ?? null;
-      detalheAberto = Boolean(detalheId);
+      el('observacao').value = l.observacao ?? '';
+      // Na correção o refino abre sozinho: é pra isso que se abriu o lançamento.
+      refinoAberto = true;
       etiquetas = [...(l.etiquetas ?? [])];
       valor.definir(l.valor);
       el('desfazer').hidden = true;
@@ -711,10 +887,15 @@ export async function criarFormulario({ raiz, acoes, aoSalvar, aoFechar, comEtiq
     limpar: () => {
       editando = null;
       etiquetas = [];
+      detalheId = null;
+      repete = 'nao';
+      todasAbertas = false;
+      el('parcelas').value = '1';
+      el('observacao').value = '';
       valor.limpar();
       el('desfazer').hidden = true;
       pintarData();
-      pintarEtiquetas();
+      pintarRefino();
       perigo.mostrar(false);
     },
   };
