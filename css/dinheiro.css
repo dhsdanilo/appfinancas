@@ -165,7 +165,8 @@ button.linha.vencido { border-left: 3px solid var(--alerta); background: var(--a
 
 /* ── abas, sub-abas e período (design/08-telas §4.1) ────────────────────── */
 
-.painel { margin-top: var(--e4); }
+/* O painel das telas de dinheiro não fica colado em abas: canto inteiro. */
+#painel { margin-top: var(--e4); border-radius: var(--raio-cartao); }
 
 /* As sub-abas são o foco dentro da natureza: fichas, não abas — uma aba
    dentro de outra faria o olho procurar onde está. Rolam de lado no celular

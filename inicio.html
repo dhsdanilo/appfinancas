@@ -2,35 +2,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Início — App Finanças</title>
-<meta name="description" content="Controle financeiro familiar, local e sincronizado.">
-<link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#16302b">
-<link rel="stylesheet" href="css/base.css">
-<link rel="stylesheet" href="css/formulario.css">
-<link rel="stylesheet" href="css/dinheiro.css">
-<link rel="stylesheet" href="css/bancada.css">
+<meta http-equiv="refresh" content="0; url=app.html#/inicio">
+<title>App Finanças</title>
+<script>location.replace('app.html#/inicio');</script>
 </head>
-<body class="pagina app" data-pagina="inicio">
-<div class="conteudo">
-
-<header class="topo">
-  <div class="identidade">
-    <h1>Início</h1>
-    <p class="sub">Como estamos agora.</p>
-  </div>
-</header>
-
-<main id="principal"></main>
-
-</div>
-
-<script type="module">
-  // A moldura primeiro (menu, sincronização), depois o que a tela faz.
-  import { montarPagina } from './js/app/pagina.js';
-  await montarPagina();
-  await import('./js/dinheiro.js');
-</script>
-</body>
+<body><p>Esta tela mudou de lugar: <a href="app.html#/inicio">app.html#/inicio</a>.</p></body>
 </html>

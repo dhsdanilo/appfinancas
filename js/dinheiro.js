@@ -21,6 +21,7 @@ import { linhasDoHolerite, lancadosNoMes } from './core/holerite.js';
 import { situacao, saldoDevedor, jurosDaParcela } from './core/divida.js';
 import { fotografar } from './app/contrato.js';
 import { aoLancar } from './app/pagina.js';
+import { enderecoDa } from './app/rotas.js';
 import { BARRA, PRINCIPAL, DIALOGOS } from './app/marcacao-dinheiro.js';
 import { rendaDisponivel } from './core/holerite.js';
 import {
@@ -38,13 +39,15 @@ import {
 
 const $ = (id) => document.getElementById(id);
 
-// Que tela é esta: a página diz no <body data-pagina>.
-const PAGINA = document.body.dataset.pagina ?? 'lancamentos';
+// Que tela é esta: a rota diz (js/app/rotas.js), e muda sem recarregar.
 const AREA_DA_PAGINA = {
   contas: 'caixa', cartoes: 'cartoes', renda: 'folha', investimentos: 'investimentos', dividas: 'dividas',
 };
 const PAGINA_DA_AREA = Object.fromEntries(Object.entries(AREA_DA_PAGINA).map(([p, a]) => [a, p]));
-const AREA = AREA_DA_PAGINA[PAGINA] ?? null;
+let PAGINA = null;
+let AREA = null;
+// A tela de dinheiro está à vista? Fora dela não se pinta nada.
+let ativa = false;
 
 $('principal').innerHTML = BARRA + PRINCIPAL;
 document.body.insertAdjacentHTML('beforeend', DIALOGOS);
@@ -59,11 +62,15 @@ function escapar(s) {
 // volta pra ela. Guardada no aparelho, e só como conveniência — se o
 // navegador recusar, a tela abre no padrão e funciona igual.
 
-const CHAVE_VISTA = `dinheiro.vista.${PAGINA}`;
+// O período vale para todas as telas (08-telas §4.1); o foco (conta, filtros)
+// é de cada uma, e volta quando se volta a ela.
+const CHAVE_PERIODO = 'dinheiro.periodo';
+const chaveDaTela = (pagina) => `dinheiro.vista.${pagina}`;
+const FOCO_PADRAO = { conta: 'todas', area: 'todas', busca: '', categoria: '' };
 
-function lerVista() {
+function lerGuardado(chave) {
   try {
-    const v = JSON.parse(localStorage.getItem(CHAVE_VISTA) ?? 'null');
+    const v = JSON.parse(localStorage.getItem(chave) ?? 'null');
     if (v && typeof v === 'object') return v;
   } catch {
     // sem armazenamento: vale o padrão
@@ -72,31 +79,40 @@ function lerVista() {
 }
 
 const vista = {
-  aba: AREA ?? 'caixa',
-  conta: 'todas',
-  // Só em Lançamentos: os filtros da lista única (R1).
-  area: 'todas',
-  busca: '',
-  categoria: '',
+  aba: 'caixa',
+  ...FOCO_PADRAO,
   modo: 'mes',
   mes: hoje().slice(0, 7),
   de: inicioDoMes(hoje()),
   ate: hoje(),
-  ...lerVista(),
+  ...lerGuardado(CHAVE_PERIODO),
 };
 // O mês volta sempre ao corrente: abrir o app e cair em março passado
 // confunde mais do que ajuda.
 vista.mes = hoje().slice(0, 7);
 
+// O foco de cada tela, enquanto o app está aberto.
+const focos = {};
+
 function guardarVista() {
+  if (!PAGINA) return;
+  focos[PAGINA] = { conta: vista.conta, area: vista.area, busca: vista.busca, categoria: vista.categoria };
   try {
-    localStorage.setItem(CHAVE_VISTA, JSON.stringify({
-      aba: vista.aba, conta: vista.conta, modo: vista.modo, de: vista.de, ate: vista.ate,
-      area: vista.area, categoria: vista.categoria,
-    }));
+    localStorage.setItem(chaveDaTela(PAGINA), JSON.stringify({ ...focos[PAGINA], busca: '' }));
+    localStorage.setItem(CHAVE_PERIODO, JSON.stringify({ modo: vista.modo, de: vista.de, ate: vista.ate }));
   } catch {
     // sem armazenamento: a vista só não sobrevive ao recarregar
   }
+}
+
+/** Entra numa tela de dinheiro: troca o foco e pinta. */
+function entrar(pagina) {
+  if (PAGINA && PAGINA !== pagina) guardarVista();
+  PAGINA = pagina;
+  AREA = AREA_DA_PAGINA[pagina] ?? null;
+  Object.assign(vista, FOCO_PADRAO, focos[pagina] ?? lerGuardado(chaveDaTela(pagina)));
+  vista.aba = AREA ?? 'caixa';
+  return pintar();
 }
 
 function intervalo() {
@@ -115,6 +131,7 @@ let app = null;
 const previstosNaTela = new Map();
 
 async function pintar() {
+  if (!ativa) return;
   app = await estado.calcular();
   previstosNaTela.clear();
   // A fila do que precisa de você mora no Início (08-telas §6).
@@ -151,6 +168,7 @@ function pintarArea() {
   }
   $('parte-lista').hidden = false;
   $('periodo').hidden = false;
+  $('filtros').hidden = true;
 
   if (aba.id === 'cartoes') {
     pintarResumoDeCartoes(foco);
@@ -177,6 +195,7 @@ const VAZIO_DA_AREA = {
 function pintarInicio() {
   for (const parte of ['subabas', 'periodo', 'parte-lista', 'filtros']) $(parte).hidden = true;
   delete $('painel').dataset.area;
+  delete $('barra-acoes').dataset.area;
 
   const blocos = [];
   for (const area of ABAS) {
@@ -186,7 +205,7 @@ function pintarInicio() {
   }
   $('resumo').innerHTML = blocos.length
     ? `<div class="blocos">${blocos.join('')}</div>`
-    : '<p class="vazio">Nada por aqui ainda. Comece criando uma conta em <a href="contas.html">Contas</a> e as categorias em <a href="configuracoes.html">Configurações</a>.</p>';
+    : `<p class="vazio">Nada por aqui ainda. Comece criando uma conta em <a href="${enderecoDa('contas')}">Contas</a> e as categorias em <a href="${enderecoDa('configuracoes')}">Configurações</a>.</p>`;
   guardarVista();
 }
 
@@ -231,7 +250,7 @@ function cartaoDoInicio(area, contas) {
     linhas.push(linhaDeResumo('saldo devedor', dinheiroHTML(total, { estimado: contas.some((c) => situacao(app, c.id)?.estimado) })));
   }
   const titulo = { caixa: 'Contas', cartoes: 'Cartões', folha: 'Renda', investimentos: 'Investimentos', dividas: 'Dívidas' }[area.id];
-  return `<a class="bloco bloco-link" href="${PAGINA_DA_AREA[area.id]}.html" data-area="${area.id}">
+  return `<a class="bloco bloco-link" href="${enderecoDa(PAGINA_DA_AREA[area.id])}" data-area="${area.id}">
     <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(titulo)}</p>
     <dl>${linhas.join('')}</dl>
   </a>`;
@@ -243,8 +262,10 @@ function pintarLancamentos() {
   $('subabas').hidden = true;
   $('filtros').hidden = false;
   $('parte-lista').hidden = false;
+  $('periodo').hidden = false;
   $('resumo').innerHTML = '';
   delete $('painel').dataset.area;
+  delete $('barra-acoes').dataset.area;
   pintarPeriodo();
   pintarFiltros();
 
@@ -1144,8 +1165,12 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 't' || e.key === 'T') { e.preventDefault(); abrirTransferencia(); }
 });
 
-// O "+" da barra de baixo do celular abre a captura desta tela.
+// O "+" da barra de baixo do celular abre a captura da tela em que se está.
 aoLancar(abrir);
 
-await pintar();
+// A rota manda: entrar numa tela de dinheiro pinta; sair dela, para.
+document.addEventListener('app:tela', (e) => {
+  ativa = e.detail.grupo === 'dinheiro';
+  if (ativa) entrar(e.detail.tela);
+});
 estado.aoAplicar(() => pintar());

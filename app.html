@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>App Finanças</title>
+<meta name="description" content="Controle financeiro familiar, local e sincronizado.">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#16302b">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/formulario.css">
+<link rel="stylesheet" href="css/dinheiro.css">
+<link rel="stylesheet" href="css/bancada.css">
+<link rel="stylesheet" href="css/ajustes.css">
+</head>
+<!-- O andar de cima numa página só (design/08-telas §1): o endereço diz a tela
+     (app.html#/contas), e trocar de tela troca só o miolo — js/app/rotas.js. -->
+<body class="pagina app" data-pagina="inicio">
+<div class="conteudo">
+
+<header class="topo">
+  <div class="identidade">
+    <h1 id="titulo-tela">Início</h1>
+    <p class="sub" id="sub-tela"></p>
+  </div>
+</header>
+
+<p class="aviso" id="aviso" hidden></p>
+
+<!-- ── as telas de dinheiro: Início, Lançamentos e as cinco áreas ──────── -->
+<div data-grupo="dinheiro">
+  <main id="principal"></main>
+
+  <!-- A gestão das contas da área ("Suas contas", "Seus cartões"…). -->
+  <div id="gestao" hidden>
+    <section class="cartao gestao">
+      <h2 id="titulo-gestao"></h2>
+      <p class="nota">Toque no nome para renomear. Arquivar tira das telas de lançamento sem apagar o passado.</p>
+      <p class="aviso" id="aviso-gestao" hidden></p>
+      <ul class="itens" id="lista-contas"></ul>
+    </section>
+  </div>
+</div>
+
+<!-- ── planejamento ───────────────────────────────────────────────────── -->
+<div data-grupo="planejamento" hidden>
+<main>
+
+<!-- Recorrências: cadastradas uma vez, no andar de cima (design/03 §4). -->
+<section class="cartao" id="painel-recorrencias">
+  <div class="cabeca-secao">
+    <h2>Recorrências</h2>
+    <button type="button" class="principal" id="b-nova-recorrencia">Nova recorrência</button>
+  </div>
+  <p class="nota">
+    O que volta sozinho: aluguel, plano de saúde, energia, o salário, a transferência pra
+    reserva. Cada ocorrência aparece no extrato como prevista, e lançar pela linha prevista
+    amarra o lançamento à série.
+  </p>
+  <ul class="itens" id="lista-recorrencias"></ul>
+</section>
+
+</main>
+</div>
+
+<!-- ── configurações ──────────────────────────────────────────────────── -->
+<div data-grupo="configuracoes" hidden>
+<div class="abas" role="tablist" aria-label="Seções das configurações" id="abas-config">
+  <button type="button" role="tab" id="aba-categorias" data-aba="categorias" aria-controls="painel-categorias" aria-selected="true">
+    Categorias <span class="contador" data-contador="categorias"></span>
+  </button>
+  <button type="button" role="tab" id="aba-etiquetas" data-aba="etiquetas" aria-controls="painel-etiquetas" aria-selected="false" tabindex="-1">
+    Etiquetas <span class="contador" data-contador="etiquetas"></span>
+  </button>
+  <button type="button" role="tab" id="aba-detalhes" data-aba="detalhes" aria-controls="painel-detalhes" aria-selected="false" tabindex="-1">
+    Detalhes <span class="contador" data-contador="detalhes"></span>
+  </button>
+  <button type="button" role="tab" id="aba-sincronizacao" data-aba="sincronizacao" aria-controls="painel-sincronizacao" aria-selected="false" tabindex="-1">
+    Sincronização
+  </button>
+  <button type="button" role="tab" id="aba-avancado" data-aba="avancado" aria-controls="painel-avancado" aria-selected="false" tabindex="-1">
+    Avançado
+  </button>
+</div>
+
+<main>
+<!-- ── categorias ─────────────────────────────────────────────────────── -->
+<section class="cartao painel" role="tabpanel" id="painel-categorias"
+         aria-labelledby="aba-categorias" data-painel="categorias">
+
+  <p class="titulo-bloco">nova categoria</p>
+
+  <form class="formulario" id="f-categoria">
+    <div class="campo largo">
+      <label for="categoria-nome">Nome</label>
+      <input type="text" id="categoria-nome" name="nome" autocomplete="off"
+             placeholder="Supermercado">
+    </div>
+    <div class="campo">
+      <span class="rotulo">Natureza</span>
+      <div class="pilulas" role="group" aria-label="Natureza da categoria">
+        <button type="button" data-natureza="despesa" aria-pressed="true">despesa</button>
+        <button type="button" data-natureza="receita" aria-pressed="false">receita</button>
+      </div>
+      <input type="hidden" name="natureza" value="despesa">
+    </div>
+    <div class="campo largo">
+      <span class="rotulo">Aparece em</span>
+      <div class="chips-area" id="areas-nova" role="group" aria-label="Onde a categoria aparece">
+        <button type="button" data-area-nova="caixa" data-area="caixa" aria-pressed="true"><span class="ponto-area" aria-hidden="true"></span>em caixa</button>
+        <button type="button" data-area-nova="cartoes" data-area="cartoes" aria-pressed="true"><span class="ponto-area" aria-hidden="true"></span>cartões</button>
+        <button type="button" data-area-nova="folha" data-area="folha" aria-pressed="false"><span class="ponto-area" aria-hidden="true"></span>folha</button>
+      </div>
+      <label class="obrigatoria-nova" id="obrigatoria-nova" hidden>
+        <input type="checkbox" name="obrigatoria"> obrigatória — IR, previdência: fica fora de "gasto"
+      </label>
+    </div>
+    <div class="campo acao">
+      <button type="submit" class="principal">Criar categoria</button>
+    </div>
+
+    <p class="dica">
+      A categoria responde <em>o que é</em>. <em>De quem é</em> — carro, casa, cachorro — é
+      etiqueta, porque atravessa categorias. E loja é detalhe, não categoria.
+      <strong>Aparece em</strong> decide em que lançamentos ela é oferecida: salário base e
+      IR só na folha, supermercado só no dia a dia, saúde nos três.
+    </p>
+  </form>
+
+  <ul class="itens" id="lista-categorias"></ul>
+  <p class="proximo" id="proximo-categorias" hidden></p>
+</section>
+
+<!-- ── etiquetas ──────────────────────────────────────────────────────── -->
+<section class="cartao painel" role="tabpanel" id="painel-etiquetas"
+         aria-labelledby="aba-etiquetas" data-painel="etiquetas" hidden>
+
+  <p class="titulo-bloco">nova etiqueta</p>
+
+  <form class="formulario" id="f-etiqueta">
+    <div class="campo largo">
+      <label for="etiqueta-nome">Nome</label>
+      <input type="text" id="etiqueta-nome" name="nome" autocomplete="off" placeholder="carro">
+    </div>
+    <div class="campo acao">
+      <button type="submit" class="principal">Criar etiqueta</button>
+    </div>
+
+    <p class="dica">
+      O objeto permanente da vida de vocês, que aparece em várias categorias. A pergunta que
+      resolve a dúvida: <em>isso pode acontecer em mais de uma categoria?</em> Se sim, é
+      etiqueta. Aplicam-se corrigindo um lançamento no extrato.
+    </p>
+  </form>
+
+  <ul class="itens simples" id="lista-etiquetas"></ul>
+</section>
+
+<!-- ── detalhes ───────────────────────────────────────────────────────── -->
+<section class="cartao painel" role="tabpanel" id="painel-detalhes"
+         aria-labelledby="aba-detalhes" data-painel="detalhes" hidden>
+
+  <p class="titulo-bloco">novo detalhe</p>
+
+  <form class="formulario" id="f-detalhe">
+    <div class="campo largo">
+      <label for="detalhe-nome">Nome</label>
+      <input type="text" id="detalhe-nome" name="nome" autocomplete="off" placeholder="Mercado da esquina">
+    </div>
+    <div class="campo acao">
+      <button type="submit" class="principal">Criar detalhe</button>
+    </div>
+
+    <p class="dica">
+      O que distingue um lançamento dos outros da mesma categoria: em supermercado é o
+      mercado, em manutenção é o serviço. Normalmente nascem na própria captura; aqui é onde
+      se renomeiam, se arquivam e se fundem os repetidos.
+    </p>
+  </form>
+
+  <ul class="itens" id="lista-detalhes"></ul>
+</section>
+
+
+<!-- ── sincronização ──────────────────────────────────────────────────── -->
+<div class="painel-config" role="tabpanel" id="painel-sincronizacao" aria-labelledby="aba-sincronizacao" data-painel="sincronizacao" hidden>
+<!-- Pareado: o estado, o botão e a saída. -->
+<section class="cartao" id="painel-pareado" hidden>
+  <h2>Sincronização</h2>
+
+  <dl class="estado-sincronia" id="estado-sincronia"></dl>
+
+  <div class="botoes">
+    <button type="button" class="principal" id="b-sincronizar">Sincronizar agora</button>
+    <span class="miudo" id="progresso"></span>
+  </div>
+
+  <p class="zona-perigo" id="zona-esquecer"></p>
+</section>
+
+<!-- Não pareado: o pareamento, que é de uma vez por aparelho. -->
+<section class="cartao" id="painel-parear">
+  <h2>Parear este aparelho</h2>
+
+  <p class="nota">
+    Os lançamentos vão para um repositório <strong>privado</strong> seu no GitHub, e sobem
+    <strong>cifrados</strong>: mesmo que alguém alcance o repositório, não há o que ler lá.
+    Isto é de uma vez só por aparelho.
+  </p>
+
+  <form class="formulario" id="f-parear">
+    <div class="campo largo">
+      <label for="p-repo">Repositório dos dados</label>
+      <input type="text" id="p-repo" name="repo" autocomplete="off" spellcheck="false"
+             placeholder="usuario/financas-dados">
+      <small class="pista">O privado, no formato <code>dono/nome</code> — é o que vem depois
+        de <code>github.com/</code> na barra de endereços dele.</small>
+    </div>
+
+    <div class="campo largo">
+      <label for="p-token">Token</label>
+      <input type="password" id="p-token" name="token" autocomplete="off" spellcheck="false"
+             placeholder="github_pat_…">
+      <small class="pista">Fica só neste aparelho. Nunca entra num lançamento, nunca sobe.</small>
+    </div>
+
+    <div class="campo largo">
+      <label for="p-frase">Frase secreta da família</label>
+      <input type="password" id="p-frase" name="frase" autocomplete="off" spellcheck="false"
+             placeholder="a mesma em todos os aparelhos">
+      <small class="pista">Cifra os lançamentos antes de subirem. Guarde-a: perdida, a cópia
+        do GitHub vira ilegível.</small>
+    </div>
+
+    <div class="campo">
+      <label for="p-aparelho">Nome deste aparelho</label>
+      <input type="text" id="p-aparelho" name="aparelho" autocomplete="off"
+             placeholder="PC, Celular…">
+      <small class="pista">Vira o nome do arquivo dele lá dentro.</small>
+    </div>
+
+    <div class="campo acao">
+      <button type="submit" class="principal">Parear</button>
+    </div>
+  </form>
+
+  <details class="instrucoes">
+    <summary>Como criar o token</summary>
+    <ol>
+      <li>
+        Em <a href="https://github.com/settings/personal-access-tokens/new" target="_blank"
+        rel="noopener">github.com/settings/personal-access-tokens/new</a>, crie um token
+        <strong>fine-grained</strong>.
+      </li>
+      <li><strong>Repository access:</strong> <em>Only select repositories</em> → o repositório dos dados, e só ele.</li>
+      <li><strong>Permissions → Repository permissions → Contents:</strong> <em>Read and write</em>.</li>
+      <li><strong>Expiration:</strong> um ano. Token eterno é token esquecido.</li>
+      <li>Copie o token e cole aqui. Ele fica só neste aparelho — nunca entra num lançamento, nunca sobe pro repositório.</li>
+    </ol>
+  </details>
+
+  <details class="instrucoes">
+    <summary>Sobre a frase secreta</summary>
+    <p>
+      É ela que cifra os seus lançamentos antes de subirem. Precisa ser <strong>a mesma nos
+      dois aparelhos</strong> — o app confere, e recusa a errada antes de tocar em qualquer dado.
+    </p>
+    <p>
+      <strong>Se você perdê-la, a cópia do GitHub vira ilegível</strong>, e nem eu nem o GitHub
+      podem recuperar — é exatamente a propriedade que se quis comprar. O histórico continua
+      inteiro dentro de cada aparelho. Guarde-a no gerenciador de senhas, ou no papel que você
+      guarda bem.
+    </p>
+    <p>Frase, não PIN: quatro dígitos viram chave fraca.</p>
+  </details>
+</section>
+</div>
+
+<!-- ── avançado ───────────────────────────────────────────────────────── -->
+<section class="cartao painel" role="tabpanel" id="painel-avancado" aria-labelledby="aba-avancado" data-painel="avancado" hidden>
+  <p class="titulo-bloco">ferramentas de obra</p>
+  <p class="nota">
+    A <a href="verificacao.html">verificação</a> roda a suíte que prova que o alicerce aguenta, mostra
+    o estado da fundação e recalcula tudo do zero. Não é tela de uso: é onde se confere que o
+    app está dizendo a verdade.
+  </p>
+</section>
+</main>
+</div>
+
+</div>
+
+<dialog id="dialogo-recorrencia" class="dialogo-ciclo" aria-labelledby="titulo-recorrencia">
+  <form class="formulario" id="f-recorrencia">
+    <p class="titulo-bloco" id="titulo-recorrencia">Nova recorrência</p>
+
+    <div class="campo largo">
+      <span class="rotulo">Tipo</span>
+      <div class="pilulas" role="group" aria-label="Tipo da recorrência">
+        <button type="button" data-tipo-rec="despesa" data-tipo="despesa" aria-pressed="true">↓ despesa</button>
+        <button type="button" data-tipo-rec="receita" data-tipo="receita" aria-pressed="false">↑ receita</button>
+        <button type="button" data-tipo-rec="transferencia" data-tipo="transferencia" aria-pressed="false">→ transferência</button>
+      </div>
+    </div>
+    <div class="campo largo">
+      <label for="rec-nome">Nome</label>
+      <input type="text" id="rec-nome" name="nome" autocomplete="off" placeholder="o da categoria, se ficar vazio">
+    </div>
+    <div class="campo">
+      <label for="rec-conta">Conta</label>
+      <select id="rec-conta" name="conta"></select>
+    </div>
+    <div class="campo" id="campo-destino" hidden>
+      <label for="rec-destino">Para</label>
+      <select id="rec-destino" name="destino"></select>
+    </div>
+    <div class="campo" id="campo-categoria">
+      <label for="rec-categoria">Categoria</label>
+      <select id="rec-categoria" name="categoria"></select>
+    </div>
+    <div class="campo">
+      <label for="rec-tipo-valor">Valor</label>
+      <select id="rec-tipo-valor" name="tipoValor">
+        <option value="fixa">fixo</option>
+        <option value="variavel">estimado</option>
+      </select>
+    </div>
+    <div class="campo">
+      <label for="rec-valor" id="rotulo-valor-rec">Valor</label>
+      <input type="text" id="rec-valor" name="valor" inputmode="decimal" autocomplete="off" placeholder="0,00">
+    </div>
+    <div class="campo">
+      <label for="rec-periodicidade">Repete</label>
+      <select id="rec-periodicidade" name="periodicidade">
+        <option value="mensal">todo mês</option>
+        <option value="anual">todo ano</option>
+      </select>
+    </div>
+    <div class="campo estreito" id="campo-dia">
+      <label for="rec-dia">Dia</label>
+      <input type="number" id="rec-dia" name="dia" min="1" max="31">
+    </div>
+    <div class="campo">
+      <label for="rec-inicio">Começa em</label>
+      <input type="date" id="rec-inicio" name="inicio">
+    </div>
+    <div class="campo">
+      <label for="rec-fim">Termina em</label>
+      <input type="date" id="rec-fim" name="fim">
+    </div>
+    <p class="dica" id="dica-valor-rec"></p>
+    <p class="aviso erro" id="aviso-recorrencia" hidden></p>
+    <div class="campo acao">
+      <button type="submit" class="principal">Salvar</button>
+    </div>
+    <div class="campo acao">
+      <button type="button" id="b-cancelar-recorrencia">Cancelar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Reajuste de uma recorrência fixa: um valor novo a partir de uma data
+     (design/10 §7). Os meses antes dela continuam como eram. -->
+<dialog id="dialogo-reajuste" class="dialogo-ciclo" aria-labelledby="titulo-reajuste">
+  <form class="formulario" id="f-reajuste">
+    <p class="titulo-bloco" id="titulo-reajuste">reajuste</p>
+    <div class="campo">
+      <label for="reaj-valor">Valor novo</label>
+      <input type="text" id="reaj-valor" name="valor" inputmode="decimal" autocomplete="off">
+    </div>
+    <div class="campo">
+      <label for="reaj-desde">A partir de</label>
+      <input type="date" id="reaj-desde" name="desde">
+    </div>
+    <ul class="historico-valores" id="historico-reajuste"></ul>
+    <p class="aviso erro" id="aviso-reajuste" hidden></p>
+    <div class="campo acao">
+      <button type="submit" class="principal">Reajustar</button>
+    </div>
+    <div class="campo acao">
+      <button type="button" id="b-cancelar-reajuste">Cancelar</button>
+    </div>
+  </form>
+</dialog>
+
+<script type="module">
+  // A moldura primeiro (menu, sincronização), depois cada tela, e por último
+  // as rotas — que dizem a todas qual está à vista.
+  import { montarPagina } from './js/app/pagina.js';
+  import { iniciarRotas } from './js/app/rotas.js';
+  await montarPagina();
+  await import('./js/dinheiro.js');
+  await import('./js/gestao.js');
+  await import('./js/recorrencias.js');
+  await import('./js/ajustes.js');
+  iniciarRotas();
+</script>
+</body>
+</html>

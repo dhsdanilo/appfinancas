@@ -154,7 +154,7 @@ export function criarConferencia({ janela, titulo, raiz, aoSalvar }) {
       <p class="nao-bateu">O banco tem ${escapar(formatar(Math.abs(diferenca)))} ${diferenca > 0 ? 'a mais' : 'a menos'} que o app.</p>
       ${vencidos.length ? `<p class="miudo">vencidos sem confirmar — pagaram?</p><ul>${vencidos.map(linha).join('')}</ul>` : ''}
       ${duplicadas.length ? `<p class="miudo">possíveis duplicados</p><ul>${duplicadas.map(linha).join('')}</ul>` : ''}
-      <p class="nota">${vencidos.length || duplicadas.length ? 'Se nada disso explica, ' : 'Nenhum candidato no app: '}falta lançar algo, ou o saldo inicial da conta está errado — ele se corrige em <a href="contas.html#gestao">Suas contas</a>.</p>`;
+      <p class="nota">${vencidos.length || duplicadas.length ? 'Se nada disso explica, ' : 'Nenhum candidato no app: '}falta lançar algo, ou o saldo inicial da conta está errado — ele se corrige em <a href="app.html#/contas">Suas contas</a>, na tela de Contas.</p>`;
   }
 
   async function mostrarResultado(html, fechaDepois) {

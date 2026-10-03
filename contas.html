@@ -2,38 +2,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Contas — App Finanças</title>
-<meta name="description" content="Controle financeiro familiar, local e sincronizado.">
-<link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#16302b">
-<link rel="stylesheet" href="css/base.css">
-<link rel="stylesheet" href="css/formulario.css">
-<link rel="stylesheet" href="css/dinheiro.css">
-<link rel="stylesheet" href="css/bancada.css">
+<meta http-equiv="refresh" content="0; url=app.html#/contas">
+<title>App Finanças</title>
+<script>location.replace('app.html#/contas');</script>
 </head>
-<body class="pagina app" data-pagina="contas">
-<div class="conteudo">
-
-<header class="topo">
-  <div class="identidade">
-    <h1>Contas</h1>
-    <p class="sub">Corrente e espécie: o dinheiro que se usa.</p>
-  </div>
-</header>
-
-<main id="principal"></main>
-
-<div id="gestao"></div>
-
-</div>
-
-<script type="module">
-  // A moldura primeiro (menu, sincronização), depois o que a tela faz.
-  import { montarPagina } from './js/app/pagina.js';
-  await montarPagina();
-  await import('./js/dinheiro.js');
-  await import('./js/gestao.js');
-</script>
-</body>
+<body><p>Esta tela mudou de lugar: <a href="app.html#/contas">app.html#/contas</a>.</p></body>
 </html>

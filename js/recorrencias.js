@@ -284,6 +284,9 @@ $('f-reajuste').addEventListener('submit', async (e) => {
 $('b-cancelar-reajuste').addEventListener('click', () => $('dialogo-reajuste').close());
 
 estado.aoAplicar(() => pintar());
+document.addEventListener('app:tela', (e) => {
+  if (e.detail.tela === 'planejamento') pintar();
+});
 await pintar();
 
 function escapar(s) {

@@ -11,6 +11,7 @@
 import * as log from '../core/log.js';
 import { instalarServiceWorker } from './instalar.js';
 import { iniciarSincronia } from './sincronia-viva.js';
+import { enderecoDa } from './rotas.js';
 
 const MEU_DINHEIRO = [
   { pagina: 'contas', titulo: 'Contas', area: 'caixa' },
@@ -42,13 +43,35 @@ const NUVEM = `
     </button>
   </div>`;
 
+// Todo link leva ao app de uma página só: dentro dele, trocar de tela é só
+// trocar o endereço depois do #, sem recarregar nada.
 function link(pagina, titulo, atual, conteudo) {
-  return `<a href="${pagina}.html"${pagina === atual ? ' aria-current="page"' : ''}>${conteudo ?? titulo}</a>`;
+  return `<a href="${enderecoDa(pagina)}" data-tela="${pagina}"${pagina === atual ? ' aria-current="page"' : ''}>${conteudo ?? titulo}</a>`;
 }
+
+/** Marca no menu a tela em que se está, e fecha as folhas do celular. */
+function marcarAtual(tela) {
+  for (const a of document.querySelectorAll('.menu-lateral [data-tela], .menu-inferior [data-tela]')) {
+    if (a.dataset.tela === tela) a.setAttribute('aria-current', 'page');
+    else a.removeAttribute('aria-current');
+  }
+  const naArea = MEU_DINHEIRO.some((m) => m.pagina === tela);
+  const noMais = ['planejamento', 'configuracoes'].includes(tela);
+  const inferior = document.querySelector('.menu-inferior');
+  if (!inferior) return;
+  for (const [menu, ligado] of [['dinheiro', naArea], ['mais', noMais]]) {
+    const b = inferior.querySelector(`[data-menu="${menu}"]`);
+    if (ligado) b.setAttribute('aria-current', 'page');
+    else b.removeAttribute('aria-current');
+  }
+  for (const folha of inferior.querySelectorAll('[data-folha]')) folha.hidden = true;
+}
+
+document.addEventListener('app:tela', (e) => marcarAtual(e.detail.tela));
 
 function lateral(atual) {
   return `
-    <a class="marca-app" href="inicio.html">Finanças</a>
+    <a class="marca-app" href="${enderecoDa('inicio')}">Finanças</a>
     <div class="grupo-menu">
       ${link('inicio', 'Início', atual, `${icone('inicio')}Início`)}
       ${link('lancamentos', 'Lançamentos', atual, `${icone('lancamentos')}Lançamentos`)}

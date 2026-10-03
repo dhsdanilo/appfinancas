@@ -32,12 +32,14 @@ import { situacao, saldoDevedor } from './core/divida.js';
 
 const $ = (id) => document.getElementById(id);
 
-// ── a área desta página, quando é uma página de área ──────────────────────
+// ── a área da tela, quando é uma tela de área ─────────────────────────────
 
 const AREA_DA_PAGINA = {
   contas: 'caixa', cartoes: 'cartoes', renda: 'folha', investimentos: 'investimentos', dividas: 'dividas',
 };
-const AREA_GESTAO = AREA_DA_PAGINA[document.body.dataset.pagina] ?? null;
+// A área da tela em que se está, quando é uma tela de área. Muda com a rota,
+// sem recarregar (js/app/rotas.js).
+let AREA_GESTAO = null;
 
 const TEXTOS = {
   caixa: { novo: 'Nova conta', lista: 'Suas contas', criar: 'Criar conta', titulo: 'nova conta', exemplo: 'Conta do dia a dia' },
@@ -47,36 +49,46 @@ const TEXTOS = {
   dividas: { novo: 'Novo empréstimo', lista: 'Seus empréstimos', criar: 'Criar empréstimo', titulo: 'novo empréstimo', exemplo: 'Consignado do banco' },
 };
 
-if (AREA_GESTAO && $('gestao')) {
-  const t = TEXTOS[AREA_GESTAO];
-  $('gestao').innerHTML = `<section class="cartao gestao" data-area="${AREA_GESTAO}">
-    <h2>${t.lista}</h2>
-    <p class="nota">Toque no nome para renomear. Arquivar tira das telas de lançamento sem apagar o passado.</p>
-    <p class="aviso" id="aviso" hidden></p>
-    <ul class="itens" id="lista-contas"></ul>
-  </section>`;
-  document.body.insertAdjacentHTML(
-    'beforeend',
-    NOVA_CONTA + (AREA_GESTAO === 'cartoes' ? CICLO : '') + (AREA_GESTAO === 'dividas' ? CONTRATO : '')
-  );
+// As janelas de criar, de ciclo e de contrato existem uma vez; cada área
+// ajusta a de criar para o que ela cria.
+document.body.insertAdjacentHTML('beforeend', NOVA_CONTA + CICLO + CONTRATO);
+$('f-conta').insertAdjacentHTML('beforeend', '<p class="aviso erro" id="aviso-nova-conta" hidden></p>');
+const TODOS_OS_TIPOS = [...$('f-conta').elements.tipo.options].map((o) => ({ valor: o.value, texto: o.text }));
+
+/** Monta "Suas contas" e o botão de criar da área — ou tira, fora de uma área. */
+function montarArea(area) {
+  AREA_GESTAO = area;
+  confirmando = null;
+  fundindo = null;
+  $('b-nova-conta')?.remove();
+  $('gestao').hidden = !area;
+  if (!area) return;
+
+  const t = TEXTOS[area];
+  $('gestao').dataset.area = area;
+  $('titulo-gestao').textContent = t.lista;
+  $('aviso-gestao').hidden = true;
+
   // O formulário só oferece os tipos desta área; com um tipo só, nem pergunta.
-  const tipos = AREAS.find((a) => a.id === AREA_GESTAO).tipos;
+  const tipos = AREAS.find((a) => a.id === area).tipos;
   const select = $('f-conta').elements.tipo;
-  for (const op of [...select.options]) if (!tipos.includes(op.value)) op.remove();
+  select.innerHTML = TODOS_OS_TIPOS.filter((o) => tipos.includes(o.valor))
+    .map((o) => `<option value="${o.valor}">${escapar(o.texto)}</option>`)
+    .join('');
   select.closest('.campo').hidden = tipos.length < 2;
   $('titulo-nova-conta').textContent = t.titulo;
   $('f-conta').elements.nome.placeholder = t.exemplo;
   // A fonte de renda não guarda saldo: é passagem, e zera a cada holerite (D25).
-  if (AREA_GESTAO === 'folha') {
-    for (const nome of ['saldo', 'data']) $('f-conta').elements[nome].closest('.campo').hidden = true;
-  }
+  for (const nome of ['saldo', 'data']) $('f-conta').elements[nome].closest('.campo').hidden = area === 'folha';
   $('b-criar-conta').textContent = t.criar;
-  $('f-conta').insertAdjacentHTML('beforeend', '<p class="aviso erro" id="aviso-nova-conta" hidden></p>');
-  // O botão de criar mora na barra da página, ao lado de lançar e transferir.
+
+  // O botão de criar mora na barra da tela, ao lado de lançar e transferir.
   document.querySelector('.acoes-topo')?.insertAdjacentHTML(
     'beforeend',
     `<button type="button" id="b-nova-conta">${t.novo}</button>`
   );
+  $('b-nova-conta').addEventListener('click', abrirNovaConta);
+  if (app) pintar();
 }
 
 const SINGULAR = { contas: 'conta', categorias: 'categoria', etiquetas: 'etiqueta', detalhes: 'detalhe' };
@@ -111,7 +123,9 @@ function mostrarAba(nome) {
   for (const painel of document.querySelectorAll('[data-painel]')) {
     painel.hidden = painel.dataset.painel !== nome;
   }
-  if (location.hash !== `#${nome}`) history.replaceState(null, '', `#${nome}`);
+  // A aba entra no endereço, para voltar a ela (app.html#/configuracoes/etiquetas).
+  const rota = `#/configuracoes/${nome}`;
+  if (location.hash.startsWith('#/configuracoes') && location.hash !== rota) history.replaceState(null, '', rota);
 }
 
 for (const aba of $('abas-config')?.querySelectorAll('[data-aba]') ?? []) {
@@ -171,8 +185,7 @@ function pintarDonos() {
  * "quanto eu tenho em caixa"; três blocos com subtotal respondem sem contar
  * nada na cabeça.
  */
-const BLOCOS_DE_CONTA = AREAS.map((a) => ({ ...a, titulo: a.titulo.toLowerCase() }))
-  .filter((a) => !AREA_GESTAO || a.id === AREA_GESTAO);
+const BLOCOS_DE_CONTA = AREAS.map((a) => ({ ...a, titulo: a.titulo.toLowerCase() }));
 
 /**
  * O número da conta na lista. Na dívida é o saldo devedor (da foto ou estimado
@@ -928,7 +941,7 @@ $('dialogo-ciclo')?.addEventListener('close', async () => {
 $('f-conta')?.elements.tipo.addEventListener('change', mostrarCamposDeCartao);
 
 // "Nova conta", "Novo cartão", "Novo empréstimo"… — a janela de criar da área.
-$('b-nova-conta')?.addEventListener('click', () => {
+function abrirNovaConta() {
   $('f-conta').reset();
   $('f-conta').elements.data.value = hoje();
   avisar('');
@@ -936,7 +949,7 @@ $('b-nova-conta')?.addEventListener('click', () => {
   pintarPagadoras();
   $('dialogo-nova-conta').showModal();
   $('f-conta').elements.nome.focus();
-});
+}
 $('b-cancelar-conta')?.addEventListener('click', () => $('dialogo-nova-conta').close());
 
 /** As áreas escolhidas no formulário de criar. */
@@ -987,9 +1000,12 @@ function formatarSimples(centavos) {
   return `${negativo ? '−' : ''}R$ ${reais},${String(abs % 100).padStart(2, '0')}`;
 }
 
-/** O aviso vai para onde se está olhando: a janela de criar, se aberta. */
+/**
+ * O aviso vai para onde se está olhando: a janela de criar, se aberta; a lista
+ * da área, numa tela de área; o topo, nas Configurações.
+ */
 function avisar(mensagem) {
-  const el = $('dialogo-nova-conta')?.open ? $('aviso-nova-conta') : $('aviso');
+  const el = $('dialogo-nova-conta')?.open ? $('aviso-nova-conta') : AREA_GESTAO ? $('aviso-gestao') : $('aviso');
   if (!el) return;
   el.textContent = mensagem;
   el.hidden = !mensagem;
@@ -1025,11 +1041,14 @@ for (const [lista, especie] of [
   if ($(lista)) ligarLista(lista, especie);
 }
 
-mostrarAba(location.hash.slice(1) || 'categorias');
-if ($('f-conta')) {
-  $('f-conta').elements.data.value = hoje();
-  mostrarCamposDeCartao();
-}
+// A rota manda: tela de área monta a gestão dela; Configurações mostra a aba
+// pedida no endereço.
+document.addEventListener('app:tela', (e) => {
+  montarArea(e.detail.grupo === 'dinheiro' ? AREA_DA_PAGINA[e.detail.tela] ?? null : null);
+  if (e.detail.tela === 'configuracoes') mostrarAba(e.detail.sub ?? 'categorias');
+});
+
+$('f-conta').elements.data.value = hoje();
 await recarregar();
 // O que muda em outra parte da página (um lançamento, um contrato) muda o uso
 // e os saldos daqui.
