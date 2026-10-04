@@ -12,6 +12,8 @@ import { deTexto, formatar } from '../core/dinheiro.js';
 import { hoje, diaCurto } from '../core/datas.js';
 import { visiveis } from '../core/lancamentos.js';
 import { CLASSES, CLASSES_POR_COTAS, nomeDaClasse, posicao, contaDoDinheiro, contaDaOperacao } from '../core/investimentos.js';
+import { lugarDaConta, envelopesAtivos } from '../core/envelopes.js';
+import { ligarDonos, criarJanelasDeEnvelope } from './envelope.js';
 
 const MARCACAO = `
 <dialog id="dialogo-ativo" class="dialogo-captura dialogo-ativo" data-area="investimentos" aria-labelledby="titulo-ativo">
@@ -78,8 +80,15 @@ const MARCACAO = `
       </div>
       <p class="total-operacao" data-ativo="total" hidden></p>
       <p class="nota" data-ativo="pista"></p>
+      <!-- De quem é o dinheiro que sai: só quando há envelope na origem (design/11 §4). -->
+      <div class="donos-saida" data-ativo="donos" hidden></div>
       <p class="recado" data-ativo="recado" hidden></p>
       <div class="acoes"><button type="button" class="principal" data-ativo="b-op">Registrar</button></div>
+      <!-- O que chegou sem dono: distribuir agora, ou deixar (design/11 §3.3). -->
+      <p class="recado oferta-distribuir" data-ativo="oferta" hidden>
+        <span data-ativo="texto-oferta"></span>
+        <button type="button" class="elo" data-ativo="b-distribuir">distribuir</button>
+      </p>
 
       <div data-ativo="parte-lotes" hidden>
         <p class="miudo titulo-linhas">compras na mão</p>
@@ -125,6 +134,20 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
   let corrigindo = null;
 
   const recadar = (t) => { el('recado').textContent = t; el('recado').hidden = !t; };
+  const donos = ligarDonos(el('donos'));
+  const envelopes = criarJanelasDeEnvelope({ aoSalvar: async () => { if (janela.open) await recarregar(); } });
+  // Os donos que a operação sendo corrigida levou.
+  let donosDaCorrecao = [];
+  const ofertar = (t) => { el('texto-oferta').textContent = t; el('oferta').hidden = !t; };
+
+  /** De onde sai o dinheiro da operação: a conta na aplicação, o ativo no resgate. */
+  function lugarDeSaida() {
+    if (op === 'aplicacao') {
+      const conta = contaDaOperacao(app, app.contas[contaId], el('data').value || hoje());
+      return lugarDaConta(app, conta)?.id ?? null;
+    }
+    return op === 'resgate' ? ativo.id : null;
+  }
 
   function pintar() {
     const conta = app.contas[contaId];
@@ -185,6 +208,12 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
       n('rendeu', `${p.rendeu >= 0 ? '+' : '−'}${formatar(Math.abs(p.rendeu))}${p.aplicado ? ` · ${(p.pct * 100).toFixed(1).replace('.', ',')}%` : ''}`);
 
     for (const b of el('tipos').querySelectorAll('[data-op]')) b.setAttribute('aria-pressed', String(b.dataset.op === op));
+    const lugar = lugarDeSaida();
+    donos.pintar(app, lugar, {
+      doMovimento: donosDaCorrecao,
+      valores: donos.lugar() === lugar && !el('donos').hidden ? donos.ler() : null,
+      dia: el('data').value || hoje(),
+    });
     el('rotulo-valor').textContent = op === 'avaliacao' ? 'quanto vale hoje' : 'valor';
     const antesDoApp = op !== 'avaliacao' && !contaDaOperacao(app, conta, el('data').value || hoje());
     el('pista').textContent = antesDoApp
@@ -341,7 +370,11 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
       return;
     }
     if (!valor || valor < 0) { recadar('Falta o valor.'); return; }
+    const deQuem = op === 'aplicacao' || op === 'resgate' ? donos.ler() : [];
+    const recusa = deQuem.length ? donos.conferir(valor) : '';
+    if (recusa) { recadar(recusa); return; }
     recadar('');
+    ofertar('');
     if (op === 'avaliacao') {
       await estado.aplicarEvento('ativo.avaliado', { id: ativo.id, data, valor });
     } else {
@@ -354,11 +387,13 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
           valor,
           ...extra,
           contaId: contaDaOperacao(app, conta, data),
+          donos: deQuem,
           dataCompetencia: data,
           dataCaixa: data,
           confirmado: data <= hoje(),
         });
         corrigindo = null;
+        donosDaCorrecao = [];
         for (const campo of ['valor', 'quantidade', 'preco', 'taxas']) el(campo).value = '';
         await recarregar();
         if (aoSalvar) await aoSalvar();
@@ -371,6 +406,7 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
         contaId: contaDaOperacao(app, conta, data),
         ativoId: ativo.id,
         ...extra,
+        donos: deQuem,
         categoriaId: null,
         dataCompetencia: data,
         dataCaixa: data,
@@ -381,6 +417,13 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
     for (const campo of ['valor', 'quantidade', 'preco', 'taxas']) el(campo).value = '';
     await recarregar();
     if (aoSalvar) await aoSalvar();
+    // Chegou dinheiro sem dono num ativo, e há envelopes: oferece distribuir
+    // ali mesmo. Ignorar é deixar sem dono (design/11 §3.3).
+    const semDono = valor - deQuem.reduce((t, d) => t + d.valor, 0);
+    const inteiro = envelopesAtivos(app).some((v) => (v.inteiros ?? []).includes(ativo.id));
+    if (op === 'aplicacao' && data <= hoje() && semDono > 0 && !inteiro && envelopesAtivos(app).length) {
+      ofertar(`${formatar(semDono)} chegaram sem dono em ${ativo.nome}.`);
+    }
   }
 
   // ── eventos ─────────────────────────────────────────────────────────────
@@ -407,7 +450,9 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
     if (!b) return;
     op = b.dataset.op;
     corrigindo = null;
+    donosDaCorrecao = [];
     recadar('');
+    ofertar('');
     pintar();
     focarPrimeiro();
   });
@@ -428,6 +473,9 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
       if (!l) return;
       corrigindo = l.id;
       op = l.tipo;
+      donosDaCorrecao = l.donos ?? [];
+      el('donos').hidden = true;
+      ofertar('');
       el('data').value = l.dataCompetencia;
       el('valor').value = formatar(l.valor, { comPrefixo: false });
       el('quantidade').value = l.quantidade ? String(l.quantidade).replace('.', ',') : '';
@@ -448,6 +496,10 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
     await estado.aplicarEvento('lancamento.removido', { id: b.dataset.apagarOp });
     await recarregar();
     if (aoSalvar) await aoSalvar();
+  });
+  el('b-distribuir').addEventListener('click', async () => {
+    ofertar('');
+    await envelopes.abrirDistribuir(ativo.id);
   });
   el('b-editar').addEventListener('click', () => {
     editandoFicha = true;
@@ -504,6 +556,9 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
       op = opInicial;
       editandoFicha = false;
       corrigindo = null;
+      donosDaCorrecao = [];
+      el('donos').hidden = true;
+      ofertar('');
       for (const campo of ['valor', 'quantidade', 'preco', 'taxas']) el(campo).value = '';
       el('data').value = hoje();
       recadar('');

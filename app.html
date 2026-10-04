@@ -42,6 +42,19 @@
   </div>
 </div>
 
+<!-- ── envelopes: de quem é o dinheiro guardado (design/11) ───────────── -->
+<div data-grupo="envelopes" hidden>
+  <div class="barra-acoes" data-area="envelopes">
+    <div class="acoes-topo">
+      <button type="button" class="principal" id="b-novo-envelope">Novo envelope</button>
+    </div>
+  </div>
+  <section class="cartao painel" id="painel-envelopes" data-area="envelopes">
+    <div class="subabas" role="group" aria-label="Envelope" id="subabas-envelopes"></div>
+    <div id="corpo-envelopes"></div>
+  </section>
+</div>
+
 <!-- ── planejamento ───────────────────────────────────────────────────── -->
 <div data-grupo="planejamento" hidden>
 <main>
@@ -390,6 +403,7 @@
   import { iniciarRotas } from './js/app/rotas.js';
   await montarPagina();
   await import('./js/dinheiro.js');
+  await import('./js/envelopes.js');
   await import('./js/gestao.js');
   await import('./js/recorrencias.js');
   await import('./js/ajustes.js');

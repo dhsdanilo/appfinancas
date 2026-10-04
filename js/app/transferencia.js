@@ -22,6 +22,8 @@ import { MARCACAO_CAMPO_VALOR, ligarCampoValor } from './campo-valor.js';
 import { ligarZonaDePerigo } from './zona-perigo.js';
 import { areaDaConta, opcoesDeConta } from './areas.js';
 import { pularParcela, corrigirParcela, voltarAoContrato } from './contrato.js';
+import { lugarDaConta } from '../core/envelopes.js';
+import { ligarDonos } from './envelope.js';
 
 // Todas as contas que não estão arquivadas. Cartão, dívida e folha entram
 // porque o dinheiro passa por elas de verdade: pagar a fatura é corrente →
@@ -49,6 +51,9 @@ const MARCACAO = `
       <select data-papel="destino" aria-label="Conta de destino"></select>
     </label>
   </div>
+
+  <!-- De quem é o dinheiro que sai, quando há envelope na origem (design/11 §4). -->
+  <div class="donos-saida" data-papel="donos" hidden></div>
 
   <p class="recado" data-papel="recado" hidden></p>
 
@@ -97,6 +102,18 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
     },
   });
 
+  const donos = ligarDonos(el('donos'));
+  // Só repinta os donos quando muda a origem: a conta de quem é dono de quê
+  // não acompanha cada tecla do valor.
+  let donosDe = undefined;
+  function pintarDonos(forcar = false) {
+    if (!app) return;
+    const lugar = lugarDaConta(app, origem())?.id ?? null;
+    if (!forcar && lugar === donosDe) return;
+    donosDe = lugar;
+    donos.pintar(app, lugar, { doMovimento: editando?.donos ?? [], dia: data });
+  }
+
   const origem = () => el('origem').value || null;
   const destino = () => el('destino').value || null;
 
@@ -114,6 +131,7 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
 
   function pintarAcao() {
     pintarAreas();
+    pintarDonos();
     el('b-salvar').disabled = !pronto();
     el('b-salvar').textContent = editando || daParcela ? 'Salvar' : pagandoFatura() ? 'Pagar fatura' : 'Transferir';
     if (aoMudarTitulo) aoMudarTitulo(daParcela ? 'Corrigir parcela' : pagandoFatura() ? 'Pagar fatura' : 'Transferência');
@@ -121,10 +139,10 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
 
     // A recusa diz o que resolve, nunca só que não dá.
     const mesma = origem() && origem() === destino();
-    el('recado').textContent = mesma
-      ? 'Escolha duas contas diferentes: transferência é dinheiro trocando de bolso.'
-      : '';
-    el('recado').hidden = !mesma;
+    const recusa = mesma ? 'Escolha duas contas diferentes: transferência é dinheiro trocando de bolso.' : donos.conferir(valor.centavos());
+    el('recado').textContent = recusa;
+    el('recado').hidden = !recusa;
+    if (recusa) el('b-salvar').disabled = true;
   }
 
   function contasDisponiveis() {
@@ -200,6 +218,7 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
       categoriaId: null,
       confirmado: nasceConfirmado({ manual: true, dataCaixa: data }),
       recorrenciaId: daSerie,
+      donos: donos.ler(),
       lancadoPor: ap?.id ?? null,
     });
     daSerie = null;
@@ -216,6 +235,8 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
       contaDestinoId: destino(),
       dataCaixa: data,
     });
+    const deQuem = donos.ler();
+    if (JSON.stringify(deQuem) !== JSON.stringify(editando.donos ?? [])) mudancas.donos = deQuem;
     if (Object.keys(mudancas).length === 0) return true;
 
     await estado.aplicarEvento('lancamento.alterado', { id: editando.id, ...mudancas });
@@ -249,6 +270,7 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
   });
 
   el('origem').addEventListener('change', pintarAcao);
+  el('donos').addEventListener('input', pintarAcao);
   el('destino').addEventListener('change', pintarAcao);
   el('data').addEventListener('change', () => {
     if (!el('data').value) { pintarData(); return; }
@@ -261,6 +283,7 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
     app = await estado.calcular();
     pintarContas();
     pintarData();
+    pintarDonos(true);
     perigo.mostrar(Boolean(editando));
     valor.pintar();
     pintarAcao();
@@ -288,6 +311,7 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
       valor.limpar();
       el('origem').value = '';
       el('destino').value = '';
+      pintarDonos(true);
       pintarData();
       perigo.mostrar(false);
       pintarAcao();

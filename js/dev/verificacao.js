@@ -25,6 +25,7 @@ import { categoriaNaArea, areasParaConta } from '../app/areas.js';
 import * as holerite from '../core/holerite.js';
 import * as divida from '../core/divida.js';
 import * as investimentos from '../core/investimentos.js';
+import * as envelopes from '../core/envelopes.js';
 
 const BANCO_DE_TESTE = 'appfinancas-teste';
 
@@ -1799,6 +1800,141 @@ caso('investimento', 'aplicação de antes de a conta entrar no app não mexe ne
   igual(lanc.saldoReal(e, 'cc'), 1000000, 'a corrente não perdeu nada');
   const p = investimentos.posicao(e, 'cdb', '2026-09-01');
   igual([p.desde, p.rendeu, Math.round(p.aoAno * 1000)], ['2025-09-01', 120000, 120], 'um ano: rendeu 12%, 12% ao ano');
+});
+
+// ── envelopes (design/11) ─────────────────────────────────────────────────
+
+/** Uma corrente, um banco com CDB e os envelopes do exemplo dele. */
+async function baseDeEnvelopes() {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const ev = (t, d) => estado.aplicarEvento(t, d);
+  await ev('conta.criada', { id: 'cc', nome: 'Corrente', tipo: 'corrente', saldoInicial: 500000 });
+  await ev('conta.criada', { id: 'inv', nome: 'Banco', tipo: 'investimento', caixaEm: 'cc' });
+  await ev('ativo.criado', { id: 'cdb', contaId: 'inv', nome: 'CDB', classe: 'renda_fixa' });
+  for (const [id, nome] of [['res', 'Reserva'], ['ipva', 'IPVA 2027'], ['via', 'Viagem']]) {
+    await ev('envelope.criado', { id, nome });
+  }
+  return ev;
+}
+
+const aporte = (id, lugarId, para, valor, data, de = null) =>
+  estado.aplicarEvento('envelope.alocado', { id, lugarId, de, para, valor, data });
+
+caso('envelope', '★ distribuir: aportes do sem dono, e o rendimento segue a fração', async () => {
+  const ev = await baseDeEnvelopes();
+  await ev('lancamento.registrado', { id: 'a1', tipo: 'aplicacao', valor: 2000000, contaId: null, ativoId: 'cdb', dataCompetencia: '2025-01-10', confirmado: true });
+  await aporte('x1', 'cdb', 'res', 1500000, '2025-01-10');
+  await aporte('x2', 'cdb', 'ipva', 135000, '2025-01-10');
+  let r = envelopes.donosNoDia(await estado.calcular(), '2025-01-10');
+  igual([r.porEnvelope.get('res').total, r.porEnvelope.get('ipva').total, r.porLugar.get('cdb').semDono], [1500000, 135000, 365000],
+    'chegou sem dono, e os aportes deram dono');
+  await ev('ativo.avaliado', { id: 'cdb', data: '2025-06-01', valor: 2020000 });
+  r = envelopes.donosNoDia(await estado.calcular(), '2025-06-01');
+  igual([r.porEnvelope.get('res').total, r.porEnvelope.get('ipva').total, r.porLugar.get('cdb').semDono], [1515000, 136350, 368650],
+    'o CDB rendeu 1%: cada um na sua proporção');
+  igual([r.porEnvelope.get('res').posto, r.porEnvelope.get('res').rendeu], [1500000, 15000], 'aportou 15.000, rendeu 150');
+  igual(r.porEnvelope.get('res').extrato.map((x) => x.tipo), ['aporte'], 'o extrato do envelope tem o aporte');
+});
+
+caso('envelope', '★ mover leva o dono: o IPVA da corrente vai para o CDB sem mudar de valor', async () => {
+  const ev = await baseDeEnvelopes();
+  await aporte('x1', 'cc', 'ipva', 100000, '2025-02-01');
+  let r = envelopes.donosNoDia(await estado.calcular(), '2025-02-01');
+  igual([r.porLugar.get('cc').donos.get('ipva'), r.porLugar.get('cc').semDono], [100000, 400000], 'na corrente: valor fixo do IPVA, o resto sem dono');
+  await ev('lancamento.registrado', {
+    id: 'a1', tipo: 'aplicacao', valor: 200000, contaId: 'cc', ativoId: 'cdb', dataCompetencia: '2025-02-05', confirmado: true,
+    donos: [{ envelopeId: 'ipva', valor: 100000 }],
+  });
+  await ev('lancamento.registrado', { id: 'd1', tipo: 'despesa', valor: 50000, contaId: 'cc', categoriaId: 'x', dataCompetencia: '2025-02-06', confirmado: true });
+  r = envelopes.donosNoDia(await estado.calcular(), '2025-02-10');
+  igual([r.porLugar.get('cc').donos.get('ipva') ?? 0, r.porLugar.get('cc').semDono], [0, 250000], 'a corrente: o IPVA saiu, o gasto saiu do sem dono');
+  igual([r.porLugar.get('cdb').donos.get('ipva'), r.porLugar.get('cdb').semDono], [100000, 100000], 'no CDB: IPVA 1.000 + sem dono 1.000');
+  igual([r.porEnvelope.get('ipva').total, r.porEnvelope.get('ipva').posto], [100000, 100000], 'o IPVA só mudou de lugar');
+  igual(r.porEnvelope.get('ipva').extrato.map((x) => x.tipo), ['movido', 'aporte'], 'e o extrato mostra a mudança de lugar');
+
+  // Resgatar dizendo o dono: chega à corrente ainda sendo dele (D18).
+  await ev('lancamento.registrado', {
+    id: 'r1', tipo: 'resgate', valor: 30000, contaId: 'cc', ativoId: 'cdb', dataCompetencia: '2025-03-01', confirmado: true,
+    donos: [{ envelopeId: 'ipva', valor: 30000 }],
+  });
+  // Sem dizer: sai do sem dono.
+  await ev('lancamento.registrado', { id: 'r2', tipo: 'resgate', valor: 20000, contaId: 'cc', ativoId: 'cdb', dataCompetencia: '2025-03-01', confirmado: true });
+  r = envelopes.donosNoDia(await estado.calcular(), '2025-03-02');
+  igual([r.porLugar.get('cdb').donos.get('ipva'), r.porLugar.get('cdb').semDono], [70000, 80000], 'no CDB: cada resgate saiu de quem devia');
+  igual(r.porLugar.get('cc').donos.get('ipva'), 30000, 'na corrente, o resgatado continua do IPVA');
+  igual(r.porEnvelope.get('ipva').total, 100000, 'o envelope não mudou');
+});
+
+caso('envelope', 'no mesmo dia vale a ordem do registro: aportar na corrente e logo aplicar', async () => {
+  const ev = await baseDeEnvelopes();
+  await aporte('x1', 'cc', 'ipva', 30000, '2025-04-01');
+  await ev('lancamento.registrado', {
+    id: 'a1', tipo: 'aplicacao', valor: 50000, contaId: 'cc', ativoId: 'cdb', dataCompetencia: '2025-04-01', confirmado: true,
+    donos: [{ envelopeId: 'ipva', valor: 30000 }],
+  });
+  const r = envelopes.donosNoDia(await estado.calcular(), '2025-04-01');
+  igual([r.porLugar.get('cdb').donos.get('ipva'), r.porLugar.get('cc').donos.get('ipva') ?? 0], [30000, 0], 'o IPVA foi junto para o CDB');
+});
+
+caso('envelope', 'o aporte vale a partir da data: o rendimento de antes fica com o sem dono', async () => {
+  const ev = await baseDeEnvelopes();
+  await ev('lancamento.registrado', { id: 'a1', tipo: 'aplicacao', valor: 1000000, contaId: null, ativoId: 'cdb', dataCompetencia: '2025-01-01', confirmado: true });
+  await ev('ativo.avaliado', { id: 'cdb', data: '2025-06-01', valor: 1100000 });
+  await aporte('x1', 'cdb', 'via', 550000, '2025-07-01');
+  await ev('ativo.avaliado', { id: 'cdb', data: '2025-12-01', valor: 1210000 });
+  const r = envelopes.donosNoDia(await estado.calcular(), '2025-12-01');
+  igual([r.porEnvelope.get('via').total, r.porEnvelope.get('via').rendeu], [605000, 55000], 'metade do CDB desde julho: rendeu só o de depois');
+  igual(r.porLugar.get('cdb').semDono, 605000, 'a outra metade, sem dono');
+});
+
+caso('envelope', 'o valor informado hoje vale para o aporte de hoje: distribui-se o que está lá', async () => {
+  const ev = await baseDeEnvelopes();
+  await ev('lancamento.registrado', { id: 'a1', tipo: 'aplicacao', valor: 1000000, contaId: null, ativoId: 'cdb', dataCompetencia: '2025-01-01', confirmado: true });
+  await ev('ativo.avaliado', { id: 'cdb', data: '2025-10-03', valor: 1210000 });
+  await aporte('x1', 'cdb', 'ipva', 135000, '2025-10-03');
+  const r = envelopes.donosNoDia(await estado.calcular(), '2025-10-03');
+  igual([r.porEnvelope.get('ipva').total, r.porLugar.get('cdb').semDono], [135000, 1075000], 'aportou 1.350: tem 1.350');
+});
+
+caso('envelope', '"inteiro": o que chega no ativo é do envelope, e o rendimento todo também', async () => {
+  const ev = await baseDeEnvelopes();
+  await ev('ativo.criado', { id: 'prev', contaId: 'inv', nome: 'Previdência', classe: 'previdencia' });
+  await ev('envelope.criado', { id: 'apos', nome: 'Aposentadoria', inteiros: ['prev'] });
+  await ev('lancamento.registrado', { id: 'a1', tipo: 'aplicacao', valor: 100000, contaId: null, ativoId: 'prev', dataCompetencia: '2025-01-01', confirmado: true });
+  await ev('lancamento.registrado', { id: 'a2', tipo: 'aplicacao', valor: 50000, contaId: 'cc', ativoId: 'prev', dataCompetencia: '2025-02-01', confirmado: true });
+  await ev('ativo.avaliado', { id: 'prev', data: '2025-03-01', valor: 160000 });
+  const r = envelopes.donosNoDia(await estado.calcular(), '2025-03-01');
+  igual([r.porEnvelope.get('apos').total, r.porLugar.get('prev').semDono], [160000, 0], 'tudo da aposentadoria');
+  igual([r.porEnvelope.get('apos').posto, r.porEnvelope.get('apos').rendeu], [150000, 10000], 'entrou 1.500, rendeu 100');
+});
+
+caso('envelope', 'remanejar é resgatar de um e aportar no outro, e os dois extratos mostram', async () => {
+  await baseDeEnvelopes();
+  await aporte('x1', 'cc', 'via', 50000, '2025-02-01');
+  await aporte('x2', 'cc', 'ipva', 30000, '2025-02-02', 'via');
+  await aporte('x3', 'cc', null, 5000, '2025-02-03', 'via');
+  const r = envelopes.donosNoDia(await estado.calcular(), '2025-02-05');
+  igual([r.porEnvelope.get('via').total, r.porEnvelope.get('ipva').total, r.porLugar.get('cc').semDono], [15000, 30000, 455000],
+    'viagem 500 − 300 para o IPVA − 50 de volta ao sem dono');
+  igual(r.porEnvelope.get('via').extrato.map((x) => x.tipo), ['resgate', 'remanejo', 'aporte'], 'o extrato da viagem');
+  igual(r.porEnvelope.get('ipva').extrato.map((x) => [x.tipo, x.de]), [['remanejo', 'via']], 'o do IPVA diz de onde veio');
+});
+
+caso('envelope', 'gastar dinheiro de envelope sem dizer deixa o sem dono negativo à vista', async () => {
+  const ev = await baseDeEnvelopes();
+  await aporte('x1', 'cc', 'ipva', 400000, '2025-02-01');
+  await ev('lancamento.registrado', { id: 'd1', tipo: 'despesa', valor: 200000, contaId: 'cc', categoriaId: 'x', dataCompetencia: '2025-02-06', confirmado: true });
+  const r = envelopes.donosNoDia(await estado.calcular(), '2025-02-10');
+  igual([r.porLugar.get('cc').donos.get('ipva'), r.porLugar.get('cc').semDono], [400000, -100000], 'o IPVA continua; o sem dono fica −1.000');
+});
+
+caso('envelope', 'projeto: "no ritmo, deveria ter", quanto falta e quanto por mês', () => {
+  const ipva = { alvoValor: 180000, inicio: '2026-02-01', alvoData: '2027-01-31' };
+  const n = envelopes.numerosDoEnvelope(ipva, 100000, '2026-10-03');
+  igual([n.deveriaTer, n.falta, n.mesesRestantes, n.porMes], [135000, 80000, 3, 26667], 'fev a out = 9 de 12 meses');
+  igual(envelopes.numerosDoEnvelope({ alvoValor: 3000000 }, 1200000, '2026-10-03').deveriaTer, null, 'o que acumula não tem ritmo');
+  igual(envelopes.numerosDoEnvelope(ipva, 190000, '2026-10-03').completo, true, 'chegou no alvo: completo');
 });
 
 // ── apoio ─────────────────────────────────────────────────────────────────

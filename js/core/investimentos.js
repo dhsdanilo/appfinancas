@@ -200,7 +200,7 @@ function periodo(ops, dia, rendeu, aplicado) {
 }
 
 /** O saldo de uma conta até um dia (o que se moveu até ali). */
-function saldoAte(estado, contaId, dia) {
+export function saldoAte(estado, contaId, dia) {
   const conta = estado.contas[contaId];
   let saldo = conta?.saldoInicial ?? 0;
   for (const l of visiveis(estado, dia)) {

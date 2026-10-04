@@ -4,8 +4,8 @@
 // (design/02-modelo-de-dados.md §2). Cada redutor recebe o rascunho do estado e
 // o altera no lugar; a ordem de aplicação é garantida por quem chama.
 //
-// Cobertos: pessoa, conta, categoria e lançamento. Faltam recorrência,
-// envelope, holerite e os demais tipos de lançamento — Fase 3 em diante.
+// Cobertos: pessoa, conta, categoria, lançamento, recorrência, ativo e
+// envelope (com as alocações: o aporte e o resgate do envelope).
 
 import { datarNoCartao, temCiclo } from './cartao.js';
 
@@ -25,7 +25,7 @@ export const AREAS_PADRAO = ['caixa', 'cartoes'];
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 18;
+export const VERSAO_ESTADO = 20;
 
 export function estadoVazio() {
   return {
@@ -39,6 +39,11 @@ export function estadoVazio() {
     // (design/10 §3). O que eles valem sai das operações e das avaliações.
     ativos: {},
     lancamentos: {},
+    // Dinheiro com destino declarado (design/11). De quem é cada pedaço sai
+    // das alocações — o aporte e o resgate do envelope — e dos `donos` de cada
+    // movimento entre lugares.
+    envelopes: {},
+    alocacoes: {},
     // Fusões feitas, com o que foi movido — é o que permite desfazer (02 §3.15).
     fusoes: {},
     // Tipos de evento que este app não conhece. Não é erro fatal (um aparelho
@@ -271,6 +276,74 @@ export const redutores = {
     delete e.ativos[d.id];
   },
 
+  // ── envelope (design/11) ────────────────────────────────────────────────
+  //
+  // Projeto tem data (IPVA 2027, viagem); o que acumula, não (reserva,
+  // aposentadoria). Sem campo `tipo`: o comportamento vem do que está
+  // preenchido (D20, design/11 §1).
+
+  'envelope.criado'(e, d) {
+    e.envelopes ??= {};
+    e.envelopes[d.id] = {
+      id: d.id,
+      nome: d.nome,
+      inicio: d.inicio ?? null,
+      alvoValor: d.alvoValor ?? null,
+      alvoData: d.alvoData ?? null,
+      // Os lugares que são inteiros dele: o que chega ali sem dono é dele.
+      inteiros: d.inteiros ?? [],
+      arquivado: false,
+    };
+  },
+
+  'envelope.alterado'(e, d) {
+    const v = e.envelopes?.[d.id];
+    if (!v) return;
+    for (const campo of ['nome', 'inicio', 'alvoValor', 'alvoData', 'inteiros']) {
+      if (d[campo] !== undefined) v[campo] = d[campo];
+    }
+    // Um lugar é inteiro de um envelope só.
+    if (d.inteiros) {
+      for (const outro of Object.values(e.envelopes)) {
+        if (outro.id !== v.id) outro.inteiros = outro.inteiros.filter((l) => !d.inteiros.includes(l));
+      }
+    }
+  },
+
+  'envelope.arquivado'(e, d) {
+    const v = e.envelopes?.[d.id];
+    if (v) v.arquivado = d.arquivado !== false;
+  },
+
+  'envelope.removido'(e, d) {
+    // Só chega aqui o envelope que nunca recebeu nada.
+    delete e.envelopes?.[d.id];
+  },
+
+  // A alocação: muda o dono do dinheiro num lugar, sem mexer em saldo de
+  // conta nenhuma (02 §3.6, design/11 §3). de nulo = vem do sem dono (aporte);
+  // para nulo = volta ao sem dono (resgate); os dois = remanejamento.
+  'envelope.alocado'(e, d, evento) {
+    e.alocacoes ??= {};
+    e.alocacoes[d.id] = {
+      // A ordem do registro: no mesmo dia, aporte e movimento valem na ordem
+      // em que foram feitos (design/11 §4).
+      lc: evento?.lc ?? 0,
+      id: d.id,
+      lugarId: d.lugarId,
+      de: d.de ?? null,
+      para: d.para ?? null,
+      valor: d.valor,
+      data: d.data,
+      removida: false,
+    };
+  },
+
+  'envelope.alocacaoRemovida'(e, d) {
+    const a = e.alocacoes?.[d.id];
+    if (a) a.removida = true;
+  },
+
   // ── categoria ───────────────────────────────────────────────────────────
 
   'categoria.criada'(e, d) {
@@ -478,9 +551,11 @@ export const redutores = {
 
   // ── lançamento ──────────────────────────────────────────────────────────
 
-  'lancamento.registrado'(e, d) {
+  'lancamento.registrado'(e, d, evento) {
     e.lancamentos[d.id] = {
       id: d.id,
+      // A ordem do registro, para o que acontece no mesmo dia (design/11 §4).
+      lc: evento?.lc ?? 0,
       tipo: d.tipo,                       // despesa · receita · transferencia · ...
       valor: d.valor,                     // centavos, positivo (02 §1)
       // As três datas, sempre presentes. Nos lançamentos comuns são iguais; no
@@ -518,6 +593,9 @@ export const redutores = {
       estornoDe: d.estornoDe ?? null,
       custeadoPor: d.custeadoPor ?? null,
       envelopeId: d.envelopeId ?? null,
+      // De quem é o dinheiro que este movimento leva de um lugar a outro:
+      // [{ envelopeId, valor }]. O resto é sem dono (design/11 §4).
+      donos: d.donos ?? [],
       extraordinario: d.extraordinario ?? Boolean(d.custeadoPor),
       lancadoPor: d.lancadoPor ?? null,
       // Só no estorno: quando o dinheiro voltou (02 §3.6). No cartão, é isso

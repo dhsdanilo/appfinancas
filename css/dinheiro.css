@@ -817,3 +817,49 @@ body[data-pagina="investimentos"] .acoes-topo .atalho { display: none; }
 @media (max-width: 600px) {
   .numeros-caixa .previsto-faixa { margin-left: 0; padding-left: 0; border-left: 0; }
 }
+
+/* ── envelopes (design/11) ───────────────────────────────────────────────── */
+#painel-envelopes { margin-top: var(--e4); border-radius: var(--raio-cartao); }
+.numero-faixa.nao-fecha .valor-numero { color: var(--alerta); }
+.numero-faixa.em-dia .valor-numero { color: var(--positivo); }
+.linha-ativo .valor-ativo.negativo { color: var(--alerta); }
+.linha-sem-dono:hover { background: none; }
+.linha-sem-dono .rendeu-ativo .elo { font-size: var(--t-apoio); }
+.investimento-resumo .aportar-de { margin: var(--e3) 0 0; line-height: 1.9; }
+.extrato-envelope { margin-top: var(--e2); }
+
+.dialogo-envelope { width: min(560px, calc(100vw - 2 * var(--e4))); }
+.dialogo-envelope .form-simples { display: flex; flex-direction: column; gap: var(--e3); }
+.dialogo-envelope .pilulas { align-self: flex-start; }
+.dialogo-envelope .nota { margin: 0; }
+.dialogo-envelope .linha-operacao { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--e3); }
+.dialogo-envelope .linha-operacao [hidden],
+.dialogo-envelope [hidden] { display: none; }
+.dialogo-envelope input,
+.dialogo-envelope select { min-width: 0; width: 100%; }
+
+/* Distribuir, e o "de quem é o dinheiro que sai": uma linha por envelope. */
+.linhas-distribuir { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.linha-distribuir {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px;
+  align-items: center;
+  gap: var(--e3);
+  padding: var(--e2) 0;
+  border-bottom: 1px solid var(--borda);
+}
+.linha-distribuir .nome-dist { display: flex; flex-direction: column; min-width: 0; font-weight: 600; }
+.linha-distribuir .nome-dist .fino { font-weight: 400; color: var(--tinta-fraca); font-size: var(--t-miudo); }
+.linha-distribuir input { flex: none; min-width: 0; width: 100%; text-align: right; }
+.linha-distribuir .elo { align-self: flex-start; font-size: var(--t-miudo); font-weight: 400; text-align: left; }
+.fica-sem-dono { margin: 0; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.fica-sem-dono.negativo { color: var(--alerta); }
+.dialogo-envelope .campo-data-dist { max-width: 200px; }
+.donos-saida { display: flex; flex-direction: column; gap: var(--e1); }
+.donos-saida[hidden] { display: none; }
+.donos-saida .nota { margin: 0; }
+.oferta-distribuir { margin: 0; }
+.oferta-distribuir[hidden] { display: none; }
+/* A linha miúda de cada ativo: de quem é o dinheiro dele (design/11 §5). */
+.divisao-envelopes { color: var(--area-envelopes) !important; }
+p.divisao-envelopes { margin: var(--e2) 0 0; }

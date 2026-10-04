@@ -9,6 +9,7 @@
 // O térreo (a captura do celular, index.html) não tem nada disto — D11.
 
 import * as log from '../core/log.js';
+import * as estado from '../core/estado.js';
 import { instalarServiceWorker } from './instalar.js';
 import { iniciarSincronia } from './sincronia-viva.js';
 import { enderecoDa } from './rotas.js';
@@ -19,7 +20,13 @@ const MEU_DINHEIRO = [
   { pagina: 'renda', titulo: 'Renda', area: 'folha' },
   { pagina: 'investimentos', titulo: 'Investimentos', area: 'investimentos' },
   { pagina: 'dividas', titulo: 'Dívidas', area: 'dividas' },
+  // Envelopes só aparecem quando existe um (design/08 §2, design/11 §5).
+  { pagina: 'envelopes', titulo: 'Envelopes', area: 'envelopes', soComEnvelope: true },
 ];
+
+/** O item de um menu de "Meu dinheiro". */
+const itemDeDinheiro = (m, atual) =>
+  link(m.pagina, m.titulo, atual, `<span class="ponto-area" data-area="${m.area}" aria-hidden="true"></span>${m.titulo}`, m.soComEnvelope);
 
 const ICONE = {
   inicio: '<path d="M3 9.5 10 4l7 5.5V16a1 1 0 0 1-1 1h-3.5v-4.5h-5V17H4a1 1 0 0 1-1-1z"/>',
@@ -45,8 +52,15 @@ const NUVEM = `
 
 // Todo link leva ao app de uma página só: dentro dele, trocar de tela é só
 // trocar o endereço depois do #, sem recarregar nada.
-function link(pagina, titulo, atual, conteudo) {
-  return `<a href="${enderecoDa(pagina)}" data-tela="${pagina}"${pagina === atual ? ' aria-current="page"' : ''}>${conteudo ?? titulo}</a>`;
+function link(pagina, titulo, atual, conteudo, soComEnvelope = false) {
+  return `<a href="${enderecoDa(pagina)}" data-tela="${pagina}"${pagina === atual ? ' aria-current="page"' : ''}${soComEnvelope ? ' data-so-com-envelope hidden' : ''}>${conteudo ?? titulo}</a>`;
+}
+
+/** Mostra "Envelopes" no menu quando existe um — ou quando se está nele. */
+async function pintarMenuDeEnvelopes() {
+  const app = await estado.calcular();
+  const tem = Object.values(app.envelopes ?? {}).length > 0 || document.body.dataset.pagina === 'envelopes';
+  for (const a of document.querySelectorAll('[data-so-com-envelope]')) a.hidden = !tem;
 }
 
 /** Marca no menu a tela em que se está, e fecha as folhas do celular. */
@@ -67,7 +81,10 @@ function marcarAtual(tela) {
   for (const folha of inferior.querySelectorAll('[data-folha]')) folha.hidden = true;
 }
 
-document.addEventListener('app:tela', (e) => marcarAtual(e.detail.tela));
+document.addEventListener('app:tela', (e) => {
+  marcarAtual(e.detail.tela);
+  pintarMenuDeEnvelopes();
+});
 
 function lateral(atual) {
   return `
@@ -78,9 +95,7 @@ function lateral(atual) {
     </div>
     <p class="rotulo-menu">Meu dinheiro</p>
     <div class="grupo-menu">
-      ${MEU_DINHEIRO.map((m) =>
-        link(m.pagina, m.titulo, atual, `<span class="ponto-area" data-area="${m.area}" aria-hidden="true"></span>${m.titulo}`)
-      ).join('')}
+      ${MEU_DINHEIRO.map((m) => itemDeDinheiro(m, atual)).join('')}
     </div>
     <p class="rotulo-menu">Planejar</p>
     <div class="grupo-menu">
@@ -101,7 +116,7 @@ function inferior(atual) {
     <button type="button" data-menu="dinheiro" ${naArea ? 'aria-current="page"' : ''} aria-expanded="false">${icone('dinheiro')}<span>Dinheiro</span></button>
     <button type="button" data-menu="mais" ${noMais ? 'aria-current="page"' : ''} aria-expanded="false">${icone('mais')}<span>Mais</span></button>
     <div class="folha-menu" data-folha="dinheiro" hidden>
-      ${MEU_DINHEIRO.map((m) => link(m.pagina, m.titulo, atual, `<span class="ponto-area" data-area="${m.area}" aria-hidden="true"></span>${m.titulo}`)).join('')}
+      ${MEU_DINHEIRO.map((m) => itemDeDinheiro(m, atual)).join('')}
     </div>
     <div class="folha-menu" data-folha="mais" hidden>
       ${link('planejamento', 'Planejamento', atual)}
@@ -166,6 +181,7 @@ export async function montarPagina() {
   });
 
   await garantirAparelho();
+  estado.aoAplicar(() => pintarMenuDeEnvelopes());
   instalarServiceWorker();
   iniciarSincronia({ raiz: document.getElementById('nuvem') });
 }

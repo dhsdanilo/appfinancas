@@ -23,6 +23,7 @@ import { fotografar, amortizar, pularParcela } from './app/contrato.js';
 import { lancarOcorrencia } from './app/ocorrencia.js';
 import { criarJanelaDoAtivo } from './app/ativo.js';
 import { resumoDaConta, ativosDaConta, nomeDaClasse, CLASSES } from './core/investimentos.js';
+import { donosNoDia } from './core/envelopes.js';
 import { aoLancar } from './app/pagina.js';
 import { enderecoDa } from './app/rotas.js';
 import { BARRA, PRINCIPAL, DIALOGOS } from './app/marcacao-dinheiro.js';
@@ -930,8 +931,12 @@ const rendeuTexto = (v) => `${v >= 0 ? '+' : '−'}${formatar(Math.abs(v))}`;
  */
 function pintarInvestimentos(contas) {
   const resumos = contas.map((c) => resumoDaConta(app, c));
+  // De quem é cada ativo, quando há envelopes (design/11 §5).
+  const temEnvelopes = Object.keys(app.envelopes ?? {}).length > 0;
+  const donos = temEnvelopes ? donosNoDia(app) : null;
+  const linkEnvelopes = `<a class="elo" href="${enderecoDa('envelopes')}">${temEnvelopes ? 'envelopes' : 'separar em envelopes'}</a>`;
   if (resumos.length > 1) {
-    $('resumo').innerHTML = `<div class="blocos">${blocoGeralDosInvestimentos(resumos)}</div>`;
+    $('resumo').innerHTML = `<div class="blocos">${blocoGeralDosInvestimentos(resumos, linkEnvelopes)}</div>`;
     return;
   }
   const r = resumos[0];
@@ -949,16 +954,30 @@ function pintarInvestimentos(contas) {
   $('resumo').innerHTML = `<div class="blocos"><div class="bloco largo investimento-resumo">
     <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(c.nome)}</p>
     <div class="numeros-renda">${numeros.join('')}</div>
-    ${listaDeAtivos(r)}
+    ${r.semAtivos && donos ? `<p class="divisao-envelopes fino">${escapar(divisao(donos, c.id))}</p>` : ''}
+    ${listaDeAtivos(r, donos)}
     <div class="pe-bloco">
       <span class="fino">${dinheiro}</span>
-      <span class="acoes-investimento">${valorDeHoje}<button type="button" class="${r.semAtivos ? 'elo' : 'principal'}" data-novo-ativo="${escapar(c.id)}">novo ativo</button></span>
+      <span class="acoes-investimento">${linkEnvelopes}${valorDeHoje}<button type="button" class="${r.semAtivos ? 'elo' : 'principal'}" data-novo-ativo="${escapar(c.id)}">novo ativo</button></span>
     </div>
   </div></div>`;
 }
 
+/**
+ * "Reserva 75% · IPVA 7% · sem dono 18%": de quem é o dinheiro de um lugar.
+ * Vazio quando nenhum envelope tem nada ali.
+ */
+function divisao(donos, lugarId) {
+  const x = donos?.porLugar.get(lugarId);
+  if (!x || !x.donos.size || x.valor <= 0) return '';
+  const partes = [...x.donos.entries()].sort((a, b) => b[1] - a[1])
+    .map(([id, v]) => `${app.envelopes[id]?.nome ?? '—'} ${Math.round((v / x.valor) * 100)}%`);
+  if (x.semDono > 0) partes.push(`sem dono ${Math.round((x.semDono / x.valor) * 100)}%`);
+  return partes.join(' · ');
+}
+
 /** Os ativos de uma conta, agrupados pela classe, cada um com valor e quanto rendeu. */
-function listaDeAtivos(r) {
+function listaDeAtivos(r, donos = null) {
   if (!r.posicoes.length) return '';
   const grupos = CLASSES.map((cl) => ({ cl, ps: r.posicoes.filter((p) => p.ativo.classe === cl.id) }))
     .filter((g) => g.ps.length);
@@ -982,8 +1001,9 @@ function listaDeAtivos(r) {
             p.avaliacao ? `valor de ${diaCurto(p.avaliacao.data)}` : 'sem valor informado',
             a.arquivado ? 'arquivado' : '',
           ]).filter(Boolean).join(' · ');
+        const deQuem = divisao(donos, a.id);
         return `<button type="button" class="linha-ativo ${a.arquivado ? 'arquivado' : ''}" data-ativo-abrir="${escapar(a.id)}">
-          <span class="nome-ativo">${escapar(a.nome)}<span class="fino">${escapar(sub)}</span></span>
+          <span class="nome-ativo">${escapar(a.nome)}<span class="fino">${escapar(sub)}</span>${deQuem ? `<span class="fino divisao-envelopes">${escapar(deQuem)}</span>` : ''}</span>
           <span class="valor-ativo">${p.estimado && p.valorAtual ? '~' : ''}${formatar(p.valorAtual)}</span>
           <span class="rendeu-ativo ${p.rendeu > 0 ? 'positivo' : p.rendeu < 0 ? 'negativo' : ''}">${p.aplicado ? pctTexto(p.pct) : '—'}</span>
         </button>`;
@@ -992,7 +1012,7 @@ function listaDeAtivos(r) {
 }
 
 /** Geral: a soma das contas e o dinheiro por classe. */
-function blocoGeralDosInvestimentos(resumos) {
+function blocoGeralDosInvestimentos(resumos, linkEnvelopes = '') {
   const valor = resumos.reduce((t, r) => t + r.valorAtual, 0);
   const investido = resumos.reduce((t, r) => t + r.investido, 0);
   const rendeu = resumos.reduce((t, r) => t + r.rendeu, 0);
@@ -1014,6 +1034,7 @@ function blocoGeralDosInvestimentos(resumos) {
       ${numeroDaFaixa('rendeu', `${rendeuTexto(rendeu)}${investido ? ` · ${pctTexto(rendeu / investido)}` : ''}`)}
     </div>
     ${linhas ? `<div class="ativos">${linhas}</div>` : ''}
+    ${linkEnvelopes ? `<div class="pe-bloco"><span class="fino">De quem é cada pedaço do que está guardado.</span>${linkEnvelopes}</div>` : ''}
   </div>`;
 }
 

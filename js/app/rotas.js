@@ -14,6 +14,7 @@ const TELAS = {
   renda: { grupo: 'dinheiro', titulo: 'Renda', sub: 'Cada fonte de renda e o seu contracheque.' },
   investimentos: { grupo: 'dinheiro', titulo: 'Investimentos', sub: 'O que está guardado e quanto rende.' },
   dividas: { grupo: 'dinheiro', titulo: 'Dívidas', sub: 'Cada empréstimo, o que falta e quanto custa.' },
+  envelopes: { grupo: 'envelopes', titulo: 'Envelopes', sub: 'O dinheiro guardado, e de quem ele é.' },
   planejamento: { grupo: 'planejamento', titulo: 'Planejamento', sub: 'O que volta todo mês, e o que muda de valor.' },
   configuracoes: {
     grupo: 'configuracoes',

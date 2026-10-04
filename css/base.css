@@ -38,6 +38,8 @@
   --area-investimentos: #6a62d0;
   --area-dividas: #993c1d;
   --area-folha: #5f5e5a;
+  /* Envelopes: dinheiro com dono, fora das cinco e dos três tipos. */
+  --area-envelopes: #a2386f;
 
   /* ── tipografia ──────────────────────────────────────────────────────── */
   --fonte: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -91,6 +93,7 @@
     --area-investimentos: #afa9ec;
     --area-dividas: #f0997b;
     --area-folha: #b4b2a9;
+    --area-envelopes: #e58bbd;
   }
 }
 
@@ -100,6 +103,7 @@
 [data-area="investimentos"] { --area: var(--area-investimentos); }
 [data-area="dividas"] { --area: var(--area-dividas); }
 [data-area="folha"] { --area: var(--area-folha); }
+[data-area="envelopes"] { --area: var(--area-envelopes); }
 /* A transferência não é de área nenhuma: é dinheiro trocando de bolso, e leva
    a cor do próprio tipo. */
 [data-area="transferencia"] { --area: var(--transferencia); }
