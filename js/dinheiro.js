@@ -1782,6 +1782,22 @@ document.addEventListener('keydown', (e) => {
 // O "+" da barra de baixo do celular abre a captura da tela em que se está.
 aoLancar(abrir);
 
+// Veio do "completo" do térreo: abre o cadastro completo com o que já se
+// tinha digitado lá (D30).
+await continuarDoTerreo();
+async function continuarDoTerreo() {
+  let rascunho = null;
+  try {
+    rascunho = JSON.parse(sessionStorage.getItem('appfinancas:rascunho') ?? 'null');
+    sessionStorage.removeItem('appfinancas:rascunho');
+  } catch { return; }
+  if (!rascunho) return;
+  formulario.limpar();
+  await formulario.continuar(rascunho);
+  dialogo.showModal();
+  formulario.focar();
+}
+
 // A rota manda: entrar numa tela de dinheiro pinta; sair dela, para.
 document.addEventListener('app:tela', (e) => {
   ativa = e.detail.grupo === 'dinheiro';

@@ -15,9 +15,13 @@
 </head>
 <body class="terreo">
 
-<p class="previa">
-  <a href="app.html#/inicio">início</a> · <a href="app.html#/lancamentos">lançamentos</a>
-</p>
+<!-- O caminho para o andar de cima. "completo" leva o que já se digitou para
+     o cadastro completo (D30). Alvos do tamanho do dedo (09 §5). -->
+<nav class="previa" aria-label="Andar de cima">
+  <a href="app.html#/inicio">início</a>
+  <a href="app.html#/lancamentos">lançamentos</a>
+  <a href="app.html#/inicio" class="completo" id="b-completo">completo ›</a>
+</nav>
 
 <!-- O térreo: o app abre aqui, sem senha, e daqui só se lança (D11). -->
 <main class="captura" id="formulario"></main>

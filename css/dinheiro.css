@@ -67,6 +67,8 @@ kbd {
   font-size: var(--t-miudo);
   text-align: center;
 }
+/* No dedo não há teclado físico: a dica dos atalhos só ocupa espaço. */
+@media (pointer: coarse) { .atalhos { display: none; } }
 
 /* ── a linha é um botão: é por ela que se corrige (design/03 §9) ─────────── */
 /* O que era <li> virou <button> dentro de <li>, então a moldura da linha passa

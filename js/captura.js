@@ -10,11 +10,27 @@ import { ligarAutomaticas } from './app/automaticas.js';
 const formulario = await criarFormulario({
   raiz: document.getElementById('formulario'),
   acoes: [{ id: 'lancar', rotulo: 'Lançar', principal: true, fecha: false }],
-  // No térreo a conta segue a última usada na categoria escolhida (03 §1).
-  lembrarConta: true,
+  // O cadastro rápido: só Em caixa e Cartões, e a conta é a última lançada
+  // neste aparelho (D30).
+  rapido: true,
 });
 
+// O teclado já levantado ao abrir e ao voltar de outro app — se o Android
+// deixar a página fazer isso sem um toque; se não, um toque no valor abre.
 formulario.focar();
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && !document.querySelector(':focus')) formulario.focar();
+});
+
+// "completo": o que já se digitou vai junto para o cadastro completo do andar
+// de cima, sem gravar nada aqui (D30).
+document.getElementById('b-completo').addEventListener('click', (e) => {
+  e.preventDefault();
+  try {
+    sessionStorage.setItem('appfinancas:rascunho', JSON.stringify(formulario.rascunho()));
+  } catch { /* sem memória da aba: abre o completo vazio */ }
+  location.href = e.currentTarget.href;
+});
 
 // As contas fixas que caem sozinhas caem também quando se abre só o térreo.
 ligarAutomaticas();

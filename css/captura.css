@@ -10,13 +10,22 @@
 
 .previa {
   margin: 0;
-  padding: var(--e2) var(--e4);
+  padding: 0 var(--e3);
   border-bottom: 1px solid var(--borda);
   color: var(--tinta-fraca);
   font-size: var(--t-miudo);
-  text-align: center;
+  display: flex;
+  align-items: center;
+  gap: var(--e1);
 }
-.previa a { color: inherit; }
+.previa a {
+  color: inherit;
+  min-height: 44px;
+  padding: 0 var(--e2);
+  display: inline-flex;
+  align-items: center;
+}
+.previa .completo { margin-left: auto; color: var(--tinta); }
 
 /* No celular a tela inteira é a captura: a faixa da área fica no topo dela. */
 .terreo .captura[data-area] { border-top: 4px solid var(--area); }

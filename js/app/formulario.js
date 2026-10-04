@@ -238,7 +238,7 @@ const MARCACAO_DO_APP =
  * @param {Function} [opcoes.aoFechar]   chamado quando uma ação pede pra fechar
  */
 export async function criarFormulario({
-  raiz, acoes, aoSalvar, aoFechar, comEtiquetas = false, lembrarConta = false, aoDevolver = null,
+  raiz, acoes, aoSalvar, aoFechar, comEtiquetas = false, rapido = false, aoDevolver = null,
   ordemDoApp = false,
 }) {
   raiz.innerHTML = ordemDoApp ? MARCACAO_DO_APP : MARCACAO;
@@ -445,21 +445,31 @@ export async function criarFormulario({
    */
   const contasUtilizaveis = () => Object.values(app.contas).filter((c) => !c.arquivada);
 
-  /** A conta mais usada: o caso dominante, sem pedir configuração. */
+  /**
+   * As contas que este formulário oferece. O cadastro rápido do celular é a
+   * fila do mercado: só Em caixa e Cartões; renda, investimentos e dívidas
+   * ficam no completo (D30).
+   */
+  const contasDaEscolha = () =>
+    rapido
+      ? contasUtilizaveis().filter((c) => AREAS_DO_RAPIDO.includes(areaDaConta(c)))
+      : contasUtilizaveis();
+  const contaNaEscolha = (id) => contasDaEscolha().some((c) => c.id === id);
+
+  /**
+   * No rápido, a última conta lançada neste aparelho (D30); senão — ou se ela
+   * sumiu —, a mais usada: o caso dominante, sem pedir configuração.
+   */
   function contaPadrao() {
+    if (rapido) {
+      const lembrada = lerContaRapida();
+      if (lembrada && contaNaEscolha(lembrada)) return lembrada;
+    }
     const usos = new Map();
     for (const l of Object.values(app.lancamentos)) {
       if (!l.removido) usos.set(l.contaId, (usos.get(l.contaId) ?? 0) + 1);
     }
-    return contasUtilizaveis().sort((a, b) => (usos.get(b.id) ?? 0) - (usos.get(a.id) ?? 0))[0]?.id ?? null;
-  }
-
-  /** A última conta usada nesta categoria (03 §1: "o app lembra"). */
-  function contaDaCategoria(id) {
-    const daCategoria = Object.values(app.lancamentos).filter(
-      (l) => !l.removido && l.categoriaId === id && app.contas[l.contaId] && !app.contas[l.contaId].arquivada
-    );
-    return daCategoria.length ? daCategoria[daCategoria.length - 1].contaId : null;
+    return contasDaEscolha().sort((a, b) => (usos.get(b.id) ?? 0) - (usos.get(a.id) ?? 0))[0]?.id ?? null;
   }
 
   // ── atalhos: repetir último e favoritos (03 §1) ─────────────────────────
@@ -505,11 +515,12 @@ export async function criarFormulario({
     // No app o "repetir último" e os favoritos saem (pedido dele): a lista de
     // categorias já começa pelas que você usou por último.
     const mostrar = !ordemDoApp && !editando && !daSerie;
-    const ultimo = mostrar ? ultimoDaqui() : null;
-    const favs = mostrar ? favoritos() : [];
+    const daqui = mostrar ? ultimoDaqui() : null;
+    const ultimo = daqui && contaNaEscolha(daqui.contaId) ? daqui : null;
+    const favs = mostrar ? favoritos().filter((f) => contaNaEscolha(f.contaId)) : [];
     el('atalhos').hidden = !ultimo && !favs.length;
     if (el('atalhos').hidden) return;
-    const variasContas = contasUtilizaveis().length > 1;
+    const variasContas = contasDaEscolha().length > 1;
     el('atalhos').innerHTML =
       (ultimo
         ? `<button type="button" data-atalho="repetir" title="Repetir o último lançamento">↻ ${escapar(formatar(ultimo.valor))} · ${escapar(nomeDaCategoria(app, ultimo.categoriaId))}</button>`
@@ -544,7 +555,7 @@ export async function criarFormulario({
   }
 
   function pintarConta() {
-    const contas = contasUtilizaveis();
+    const contas = contasDaEscolha();
     el('conta').innerHTML = contas.length
       ? opcoesDeConta(contas, contaId)
       : '<option value="">nenhuma conta</option>';
@@ -1095,6 +1106,9 @@ export async function criarFormulario({
       });
     }
 
+    // O rápido reabre onde se lançou por último, neste aparelho (D30).
+    if (rapido) guardarContaRapida(contaId);
+
     const quanto = formatar(valor.centavos());
     ultimo = {
       ids,
@@ -1207,16 +1221,6 @@ export async function criarFormulario({
     categoriaId = id === categoriaId ? null : id;
     // O detalhe é escopado pela categoria: trocar de categoria recomeça a lista.
     detalheId = null;
-    // No térreo, a conta segue a última usada nesta categoria — a não ser que
-    // a pessoa tenha escolhido a conta à mão (03 §1).
-    if (lembrarConta && !editando && !contaTocada && categoriaId) {
-      const lembrada = contaDaCategoria(categoriaId);
-      if (lembrada && lembrada !== contaId) {
-        contaId = lembrada;
-        pintarConta();
-        pintarData();
-      }
-    }
   }
 
   el('categorias').addEventListener('click', (e) => {
@@ -1409,7 +1413,9 @@ export async function criarFormulario({
 
   async function recarregar() {
     app = await estado.calcular();
-    if (!contaId || !app.contas[contaId] || app.contas[contaId].arquivada) contaId = contaPadrao();
+    if (!contaId || !app.contas[contaId] || app.contas[contaId].arquivada || (rapido && !contaNaEscolha(contaId))) {
+      contaId = contaPadrao();
+    }
     if (categoriaId && !app.categorias[categoriaId]) categoriaId = null;
     etiquetas = etiquetas.filter((t) => app.etiquetas?.[t]);
     pintarCategorias();
@@ -1597,6 +1603,40 @@ export async function criarFormulario({
       await recarregar();
     },
 
+    /**
+     * O que está na tela, para o "completo" continuar daqui (D30): o rápido
+     * passa o cadastro adiante sem gravar nada.
+     */
+    rascunho: () => ({
+      tipo, data, contaId, categoriaId, detalheId, etiquetas: [...etiquetas],
+      descricao: el('novo-detalhe').value.trim(),
+      valor: valor.centavos(),
+      parcelas: Number(el('parcelas').value) || 1,
+      observacao: el('observacao').value.trim(),
+    }),
+
+    /** Abre um cadastro novo com o rascunho que veio do rápido. */
+    async continuar(r) {
+      editando = null;
+      daSerie = null;
+      previstoDe = null;
+      contaTocada = true;
+      tipo = r.tipo === 'receita' ? 'receita' : 'despesa';
+      data = r.data || hoje();
+      contaId = r.contaId ?? contaId;
+      categoriaId = r.categoriaId ?? null;
+      detalheId = r.detalheId ?? null;
+      etiquetas = [...(r.etiquetas ?? [])];
+      el('parcelas').value = String(r.parcelas || 1);
+      el('observacao').value = r.observacao ?? '';
+      el('novo-detalhe').value = r.descricao ?? '';
+      if (r.valor) valor.definir(r.valor); else valor.limpar();
+      el('desfazer').hidden = true;
+      // Veio com algo além do básico: o "mais" já abre mostrando.
+      refinoAberto = Boolean(etiquetas.length || r.observacao || (r.parcelas ?? 1) > 1);
+      await recarregar();
+    },
+
     /** Zera tudo: usado ao reabrir o diálogo depois de fechado. */
     limpar: () => {
       editando = null;
@@ -1620,6 +1660,19 @@ export async function criarFormulario({
       perigo.mostrar(false);
     },
   };
+}
+
+// As áreas do cadastro rápido do celular (D30).
+const AREAS_DO_RAPIDO = ['caixa', 'cartoes'];
+
+// A conta do rápido mora no aparelho, não no registro: cada celular lança da
+// sua (D30). Sem armazenamento (aba privada), cai na mais usada.
+const CHAVE_CONTA_RAPIDA = 'appfinancas:conta-rapida';
+function lerContaRapida() {
+  try { return localStorage.getItem(CHAVE_CONTA_RAPIDA); } catch { return null; }
+}
+function guardarContaRapida(id) {
+  try { if (id) localStorage.setItem(CHAVE_CONTA_RAPIDA, id); } catch { /* sem memória: tudo bem */ }
 }
 
 function escapar(s) {
