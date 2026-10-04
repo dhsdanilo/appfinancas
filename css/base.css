@@ -104,6 +104,8 @@
 [data-area="dividas"] { --area: var(--area-dividas); }
 [data-area="folha"] { --area: var(--area-folha); }
 [data-area="envelopes"] { --area: var(--area-envelopes); }
+/* Relatórios olham todas as áreas: não têm cor de área, vestem a tinta. */
+[data-area="relatorios"] { --area: var(--tinta-fraca); }
 /* A transferência não é de área nenhuma: é dinheiro trocando de bolso, e leva
    a cor do próprio tipo. */
 [data-area="transferencia"] { --area: var(--transferencia); }

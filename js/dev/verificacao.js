@@ -26,6 +26,7 @@ import * as holerite from '../core/holerite.js';
 import * as divida from '../core/divida.js';
 import * as investimentos from '../core/investimentos.js';
 import * as envelopes from '../core/envelopes.js';
+import * as relatorios from '../core/relatorios.js';
 
 const BANCO_DE_TESTE = 'appfinancas-teste';
 
@@ -1980,6 +1981,137 @@ caso('envelope', 'projeto: "no ritmo, deveria ter", quanto falta e quanto por m�
   igual([n.deveriaTer, n.falta, n.mesesRestantes, n.porMes], [135000, 80000, 3, 26667], 'fev a out = 9 de 12 meses');
   igual(envelopes.numerosDoEnvelope({ alvoValor: 3000000 }, 1200000, '2026-10-03').deveriaTer, null, 'o que acumula não tem ritmo');
   igual(envelopes.numerosDoEnvelope(ipva, 190000, '2026-10-03').completo, true, 'chegou no alvo: completo');
+});
+
+// ── relatórios (design/12) ────────────────────────────────────────────────
+
+/** Uma corrente, um cartão pago por ela, uma folha, categorias e um envelope. */
+async function baseDeRelatorios() {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const ev = (t, d) => estado.aplicarEvento(t, d);
+  await ev('conta.criada', { id: 'cc', nome: 'Corrente', tipo: 'corrente', saldoInicial: 500000, titular: 'p1' });
+  await ev('conta.criada', { id: 'cart', nome: 'Cartão', tipo: 'cartao', diaFechamento: 25, diaVencimento: 5, pagaCom: 'cc', titular: 'p2' });
+  await ev('conta.criada', { id: 'fol', nome: 'Folha', tipo: 'folha' });
+  for (const [id, nome, extra] of [['merc', 'Mercado', {}], ['luz', 'Energia', {}], ['sal', 'Salário', { natureza: 'receita' }], ['ir', 'IR', { obrigatoria: true }]]) {
+    await ev('categoria.criada', { id, nome, ...extra });
+  }
+  await ev('envelope.criado', { id: 'ipva', nome: 'IPVA' });
+  return ev;
+}
+
+const lanc1 = (id, tipo, valor, contaId, data, extra = {}) =>
+  estado.aplicarEvento('lancamento.registrado', { id, tipo, valor, contaId, dataCompetencia: data, confirmado: true, ...extra });
+
+caso('relatório', '★ o mês em categorias: rotina nas linhas, projeto à parte, devolução abate a categoria', async () => {
+  await baseDeRelatorios();
+  await lanc1('m1', 'despesa', 40000, 'cc', '2026-09-10', { categoriaId: 'merc' });
+  await lanc1('m2', 'despesa', 60000, 'cc', '2026-10-05', { categoriaId: 'merc' });
+  await lanc1('m3', 'despesa', 20000, 'cart', '2026-10-12', { categoriaId: 'merc' });
+  await lanc1('d1', 'estorno', 5000, 'cart', '2026-10-12', { categoriaId: 'merc', estornoDe: 'm3' });
+  await lanc1('l1', 'despesa', 15000, 'cc', '2026-10-08', { categoriaId: 'luz' });
+  await lanc1('p1', 'despesa', 180000, 'cc', '2026-10-09', { categoriaId: 'luz', custeadoPor: 'ipva' });
+  await lanc1('i1', 'despesa', 70000, 'fol', '2026-10-01', { categoriaId: 'ir' });
+  const r = relatorios.mesEmCategorias(await estado.calcular(), '2026-10');
+  igual(r.linhas.map((x) => [x.categoriaId, x.valor, x.anterior, x.diferenca]), [['merc', 75000, 40000, 35000], ['luz', 15000, 0, 15000]],
+    'mercado 600 + 200 − 50 de devolução; IR não é gasto');
+  igual([r.rotina, r.totalProjetos, r.projetos[0].envelopeId], [90000, 180000, 'ipva'], 'o pago pelo IPVA é projeto, à parte');
+});
+
+caso('relatório', 'gasto × pagamento: a compra do cartão é do mês dela, a fatura sai no mês seguinte', async () => {
+  await baseDeRelatorios();
+  await lanc1('c1', 'despesa', 30000, 'cart', '2026-09-20', { categoriaId: 'merc' });
+  await lanc1('c2', 'despesa', 50000, 'cart', '2026-10-10', { categoriaId: 'merc' });
+  await lanc1('d1', 'despesa', 10000, 'cc', '2026-10-11', { categoriaId: 'luz' });
+  await lanc1('pf', 'pagamento_fatura', 30000, 'cc', '2026-10-05', { contaDestinoId: 'cart' });
+  const r = relatorios.gastoEPagamento(await estado.calcular(), '2026-10');
+  igual([r.gasto, r.saiu, r.faturasPagas, r.diferenca], [60000, 40000, 30000, 20000], 'consumiu 600, saiu 400 (fatura de set + luz); 200 sai em novembro');
+});
+
+caso('relatório', 'taxa de poupança: renda disponível sem o IR, gasto de rotina sem o projeto', async () => {
+  await baseDeRelatorios();
+  await lanc1('s1', 'receita', 1000000, 'fol', '2026-10-01', { categoriaId: 'sal' });
+  await lanc1('i1', 'despesa', 200000, 'fol', '2026-10-01', { categoriaId: 'ir' });
+  await lanc1('m1', 'despesa', 400000, 'cc', '2026-10-05', { categoriaId: 'merc' });
+  await lanc1('p1', 'despesa', 100000, 'cc', '2026-10-06', { categoriaId: 'luz', custeadoPor: 'ipva' });
+  const r = relatorios.taxaDePoupanca(await estado.calcular(), '2026-10');
+  igual([r.renda, r.rotina, r.sobrou, Math.round(r.taxa * 100)], [800000, 400000, 400000, 50], 'renda 8.000, gastou 4.000: 50%');
+});
+
+caso('relatório', '★ projeção: saldo dia a dia com fatura, recorrente e agendado, e o pior dia', async () => {
+  const ev = await baseDeRelatorios();
+  await lanc1('c1', 'despesa', 120000, 'cart', '2026-10-10', { categoriaId: 'merc' });
+  await ev('recorrencia.criada', { id: 'r1', nome: 'Aluguel', tipo: 'despesa', contaId: 'cc', categoriaId: 'luz', valor: 200000, dia: 20, inicio: '2026-01-20' });
+  await ev('recorrencia.criada', { id: 'r2', nome: 'Salário', tipo: 'receita', contaId: 'cc', categoriaId: 'sal', valor: 300000, dia: 1, inicio: '2026-01-01' });
+  await ev('lancamento.registrado', { id: 'ag', tipo: 'despesa', valor: 50000, contaId: 'cc', categoriaId: 'luz', dataCompetencia: '2026-10-15', confirmado: false });
+  const e = await estado.calcular();
+  const p = relatorios.projecaoDeSaldo(e, 30, '2026-10-12');
+  const no = (d) => p.pontos.find((x) => x.dia === d).saldo;
+  igual(p.inicio, 500000 - 0, 'começa no saldo real');
+  igual([no('2026-10-15'), no('2026-10-20'), no('2026-11-01'), no('2026-11-05')], [450000, 250000, 550000, 430000],
+    'agendado 500 · aluguel 2.000 · salário 3.000 · fatura 1.200 no vencimento');
+  igual([p.pior.dia, p.pior.saldo], ['2026-10-20', 250000], 'o pior dia é o do aluguel, antes do salário');
+});
+
+caso('relatório', 'comprometimento e custo de existir: poupar não é custo, IR fica fora', async () => {
+  const ev = await baseDeRelatorios();
+  await ev('conta.criada', { id: 'res', nome: 'Reserva', tipo: 'investimento' });
+  await ev('recorrencia.criada', { id: 'r1', nome: 'Aluguel', tipo: 'despesa', contaId: 'cc', categoriaId: 'luz', valor: 200000, dia: 20, inicio: '2026-01-20' });
+  await ev('recorrencia.criada', { id: 'r2', nome: 'Seguro', tipo: 'despesa', contaId: 'cc', categoriaId: 'luz', valor: 120000, dia: 5, inicio: '2026-03-05', periodicidade: 'anual' });
+  await ev('recorrencia.criada', { id: 'r3', nome: 'Poupar', tipo: 'transferencia', contaId: 'cc', contaDestinoId: 'res', valor: 50000, dia: 2, inicio: '2026-01-02' });
+  await ev('recorrencia.criada', { id: 'r4', nome: 'Salário', tipo: 'receita', contaId: 'fol', categoriaId: 'sal', valor: 1000000, dia: 1, inicio: '2026-01-01' });
+  await ev('recorrencia.criada', { id: 'r5', nome: 'IR', tipo: 'despesa', contaId: 'fol', categoriaId: 'ir', valor: 200000, dia: 1, inicio: '2026-01-01' });
+  const e = await estado.calcular();
+  const c = relatorios.custoDeExistir(e, '2026-10-12');
+  igual([c.itens.map((x) => [x.nome, x.mensal]), c.total, c.renda], [[['Aluguel', 200000], ['Seguro', 10000]], 210000, 800000],
+    'aluguel + seguro ÷ 12; renda 10.000 − IR');
+  const m = relatorios.comprometimento(e, 3, '2026-10-12');
+  igual(m.map((x) => [x.mes, x.recorrentes, x.renda]), [['2026-10', 200000, null], ['2026-11', 200000, 800000], ['2026-12', 200000, 800000]],
+    'outubro: só o aluguel que falta (o salário de outubro já passou do dia)');
+});
+
+caso('relatório', 'para onde vai: por etiqueta, por descrição e de qual conta saiu', async () => {
+  const ev = await baseDeRelatorios();
+  await ev('etiqueta.criada', { id: 'carro', nome: 'carro' });
+  await ev('detalhe.criado', { id: 'mt', nome: 'Mercado Tal' });
+  await lanc1('a', 'despesa', 20000, 'cc', '2026-10-03', { categoriaId: 'merc', detalheId: 'mt' });
+  await lanc1('b', 'despesa', 30000, 'cart', '2026-10-04', { categoriaId: 'merc', detalheId: 'mt' });
+  await lanc1('c', 'despesa', 25000, 'cc', '2026-10-20', { categoriaId: 'luz', etiquetas: ['carro'] });
+  const r = relatorios.paraOndeVai(await estado.calcular(), '2026-10-01', '2026-10-31');
+  igual([r.etiquetas[0].etiquetaId, r.etiquetas[0].valor], ['carro', 25000], 'o carro');
+  igual([r.descricoes[0].detalheId, r.descricoes[0].valor, r.descricoes[0].vezes], ['mt', 50000, 2], 'Mercado Tal: 500 em 2 idas');
+  igual(r.titulares, [{ pessoaId: 'p1', valor: 45000 }, { pessoaId: 'p2', valor: 30000 }], 'pela conta de onde saiu');
+  igual(r.quinzenas, [50000, 25000], 'primeira e segunda quinzena');
+});
+
+caso('relatório', '★ patrimônio: contas + investimentos − cartão − dívida, também no passado', async () => {
+  const ev = await baseDeRelatorios();
+  await ev('conta.criada', { id: 'inv', nome: 'Banco', tipo: 'investimento', caixaEm: 'cc' });
+  await ev('ativo.criado', { id: 'cdb', contaId: 'inv', nome: 'CDB' });
+  await lanc1('a1', 'aplicacao', 100000, 'cc', '2026-08-10', { ativoId: 'cdb' });
+  await lanc1('c1', 'despesa', 30000, 'cart', '2026-08-20', { categoriaId: 'merc' });
+  await ev('ativo.avaliado', { id: 'cdb', data: '2026-09-30', valor: 101000 });
+  const e = await estado.calcular();
+  const ago = relatorios.patrimonioNoDia(e, '2026-08-31');
+  igual([ago.caixa, ago.investimentos, ago.cartoes, ago.total], [400000, 100000, 30000, 470000], 'agosto: o CDB conta, a compra no cartão desconta');
+  const set = relatorios.patrimonioNoDia(e, '2026-09-30');
+  igual(set.total, 471000, 'setembro: o CDB rendeu 10');
+  const t = relatorios.dinheiroTrabalhando(e, '2026-09-01', '2026-09-30');
+  igual(t.rendeu, 1000, 'rendeu 10 em setembro');
+});
+
+caso('relatório', 'tendência: por que o mês apertou, contra a mediana, separando evento de hábito', async () => {
+  await baseDeRelatorios();
+  for (const [i, m] of ['2026-05', '2026-06', '2026-07', '2026-08', '2026-09'].entries()) {
+    await lanc1(`m${i}`, 'despesa', 50000, 'cc', `${m}-10`, { categoriaId: 'merc' });
+    await lanc1(`l${i}`, 'despesa', 10000, 'cc', `${m}-12`, { categoriaId: 'luz' });
+  }
+  await lanc1('mo', 'despesa', 50000, 'cc', '2026-10-10', { categoriaId: 'merc' });
+  await lanc1('lo', 'despesa', 70000, 'cc', '2026-10-12', { categoriaId: 'luz' });
+  const e = await estado.calcular();
+  igual(relatorios.mesesDeHistorico(e, '2026-10'), 5, 'cinco meses fechados antes de outubro');
+  const r = relatorios.porQueApertou(e, '2026-10');
+  igual([r.acima, r.linhas[0].categoriaId, r.linhas[0].desvio, r.linhas[0].evento?.id], [60000, 'luz', 60000, 'lo'], 'energia +600: um lançamento');
 });
 
 // ── apoio ─────────────────────────────────────────────────────────────────

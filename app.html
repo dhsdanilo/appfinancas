@@ -55,6 +55,15 @@
   </section>
 </div>
 
+<!-- ── relatórios (design/12) ─────────────────────────────────────────── -->
+<div data-grupo="relatorios" hidden>
+  <section class="cartao painel" id="painel-relatorios" data-area="relatorios">
+    <div class="subabas" role="group" aria-label="Relatório" id="abas-relatorios"></div>
+    <div class="periodo" id="periodo-relatorios" hidden></div>
+    <div id="corpo-relatorios"></div>
+  </section>
+</div>
+
 <!-- ── planejamento ───────────────────────────────────────────────────── -->
 <div data-grupo="planejamento" hidden>
 <main>
@@ -404,6 +413,7 @@
   await montarPagina();
   await import('./js/dinheiro.js');
   await import('./js/envelopes.js');
+  await import('./js/relatorios.js');
   await import('./js/gestao.js');
   await import('./js/recorrencias.js');
   await import('./js/ajustes.js');

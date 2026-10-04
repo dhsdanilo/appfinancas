@@ -25,7 +25,7 @@ const MEU_DINHEIRO = [
 // moram aqui — são outra dimensão do mesmo dinheiro, não uma conta (pedido
 // dele, 03/10/2026, design/11 §5) —, e ficam no menu mesmo vazios: é lá que
 // se cria o primeiro.
-const PLANEJAR = ['planejamento', 'envelopes'];
+const PLANEJAR = ['planejamento', 'envelopes', 'relatorios'];
 
 /** O item de um menu de "Meu dinheiro". */
 const itemDeDinheiro = (m, atual) =>
@@ -38,6 +38,7 @@ const ICONE = {
   configuracoes: '<circle cx="10" cy="10" r="2.6"/><path d="M10 3v2M10 15v2M3 10h2M15 10h2M5 5l1.4 1.4M13.6 13.6 15 15M5 15l1.4-1.4M13.6 6.4 15 5"/>',
   dinheiro: '<path d="M3 6h14v9H3zM3 9h14M13 12h1.5"/>',
   envelopes: '<path d="M3 5.5h14v9H3z"/><path d="m3 5.5 7 5.5 7-5.5"/>',
+  relatorios: '<path d="M4 16V9M8.5 16V5M13 16v-5M17 16H3"/>',
   mais: '<circle cx="5" cy="10" r="1"/><circle cx="10" cy="10" r="1"/><circle cx="15" cy="10" r="1"/>',
 };
 
@@ -95,6 +96,7 @@ function lateral(atual) {
     <div class="grupo-menu">
       ${link('planejamento', 'Planejamento', atual, `${icone('planejamento')}Planejamento`)}
       ${link('envelopes', 'Envelopes', atual, `${icone('envelopes')}Envelopes`)}
+      ${link('relatorios', 'Relatórios', atual, `${icone('relatorios')}Relatórios`)}
     </div>
     <div class="grupo-menu pe-menu">
       ${link('configuracoes', 'Configurações', atual, `${icone('configuracoes')}Configurações`)}
@@ -116,6 +118,7 @@ function inferior(atual) {
     <div class="folha-menu" data-folha="mais" hidden>
       ${link('planejamento', 'Planejamento', atual)}
       ${link('envelopes', 'Envelopes', atual)}
+      ${link('relatorios', 'Relatórios', atual)}
       ${link('configuracoes', 'Configurações', atual)}
     </div>`;
 }
