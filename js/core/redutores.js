@@ -25,7 +25,7 @@ export const AREAS_PADRAO = ['caixa', 'cartoes'];
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 20;
+export const VERSAO_ESTADO = 21;
 
 export function estadoVazio() {
   return {
@@ -292,8 +292,20 @@ export const redutores = {
       alvoData: d.alvoData ?? null,
       // Os lugares que são inteiros dele: o que chega ali sem dono é dele.
       inteiros: d.inteiros ?? [],
+      // Data em que VOCÊ declarou o fim (D18): o único estado guardado.
+      encerradoEm: null,
       arquivado: false,
     };
+  },
+
+  'envelope.encerrado'(e, d) {
+    const v = e.envelopes?.[d.id];
+    if (v) v.encerradoEm = d.data;
+  },
+
+  'envelope.reaberto'(e, d) {
+    const v = e.envelopes?.[d.id];
+    if (v) v.encerradoEm = null;
   },
 
   'envelope.alterado'(e, d) {

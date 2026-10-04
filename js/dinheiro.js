@@ -1326,6 +1326,8 @@ function linhaHTML(l, ids, saldoApos = null) {
     // A compra mostra o que já voltou dela (03 §3.3).
     const voltou = l.tipo === 'despesa' && !l.projetado ? estornado(app, l.id) : 0;
     if (voltou) onde += ` · devolvido ${formatar(voltou)} de ${formatar(l.valor)}`;
+    // Pago com o dinheiro de um envelope (design/11 §8).
+    if (l.custeadoPor && app.envelopes?.[l.custeadoPor]) onde += ` · envelope ${app.envelopes[l.custeadoPor].nome}`;
   }
   const rotuloEstado = (l.corrigida ? ' · corrigida' : '') +
     (est === 'realizado' ? (l.automatico ? ' · automática' : '') : ` · ${l.projetado ? 'previsto' : est}`);

@@ -1929,6 +1929,51 @@ caso('envelope', 'gastar dinheiro de envelope sem dizer deixa o sem dono negativ
   igual([r.porLugar.get('cc').donos.get('ipva'), r.porLugar.get('cc').semDono], [400000, -100000], 'o IPVA continua; o sem dono fica −1.000');
 });
 
+caso('envelope', '★ o gasto pago pelo envelope sai do que ele tem na conta, e o resto é estouro', async () => {
+  const ev = await baseDeEnvelopes();
+  await aporte('x1', 'cc', 'ipva', 150000, '2026-01-05');
+  await ev('lancamento.registrado', {
+    id: 'g1', tipo: 'despesa', valor: 180000, contaId: 'cc', categoriaId: 'imp', custeadoPor: 'ipva',
+    dataCompetencia: '2026-01-20', confirmado: true,
+  });
+  const e = await estado.calcular();
+  igual(e.lancamentos.g1.extraordinario, true, 'gasto do envelope é extraordinário por construção (D19)');
+  const r = envelopes.donosNoDia(e, '2026-01-31');
+  const ipva = r.porEnvelope.get('ipva');
+  igual([ipva.total, ipva.custo, ipva.financiado, ipva.estouro], [0, 180000, 150000, 30000], 'custou 1.800: 1.500 do envelope, 300 do caixa comum');
+  igual(r.porLugar.get('cc').semDono, 500000 - 180000, 'a corrente fecha: o sem dono é o saldo');
+  igual(ipva.extrato[0].tipo, 'gasto', 'o gasto aparece no extrato do envelope');
+  igual(envelopes.estadoDoEnvelope(e.envelopes.ipva, ipva), 'em uso', 'já pagou algo: em uso');
+});
+
+caso('envelope', 'no cartão, o gasto do envelope sai da corrente que paga a fatura, no dia da compra', async () => {
+  const ev = await baseDeEnvelopes();
+  await ev('conta.criada', { id: 'cart', nome: 'Cartão', tipo: 'cartao', diaFechamento: 25, diaVencimento: 5, pagaCom: 'cc' });
+  await aporte('x1', 'cc', 'via', 100000, '2026-03-01');
+  await ev('lancamento.registrado', {
+    id: 'g1', tipo: 'despesa', valor: 60000, contaId: 'cart', categoriaId: 'hotel', custeadoPor: 'via',
+    dataCompetencia: '2026-03-10', confirmado: true,
+  });
+  const r = envelopes.donosNoDia(await estado.calcular(), '2026-03-11');
+  igual([r.porEnvelope.get('via').total, r.porEnvelope.get('via').estouro, r.porLugar.get('cc').donos.get('via')], [40000, 0, 40000],
+    'a viagem pagou o hotel no cartão com o que tinha na corrente');
+});
+
+caso('envelope', 'encerrar e abrir o próximo: IPVA 2027 vira IPVA 2028, um ano depois', async () => {
+  await baseDeEnvelopes();
+  await estado.aplicarEvento('envelope.alterado', { id: 'ipva', alvoValor: 180000, inicio: '2026-02-01', alvoData: '2027-01-31' });
+  await estado.aplicarEvento('envelope.encerrado', { id: 'ipva', data: '2027-01-31' });
+  let e = await estado.calcular();
+  igual(envelopes.envelopesAtivos(e).map((v) => v.id).includes('ipva'), false, 'encerrado sai dos que estão em uso');
+  igual(envelopes.estadoDoEnvelope(e.envelopes.ipva, {}), 'encerrado', 'e o estado diz');
+  igual(envelopes.proximoDoProjeto(e.envelopes.ipva), { nome: 'IPVA 2028', alvoValor: 180000, inicio: '2027-02-01', alvoData: '2028-01-31' },
+    'o próximo: mesmo alvo, um ano depois');
+  igual(envelopes.proximoDoProjeto({ nome: 'Reforma', alvoData: '2027-05-31' }).nome, 'Reforma (próximo)', 'sem ano no nome');
+  await estado.aplicarEvento('envelope.reaberto', { id: 'ipva' });
+  e = await estado.calcular();
+  igual(e.envelopes.ipva.encerradoEm, null, 'e pode ser reaberto');
+});
+
 caso('envelope', 'projeto: "no ritmo, deveria ter", quanto falta e quanto por mês', () => {
   const ipva = { alvoValor: 180000, inicio: '2026-02-01', alvoData: '2027-01-31' };
   const n = envelopes.numerosDoEnvelope(ipva, 100000, '2026-10-03');

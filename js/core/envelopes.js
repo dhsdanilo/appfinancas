@@ -17,21 +17,38 @@
 //
 // Nada daqui é gravado: tudo sai dos lançamentos (com `donos`) e das alocações.
 
-import { hoje } from './datas.js';
+import { hoje, somarMeses } from './datas.js';
 import { visiveis, saldoReal, sinalDeSaida } from './lancamentos.js';
 import { posicao, resumoDaConta, ativosDaConta, saldoAte } from './investimentos.js';
 
 const SEM_DONO = '';
 
-/** Os envelopes em uso, os arquivados por último. */
-export function envelopesAtivos(estado, { comArquivados = false } = {}) {
+/** Os envelopes em uso, os arquivados por último. Encerrado não está em uso (D18). */
+export function envelopesAtivos(estado, { comArquivados = false, comEncerrados = false } = {}) {
   return Object.values(estado.envelopes ?? {})
-    .filter((v) => comArquivados || !v.arquivado)
+    .filter((v) => (comArquivados || !v.arquivado) && (comEncerrados || !v.encerradoEm))
     .sort((a, b) => Number(a.arquivado) - Number(b.arquivado) || a.nome.localeCompare(b.nome, 'pt-BR'));
 }
 
 /** Projeto tem data; o que acumula, não (§1). */
 export const ehProjeto = (envelope) => Boolean(envelope.alvoData);
+
+/** A despesa paga com o dinheiro de um envelope (D18, design/11 §8). */
+const ehCusteio = (l) => l.tipo === 'despesa' && Boolean(l.custeadoPor);
+
+/** O dia em que o movimento conta: o da compra no ativo e no gasto do envelope (no cartão também). */
+const diaDoMovimento = (l) => (l.ativoId || ehCusteio(l) ? l.dataCompetencia : l.dataCaixa);
+
+/**
+ * O estado do envelope (D18), calculado: juntando · completo · em uso ·
+ * encerrado. `r` é o do `donosNoDia`.
+ */
+export function estadoDoEnvelope(envelope, r) {
+  if (envelope.encerradoEm) return 'encerrado';
+  if ((r?.custo ?? 0) > 0) return 'em uso';
+  if (envelope.alvoValor != null && (r?.total ?? 0) >= envelope.alvoValor) return 'completo';
+  return 'juntando';
+}
 
 // ── lugares ─────────────────────────────────────────────────────────────────
 
@@ -84,6 +101,16 @@ function lugarDoId(estado, id) {
  * Só interessam os que tocam um lugar que rende ou levam dono.
  */
 function movimentoDe(estado, l) {
+  // O gasto pago pelo envelope: sai do que ele tem na conta que pagou — no
+  // cartão, a que paga a fatura (design/11 §8). O que faltar é estouro.
+  if (ehCusteio(l)) {
+    const conta = estado.contas[l.contaId];
+    const paga = conta?.tipo === 'cartao' ? conta.pagaCom : l.contaId;
+    return {
+      l, de: lugarDaConta(estado, paga), para: null, valor: l.valor, custeio: true,
+      donos: [{ envelopeId: l.custeadoPor, valor: l.valor }], data: l.dataCompetencia,
+    };
+  }
   let de = null;
   let para = null;
   let valor = l.valor;
@@ -104,8 +131,7 @@ function movimentoDe(estado, l) {
   const rende = (x) => x?.tipo === 'fracao';
   if (!rende(de) && !rende(para) && !donos.length) return null;
   if (!de && !para) return null;
-  const data = l.ativoId ? l.dataCompetencia : l.dataCaixa;
-  return { l, de, para, valor, donos, data };
+  return { l, de, para, valor, donos, data: diaDoMovimento(l) };
 }
 
 /**
@@ -128,6 +154,7 @@ export function donosNoDia(estado, dia = hoje()) {
   const caixa = new Map();   // lugarId → Map(envelopeId → centavos)
   const extrato = new Map(); // envelopeId → [linhas]
   const posto = new Map();   // envelopeId → o que entrou menos o que saiu do envelope
+  const gastos = new Map();  // envelopeId → { custo, financiado, pagamentos, porCategoria }
   const doLugar = (mapa, id) => { if (!mapa.has(id)) mapa.set(id, new Map()); return mapa.get(id); };
   const soma = (m) => [...m.values()].reduce((t, v) => t + v, 0);
   const somar = (m, k, v) => m.set(k, (m.get(k) ?? 0) + v);
@@ -138,7 +165,7 @@ export function donosNoDia(estado, dia = hoje()) {
   };
 
   const movimentos = visiveis(estado, dia)
-    .filter((l) => l.confirmado && (l.ativoId ? l.dataCompetencia : l.dataCaixa) <= dia)
+    .filter((l) => l.confirmado && diaDoMovimento(l) <= dia)
     .map((l) => movimentoDe(estado, l))
     .filter(Boolean);
   const alocacoes = Object.values(estado.alocacoes ?? {}).filter((a) => !a.removida && a.data <= dia);
@@ -218,6 +245,25 @@ export function donosNoDia(estado, dia = hoje()) {
       } else if (m.para?.tipo === 'caixa') {
         const c = doLugar(caixa, m.para.id);
         for (const [dono, v] of efetivos) somar(c, dono, v);
+      }
+
+      if (m.custeio) {
+        // Custou o valor inteiro; o envelope financiou o que tinha ali, e o
+        // resto saiu do caixa comum — o estouro (02 §3.6).
+        const env = m.donos[0].envelopeId;
+        const usado = efetivos.get(env) ?? 0;
+        somar(posto, env, -usado);
+        if (!gastos.has(env)) gastos.set(env, { custo: 0, financiado: 0, pagamentos: 0, porCategoria: new Map() });
+        const g = gastos.get(env);
+        g.custo += m.valor;
+        g.financiado += usado;
+        g.pagamentos += 1;
+        somar(g.porCategoria, m.l.categoriaId ?? '', m.valor);
+        anotar(env, {
+          data: d, tipo: 'gasto', valor: m.valor, usado: Math.round(usado), estouro: Math.round(m.valor - usado),
+          de: m.de?.id ?? null, lancamentoId: m.l.id, lc: m.l.lc ?? 0,
+        });
+        return;
       }
 
       for (const [dono, v] of efetivos) {
@@ -307,6 +353,13 @@ export function donosNoDia(estado, dia = hoje()) {
   for (const v of Object.values(estado.envelopes ?? {})) {
     const env = doEnvelope(v.id);
     env.posto = Math.round(posto.get(v.id) ?? 0);
+    const g = gastos.get(v.id);
+    env.custo = g?.custo ?? 0;
+    env.financiado = Math.round(g?.financiado ?? 0);
+    env.estouro = env.custo - env.financiado;
+    env.pagamentos = g?.pagamentos ?? 0;
+    env.porCategoria = g?.porCategoria ?? new Map();
+    // Rendeu: o que tem, menos o que entrou, mais o que o envelope já pagou.
     env.rendeu = env.total - env.posto;
     env.extrato = (extrato.get(v.id) ?? []).sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : b.lc - a.lc));
   }
@@ -333,10 +386,30 @@ export function numerosDoEnvelope(envelope, tem, dia = hoje()) {
   const inicio = envelope.inicio ?? dia;
   const total = Math.max(1, mesesInclusivos(inicio, envelope.alvoData));
   const passados = Math.min(total, Math.max(0, mesesInclusivos(inicio, dia)));
-  r.deveriaTer = Math.round((alvo * passados) / total);
+  // Antes do começo não há ritmo a cobrar: o IPVA 2028 começa em fevereiro.
+  r.deveriaTer = inicio > dia ? null : Math.round((alvo * passados) / total);
   r.mesesRestantes = Math.max(0, total - passados);
   r.porMes = falta > 0 ? Math.ceil(falta / Math.max(1, r.mesesRestantes)) : 0;
   return r;
+}
+
+/**
+ * O próximo de um projeto que se repete (design/11 §8): "IPVA 2027" →
+ * "IPVA 2028", mesmo alvo, começo no mês seguinte ao fim, data um ano depois.
+ */
+export function proximoDoProjeto(envelope) {
+  const anos = [...envelope.nome.matchAll(/\b(19|20)\d{2}\b/g)];
+  const ultimo = anos[anos.length - 1];
+  const nome = ultimo
+    ? `${envelope.nome.slice(0, ultimo.index)}${Number(ultimo[0]) + 1}${envelope.nome.slice(ultimo.index + 4)}`
+    : `${envelope.nome} (próximo)`;
+  const fim = envelope.alvoData;
+  return {
+    nome,
+    alvoValor: envelope.alvoValor ?? null,
+    inicio: fim ? `${somarMeses(`${fim.slice(0, 7)}-01`, 1)}` : hoje(),
+    alvoData: fim ? somarMeses(fim, 12) : null,
+  };
 }
 
 /** O nome de um lugar para a tela: "CDB · Banco", "Corrente". */

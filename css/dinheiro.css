@@ -863,3 +863,25 @@ body[data-pagina="investimentos"] .acoes-topo .atalho { display: none; }
 /* A linha miúda de cada ativo: de quem é o dinheiro dele (design/11 §5). */
 .divisao-envelopes { color: var(--area-envelopes) !important; }
 p.divisao-envelopes { margin: var(--e2) 0 0; }
+/* O fechamento do projeto (R28) e o rodapé do envelope. */
+.fechamento { display: flex; flex-direction: column; }
+.linha-fechamento {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 120px;
+  gap: var(--e3);
+  align-items: baseline;
+  padding: var(--e1) 0;
+  font-variant-numeric: tabular-nums;
+}
+.linha-fechamento > span:nth-child(2) { font-weight: 600; white-space: nowrap; }
+.linha-fechamento .fino { color: var(--tinta-fraca); font-size: var(--t-miudo); text-align: right; }
+.linha-fechamento.total { border-bottom: 1px solid var(--borda); }
+.linha-fechamento.estouro > span:nth-child(2), .linha-fechamento.estouro .fino { color: var(--alerta); }
+.topo-conta { gap: var(--e4); }
+.envelope-gasto { flex: 1 1 auto; min-width: 0; max-width: 260px; }
+.linha-check { display: flex; align-items: center; gap: var(--e2); }
+.linha-check[hidden] { display: none; }
+@media (max-width: 600px) {
+  .linha-fechamento { grid-template-columns: minmax(0, 1fr) auto; }
+  .linha-fechamento .fino { grid-column: 1 / -1; text-align: left; }
+}

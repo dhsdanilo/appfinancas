@@ -24,6 +24,7 @@ import { temCiclo, cicloDaCompra } from '../core/cartao.js';
 import { MARCACAO_CAMPO_VALOR, ligarCampoValor } from './campo-valor.js';
 import { ligarZonaDePerigo } from './zona-perigo.js';
 import { areaDaConta, opcoesDeConta, categoriaNaArea, areasParaConta } from './areas.js';
+import { envelopesAtivos, envelopesNoLugar, lugarDaConta } from '../core/envelopes.js';
 
 // As peças do formulário. O térreo (captura rápida do celular) começa pelo
 // valor, com o teclado já aberto — três toques (03-alimentacao §1). O "Novo
@@ -138,6 +139,14 @@ const P = {
       <span class="pista-repete" data-papel="pista-repete"></span>
     </div>
 
+    <!-- Pago com o dinheiro de um envelope (D18, design/11 §8): só em despesa,
+         e só quando existe envelope. -->
+    <div class="linha-refino" data-papel="linha-envelope" hidden>
+      <span class="rotulo-etiquetas">envelope</span>
+      <select class="envelope-gasto" data-papel="envelope" aria-label="Pago com o dinheiro de um envelope"></select>
+      <span class="pista-repete" data-papel="pista-envelope"></span>
+    </div>
+
     <div class="linha-refino">
       <span class="rotulo-etiquetas">obs</span>
       <input type="text" class="observacao" data-papel="observacao" autocomplete="off"
@@ -176,6 +185,14 @@ const P = {
         <button type="button" data-repete="estimada" aria-pressed="false">estimada</button>
       </div>
       <span class="pista-repete" data-papel="pista-repete"></span>
+    </div>
+
+    <!-- Pago com o dinheiro de um envelope (D18, design/11 §8): só em despesa,
+         e só quando existe envelope. -->
+    <div class="linha-refino" data-papel="linha-envelope" hidden>
+      <span class="rotulo-etiquetas">envelope</span>
+      <select class="envelope-gasto" data-papel="envelope" aria-label="Pago com o dinheiro de um envelope"></select>
+      <span class="pista-repete" data-papel="pista-envelope"></span>
     </div>
 
     <div class="linha-refino">
@@ -247,6 +264,8 @@ export async function criarFormulario({
   let repete = 'nao';
   // No cartão: quantas faturas a compra anda da que a data dela daria.
   let faturaDesloca = 0;
+  // O envelope que pagou esta despesa, ou null (design/11 §8).
+  let custeadoPor = null;
   // Na correção: como o lançamento estava quando abriu ('nao', 'fixa' ou
   // 'estimada'). Mudou, salvar mexe na série (cria, encerra ou troca o tipo).
   let repeteAntes = 'nao';
@@ -278,6 +297,7 @@ export async function criarFormulario({
     aoMudar: () => {
       for (const b of raiz.querySelectorAll('[data-acao]')) b.disabled = !pronto();
       if (app) pintarParcelas();
+      if (app && custeadoPor) pintarEnvelope();
       pintarReajuste();
     },
     aoConfirmar: async (e) => {
@@ -758,6 +778,41 @@ export async function criarFormulario({
     pintarEtiquetas();
     pintarParcelas();
     pintarRepete();
+    pintarEnvelope();
+  }
+
+  // O que o envelope tem na conta que paga: calculado só quando muda o
+  // envelope, a conta ou o estado — não a cada tecla.
+  let quantoTemAli = { chave: null, valor: 0, nome: '' };
+
+  function pintarEnvelope() {
+    const lista = app ? envelopesAtivos(app) : [];
+    const atual = custeadoPor ? app?.envelopes?.[custeadoPor] : null;
+    const mostra = tipo === 'despesa' && (lista.length > 0 || atual);
+    el('linha-envelope').hidden = !mostra;
+    if (!mostra) return;
+    const opcoes = atual && !lista.includes(atual) ? [...lista, atual] : lista;
+    el('envelope').innerHTML = `<option value="">—</option>${opcoes
+      .map((v) => `<option value="${escapar(v.id)}"${v.id === custeadoPor ? ' selected' : ''}>${escapar(v.nome)}</option>`).join('')}`;
+    if (!custeadoPor) { el('pista-envelope').textContent = ''; return; }
+    // No cartão, o dinheiro sai da corrente que paga a fatura.
+    const conta = app.contas[contaId];
+    const paga = conta?.tipo === 'cartao' ? conta.pagaCom : contaId;
+    const lugar = lugarDaConta(app, paga);
+    const chave = `${custeadoPor}|${lugar?.id}|${app.ateLc}|${editando?.id ?? ''}`;
+    if (quantoTemAli.chave !== chave) {
+      const r = lugar ? envelopesNoLugar(app, lugar.id) : { envelopes: [] };
+      let tem = r.envelopes.find((x) => x.envelope.id === custeadoPor)?.valor ?? 0;
+      // Na correção, o que este gasto já consumiu volta a contar.
+      if (editando?.custeadoPor === custeadoPor) tem += editando.valor;
+      quantoTemAli = { chave, valor: tem, nome: app.contas[paga]?.nome ?? 'a conta' };
+    }
+    const falta = valor.centavos() - quantoTemAli.valor;
+    el('pista-envelope').textContent = !valor.centavos()
+      ? `${atual.nome} tem ${formatar(quantoTemAli.valor)} em ${quantoTemAli.nome}`
+      : falta > 0
+      ? `${atual.nome} tem ${formatar(quantoTemAli.valor)} em ${quantoTemAli.nome}: ${formatar(falta)} sairiam do caixa comum (estouro). Para usar o que está aplicado, use "pagar com o envelope".`
+      : `sai do que ${atual.nome} tem em ${quantoTemAli.nome}`;
   }
 
   /** Fechado, o botão conta o que tem dentro — senão ninguém abre. */
@@ -767,6 +822,7 @@ export async function criarFormulario({
     if (etiquetas.length) partes.push(`${etiquetas.length} etiqueta${etiquetas.length > 1 ? 's' : ''}`);
     if (parcelas() > 1) partes.push(`${parcelas()}×`);
     if (repete !== 'nao') partes.push(repete);
+    if (custeadoPor && tipo === 'despesa') partes.push(app?.envelopes?.[custeadoPor]?.nome ?? 'envelope');
     return partes.length ? partes.join(' · ') : 'detalhes';
   }
 
@@ -928,8 +984,11 @@ export async function criarFormulario({
       etiquetas: [...etiquetas],
       observacao: el('observacao').value.trim(),
       faturaDesloca: app.contas[contaId]?.tipo === 'cartao' ? faturaDesloca : 0,
+      custeadoPor: tipo === 'despesa' ? custeadoPor : null,
       dataCaixa: data,
     });
+    // Gasto pago por envelope é extraordinário por construção (D19).
+    if (mudancas.custeadoPor !== undefined) mudancas.extraordinario = Boolean(mudancas.custeadoPor);
 
     const mexeuNaSerie = await aplicarMudancaDeRepete();
 
@@ -962,7 +1021,7 @@ export async function criarFormulario({
   async function propagarParaAsIrmas(mudancas) {
     if (!editando.parcela?.compraId) return;
 
-    const DA_COMPRA = ['tipo', 'categoriaId', 'detalheId', 'etiquetas', 'observacao', 'faturaDesloca'];
+    const DA_COMPRA = ['tipo', 'categoriaId', 'detalheId', 'etiquetas', 'observacao', 'faturaDesloca', 'custeadoPor', 'extraordinario'];
     const comuns = Object.fromEntries(
       Object.entries(mudancas).filter(([campo]) => DA_COMPRA.includes(campo))
     );
@@ -1003,6 +1062,7 @@ export async function criarFormulario({
       lancadoPor: ap?.id ?? null,
       // A compra inteira anda junto: cada parcela, uma fatura a mais.
       faturaDesloca: noCartao ? faturaDesloca : 0,
+      custeadoPor: tipo === 'despesa' ? custeadoPor : null,
       ...procedencia(),
     };
 
@@ -1049,6 +1109,7 @@ export async function criarFormulario({
     el('parcelas').value = '1';
     repete = 'nao';
     faturaDesloca = 0;
+    custeadoPor = null;
     if (ordemDoApp) categoriaId = null;
     await recarregar();
     valor.limpar();
@@ -1265,6 +1326,10 @@ export async function criarFormulario({
   });
 
   el('parcelas').addEventListener('input', pintarParcelas);
+  el('envelope').addEventListener('change', () => {
+    custeadoPor = el('envelope').value || null;
+    pintarRefino();
+  });
 
   el('fatura-antes').addEventListener('click', () => { faturaDesloca -= 1; pintarFatura(); });
   el('fatura-depois').addEventListener('click', () => { faturaDesloca += 1; pintarFatura(); });
@@ -1325,6 +1390,7 @@ export async function criarFormulario({
     pintarTipo();
     categoriaId = null;
     pintarCategorias();
+    pintarEnvelope();
     valor.pintar();
   });
 
@@ -1468,6 +1534,7 @@ export async function criarFormulario({
       // Na correção o refino abre sozinho: é pra isso que se abriu o lançamento.
       refinoAberto = true;
       etiquetas = [...(l.etiquetas ?? [])];
+      custeadoPor = l.custeadoPor ?? null;
       valor.definir(l.valor);
       el('desfazer').hidden = true;
       el('nova-etiqueta').value = '';
@@ -1511,6 +1578,7 @@ export async function criarFormulario({
       repete = 'nao';
       repeteAntes = 'nao';
       faturaDesloca = 0;
+      custeadoPor = null;
       el('parcelas').value = '1';
       el('observacao').value = '';
       valor.definir(o.valor);
@@ -1530,6 +1598,7 @@ export async function criarFormulario({
       repete = 'nao';
       repeteAntes = 'nao';
       faturaDesloca = 0;
+      custeadoPor = null;
       todasAbertas = false;
       el('parcelas').value = '1';
       el('observacao').value = '';
