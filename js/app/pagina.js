@@ -19,10 +19,13 @@ const MEU_DINHEIRO = [
   { pagina: 'renda', titulo: 'Renda', area: 'folha' },
   { pagina: 'investimentos', titulo: 'Investimentos', area: 'investimentos' },
   { pagina: 'dividas', titulo: 'Dívidas', area: 'dividas' },
-  // Envelopes ficam no menu mesmo vazios: é lá que se cria o primeiro
-  // (pedido dele, 03/10/2026 — design/11 §5).
-  { pagina: 'envelopes', titulo: 'Envelopes', area: 'envelopes' },
 ];
+
+// Planejar: o que não é dinheiro novo, e sim decisão sobre ele. Envelopes
+// moram aqui — são outra dimensão do mesmo dinheiro, não uma conta (pedido
+// dele, 03/10/2026, design/11 §5) —, e ficam no menu mesmo vazios: é lá que
+// se cria o primeiro.
+const PLANEJAR = ['planejamento', 'envelopes'];
 
 /** O item de um menu de "Meu dinheiro". */
 const itemDeDinheiro = (m, atual) =>
@@ -34,6 +37,7 @@ const ICONE = {
   planejamento: '<path d="M4 6h12v10H4zM4 9h12M8 4v3M12 4v3"/>',
   configuracoes: '<circle cx="10" cy="10" r="2.6"/><path d="M10 3v2M10 15v2M3 10h2M15 10h2M5 5l1.4 1.4M13.6 13.6 15 15M5 15l1.4-1.4M13.6 6.4 15 5"/>',
   dinheiro: '<path d="M3 6h14v9H3zM3 9h14M13 12h1.5"/>',
+  envelopes: '<path d="M3 5.5h14v9H3z"/><path d="m3 5.5 7 5.5 7-5.5"/>',
   mais: '<circle cx="5" cy="10" r="1"/><circle cx="10" cy="10" r="1"/><circle cx="15" cy="10" r="1"/>',
 };
 
@@ -63,7 +67,7 @@ function marcarAtual(tela) {
     else a.removeAttribute('aria-current');
   }
   const naArea = MEU_DINHEIRO.some((m) => m.pagina === tela);
-  const noMais = ['planejamento', 'configuracoes'].includes(tela);
+  const noMais = [...PLANEJAR, 'configuracoes'].includes(tela);
   const inferior = document.querySelector('.menu-inferior');
   if (!inferior) return;
   for (const [menu, ligado] of [['dinheiro', naArea], ['mais', noMais]]) {
@@ -90,6 +94,7 @@ function lateral(atual) {
     <p class="rotulo-menu">Planejar</p>
     <div class="grupo-menu">
       ${link('planejamento', 'Planejamento', atual, `${icone('planejamento')}Planejamento`)}
+      ${link('envelopes', 'Envelopes', atual, `${icone('envelopes')}Envelopes`)}
     </div>
     <div class="grupo-menu pe-menu">
       ${link('configuracoes', 'Configurações', atual, `${icone('configuracoes')}Configurações`)}
@@ -98,7 +103,7 @@ function lateral(atual) {
 
 function inferior(atual) {
   const naArea = MEU_DINHEIRO.some((m) => m.pagina === atual);
-  const noMais = ['planejamento', 'configuracoes', 'verificacao'].includes(atual);
+  const noMais = [...PLANEJAR, 'configuracoes', 'verificacao'].includes(atual);
   return `
     ${link('inicio', 'Início', atual, `${icone('inicio')}<span>Início</span>`)}
     ${link('lancamentos', 'Lançamentos', atual, `${icone('lancamentos')}<span>Lançamentos</span>`)}
@@ -110,6 +115,7 @@ function inferior(atual) {
     </div>
     <div class="folha-menu" data-folha="mais" hidden>
       ${link('planejamento', 'Planejamento', atual)}
+      ${link('envelopes', 'Envelopes', atual)}
       ${link('configuracoes', 'Configurações', atual)}
     </div>`;
 }
