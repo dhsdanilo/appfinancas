@@ -2114,6 +2114,32 @@ caso('relatório', 'tendência: por que o mês apertou, contra a mediana, separa
   igual([r.acima, r.linhas[0].categoriaId, r.linhas[0].desvio, r.linhas[0].evento?.id], [60000, 'luz', 60000, 'lo'], 'energia +600: um lançamento');
 });
 
+caso('relatório', 'ritmo do mês e entrou × saiu: acumulado no mesmo dia, meses vazios fora', async () => {
+  await baseDeRelatorios();
+  await lanc1('a', 'despesa', 10000, 'cc', '2026-09-03', { categoriaId: 'merc' });
+  await lanc1('b', 'despesa', 30000, 'cc', '2026-09-20', { categoriaId: 'merc' });
+  await lanc1('c', 'despesa', 20000, 'cc', '2026-10-02', { categoriaId: 'merc' });
+  await lanc1('s', 'receita', 100000, 'fol', '2026-10-01', { categoriaId: 'sal' });
+  const e = await estado.calcular();
+  const r = relatorios.ritmoDoMes(e, '2026-10', '2026-10-04');
+  igual([r.atual[3], r.atual[4], r.noMesmoDia, Math.round(r.parte * 100)], [20000, null, 10000, 50], 'dia 4: 200 contra 100 em setembro; 50% de setembro');
+  const f = relatorios.fluxoDosMeses(e, '2026-10', 12);
+  igual(f.map((x) => [x.mes, x.renda, x.rotina]), [['2026-09', 0, 40000], ['2026-10', 100000, 20000]], 'só a partir do primeiro mês com algo');
+});
+
+caso('relatório', 'o investido por classe e por envelope (o sem dono à parte)', async () => {
+  const ev = await baseDeRelatorios();
+  await ev('conta.criada', { id: 'inv', nome: 'Banco', tipo: 'investimento', caixaEm: 'cc' });
+  await ev('ativo.criado', { id: 'cdb', contaId: 'inv', nome: 'CDB', classe: 'renda_fixa' });
+  await ev('ativo.criado', { id: 'tes', contaId: 'inv', nome: 'Tesouro', classe: 'tesouro' });
+  await lanc1('a1', 'aplicacao', 100000, null, '2026-08-01', { ativoId: 'cdb' });
+  await lanc1('a2', 'aplicacao', 50000, null, '2026-08-01', { ativoId: 'tes' });
+  await estado.aplicarEvento('envelope.alocado', { id: 'x', lugarId: 'cdb', de: null, para: 'ipva', valor: 30000, data: '2026-08-02' });
+  const r = relatorios.investido(await estado.calcular(), '2026-10-04');
+  igual(r.classes.map((x) => [x.id, x.valor]).sort(), [['renda_fixa', 100000], ['tesouro', 50000]], 'por classe');
+  igual(r.envelopes.map((x) => [x.id, x.valor]).sort(), [['', 120000], ['ipva', 30000]], 'IPVA 300 no CDB; o resto sem dono');
+});
+
 // ── apoio ─────────────────────────────────────────────────────────────────
 
 async function limpar() {

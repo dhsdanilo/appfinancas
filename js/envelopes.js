@@ -14,6 +14,7 @@ import {
 import { nomeDaCategoria } from './core/lancamentos.js';
 import { criarJanelasDeEnvelope } from './app/envelope.js';
 import { criarJanelasDeUso } from './app/envelope-uso.js';
+import { pizza, cor } from './app/graficos.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -60,6 +61,7 @@ async function pintar() {
       Comece pelo botão "Novo envelope".</p>`;
   } else {
     $('corpo-envelopes').innerHTML = foco === 'geral' ? geral(lista, donos) : doEnvelope(app.envelopes[foco], donos);
+    desenharOnde(donos);
   }
   if (encerrados.length && foco === 'geral') {
     $('corpo-envelopes').insertAdjacentHTML('beforeend', `<p class="arquivadas-area fino">encerrados: ${encerrados
@@ -199,6 +201,7 @@ function doEnvelope(v, donos) {
     <div class="blocos"><div class="bloco largo investimento-resumo">
       <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${esc(v.nome)} · ${ehProjeto(v) ? `projeto, de ${mesAno(v.inicio ?? hoje())} a ${mesAno(v.alvoData)}` : 'acumula'} · ${situacao}</p>
       <div class="numeros-renda">${numeros.join('')}</div>
+      ${onde.length > 1 ? '<div id="g-onde-env" class="onde-env"></div>' : ''}
       <div class="ativos">${ondeHTML}${fechamento(v, r)}</div>
       ${aportar}
       ${v.encerradoEm ? '' : `<div class="pe-bloco"><span class="fino">Tirar não mexe em conta nenhuma: o dinheiro fica onde está e volta ao sem dono, ou passa a outro envelope.</span>
@@ -207,6 +210,20 @@ function doEnvelope(v, donos) {
     </div></div>
     <div class="cabeca-lista"><h2>Extrato de ${esc(v.nome)}</h2></div>
     ${extrato}`;
+}
+
+/** Onde está o dinheiro do envelope, em pizza — quando está em mais de um lugar. */
+function desenharOnde(donos) {
+  const raiz = $('g-onde-env');
+  if (!raiz || foco === 'geral') return;
+  const r = donos.porEnvelope.get(foco);
+  const onde = [...(r?.porLugar ?? new Map()).entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  pizza(raiz, {
+    fatias: onde.map(([id, v], i) => ({ nome: nomeCompleto(id), valor: v, cor: cor(i + 1) })),
+    formatar,
+    centro: formatar(r.total).replace(/,\d\d$/, ''),
+    subtitulo: 'onde está',
+  });
 }
 
 function linhaDoExtrato(v, x) {

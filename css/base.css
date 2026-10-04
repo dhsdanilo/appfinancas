@@ -41,6 +41,19 @@
   /* Envelopes: dinheiro com dono, fora das cinco e dos três tipos. */
   --area-envelopes: #a2386f;
 
+  /* ── paleta dos gráficos (dataviz, validada no claro e no escuro) ─────── */
+  /* A ORDEM é o que garante distinguir as vizinhas com daltonismo: usar
+     sempre 1, 2, 3… na sequência, nunca pular para parear cores. */
+  --serie-1: #2a78d6;
+  --serie-2: #eb6834;
+  --serie-3: #1baf7a;
+  --serie-4: #eda100;
+  --serie-5: #e87ba4;
+  --serie-6: #008300;
+  --serie-7: #4a3aa7;
+  --serie-8: #e34948;
+  --serie-outros: #b9b6ae;
+
   /* ── tipografia ──────────────────────────────────────────────────────── */
   --fonte: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
@@ -94,6 +107,15 @@
     --area-dividas: #f0997b;
     --area-folha: #b4b2a9;
     --area-envelopes: #e58bbd;
+    --serie-1: #3987e5;
+    --serie-2: #d95926;
+    --serie-3: #199e70;
+    --serie-4: #c98500;
+    --serie-5: #d55181;
+    --serie-6: #008300;
+    --serie-7: #9085e9;
+    --serie-8: #e66767;
+    --serie-outros: #5b5f5c;
   }
 }
 

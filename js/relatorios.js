@@ -8,6 +8,7 @@ import { hoje, diaCurto, nomeDoMes, somarMeses } from './core/datas.js';
 import { nomeDaCategoria } from './core/lancamentos.js';
 import * as rel from './core/relatorios.js';
 import { graficoDeLinha } from './app/grafico.js';
+import { colunas, areas, linhas as graficoDeLinhas, pizza, mapaDeBlocos, cor } from './app/graficos.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -54,7 +55,8 @@ async function pintar() {
   pintarPeriodo();
   const corpo = { mes: abaMes, futuro: abaFuturo, onde: abaOnde, patrimonio: abaPatrimonio, tendencia: abaTendencia }[vista.aba]();
   $('corpo-relatorios').innerHTML = corpo;
-  if (vista.aba === 'futuro') desenharProjecao();
+  if (vista.aba === 'mes') desenharMes();
+  if (vista.aba === 'futuro') { desenharProjecao(); desenharComprometimento(); }
   if (vista.aba === 'patrimonio') desenharPatrimonio();
   guardar();
 }
@@ -139,9 +141,19 @@ function abaMes() {
         ${numero(dupla.diferenca >= 0 ? 'vai sair depois' : 'veio de antes', formatar(Math.abs(dupla.diferenca)))}
       </div>
       <p class="nota-rel">Saiu das contas: ${formatar(dupla.despesasNoCaixa)} em gastos direto da conta e ${formatar(dupla.faturasPagas)} em faturas pagas. A compra no cartão conta no mês dela; a fatura, no mês em que se paga.</p>
+    </div>
+    <div class="bloco largo">
+      <p class="nome-bloco">ritmo do mês · gasto de rotina acumulado</p>
+      <p class="titulo-rel" id="frase-ritmo"></p>
+      <div id="g-ritmo"></div>
+    </div>
+    <div class="bloco largo">
+      <p class="nome-bloco">entrou × saiu · mês a mês</p>
+      <div id="g-fluxo"></div>
     </div></div>
     <div class="secao-rel">
       <p class="classe-ativos"><span>categorias · rotina</span><span>${formatar(cats.rotina)} · antes ${formatar(cats.rotinaAnterior)}</span></p>
+      <div id="g-mapa"></div>
       ${linhas || '<p class="nota">Nenhum gasto de rotina.</p>'}
       ${projetos ? `<p class="classe-ativos"><span>pago por envelope · fora da rotina</span><span>${formatar(cats.totalProjetos)}</span></p>${projetos}` : ''}
       ${peq.quantos ? `<p class="classe-ativos"><span>gastos pequenos</span><span></span></p>
@@ -192,6 +204,7 @@ function abaFuturo() {
     </div></div>
     <div class="secao-rel">
       <p class="classe-ativos"><span>comprometimento · o que de cada mês já tem dono</span><span></span></p>
+      <div id="g-comp"></div>
       ${linhasComp}
       <p class="nota-rel">Faturas (com as parcelas já compradas), parcelas de contrato, recorrentes e agendados. Poupar não entra: é escolha, não compromisso.${comp.some((x) => x.renda) ? '' : ' Com uma recorrência de receita (o salário), aparece quanto da renda cada mês já leva.'}</p>
       <p class="classe-ativos"><span>custo de existir · as contas fixas</span><span>${custo.estimado ? '~' : ''}${formatar(custo.total)}/mês${custo.parte != null ? ` · ${pct(custo.parte)} da renda` : ''}</span></p>
@@ -313,6 +326,13 @@ function abaPatrimonio() {
       <div id="grafico-patrimonio"></div>
     </div>
     <div class="bloco largo">
+      <p class="nome-bloco">o investido · ${formatar(rel.investido(app).total)}</p>
+      <div class="pizzas">
+        <div><p class="miudo titulo-linhas">por classe</p><div id="g-classes"></div></div>
+        <div><p class="miudo titulo-linhas">de quem é · por envelope</p><div id="g-donos"></div></div>
+      </div>
+    </div>
+    <div class="bloco largo">
       <p class="nome-bloco">o dinheiro trabalhando · <span class="chips-periodo inline" role="group" aria-label="Período">${[1, 12].map((q) =>
         `<button type="button" data-rel-trabalho="${q}" aria-pressed="${q === vista.trabalho}">${q === 1 ? 'este mês' : '12 meses'}</button>`).join('')}</span></p>
       <div class="numeros-renda">
@@ -329,21 +349,125 @@ function abaPatrimonio() {
     </div>`;
 }
 
+// As cores seguem a coisa, em todos os gráficos (paleta validada, base.css):
+// contas, investimentos e dívidas são sempre as mesmas três.
+const COR = { renda: cor(1), gasto: cor(2), envelope: cor(3), contas: cor(3), investimentos: cor(1), dividas: cor(2),
+  contratos: cor(1), cartao: cor(2), recorrentes: cor(3), agendados: cor(4) };
+const valorComSinal = (v) => `${v < 0 ? '−' : ''}${formatar(Math.abs(v))}`;
+
+/** Do que é feito o patrimônio: o que se tem acima do zero, o que se deve abaixo, e ele no meio. */
 function desenharPatrimonio() {
   const raiz = $('grafico-patrimonio');
   if (!raiz) return;
-  if (curva.length < 2) { raiz.innerHTML = '<p class="nota-rel">A curva aparece a partir do segundo mês com lançamentos.</p>'; return; }
-  graficoDeLinha(raiz, {
-    pontos: curva.map((p, i) => ({
-      y: p.total,
-      dica: `<strong>${p.total < 0 ? '−' : ''}${formatar(Math.abs(p.total))}</strong><span>${i === curva.length - 1 ? 'hoje' : `fim de ${nomeDoMes(p.dia.slice(0, 7))}`}</span>
-        <span class="fino">contas ${formatar(p.caixa)} · investimentos ${formatar(p.investimentos)}</span>
-        <span class="fino">cartões −${formatar(p.cartoes)} · dívidas −${formatar(p.dividas)}</span>`,
+  if (curva.length < 2) { raiz.innerHTML = '<p class="nota-rel">A curva aparece a partir do segundo mês com lançamentos.</p>'; }
+  else {
+    areas(raiz, {
+      pontos: curva.map((p, i) => ({
+        rotulo: i === curva.length - 1 ? 'hoje' : mesCurto(p.dia.slice(0, 7)),
+        acima: [Math.max(0, p.caixa), p.investimentos],
+        abaixo: [p.cartoes + p.dividas],
+        linha: p.total,
+        dica: `<strong>${valorComSinal(p.total)}</strong><span>${i === curva.length - 1 ? 'hoje' : `fim de ${nomeDoMes(p.dia.slice(0, 7))}`}</span>
+          <span class="fino">contas ${formatar(p.caixa)} · investimentos ${formatar(p.investimentos)}</span>
+          <span class="fino">cartões −${formatar(p.cartoes)} · dívidas −${formatar(p.dividas)}</span>`,
+      })),
+      acima: [{ nome: 'contas', cor: COR.contas }, { nome: 'investimentos', cor: COR.investimentos }],
+      abaixo: [{ nome: 'cartões e dívidas', cor: COR.dividas }],
+      linha: { nome: 'patrimônio', cor: 'var(--tinta)' },
+      formatar: compacto,
+    });
+  }
+  const inv = rel.investido(app);
+  const fatias = (lista) => lista.map((x, i) => ({ nome: x.nome, valor: x.valor, cor: cor(i + 1) }));
+  pizza($('g-classes'), {
+    fatias: fatias([...inv.classes].sort((a, b) => b.valor - a.valor)),
+    formatar, centro: compacto(inv.total),
+  });
+  // O sem dono é o neutro: não é envelope nenhum.
+  const env = [...inv.envelopes].sort((a, b) => b.valor - a.valor);
+  const comCor = env.filter((x) => x.id).map((x, i) => ({ nome: x.nome, valor: x.valor, cor: cor(i + 1) }));
+  const semDono = env.find((x) => !x.id);
+  pizza($('g-donos'), {
+    fatias: semDono ? [...comCor, { nome: 'sem dono', valor: semDono.valor, cor: 'var(--serie-outros)' }] : comCor,
+    formatar, centro: compacto(inv.total),
+    subtitulo: comCor.length ? '' : 'nenhum envelope',
+  });
+}
+
+/** O Mês: o ritmo contra o mês anterior, entrou × saiu e o mapa das categorias. */
+function desenharMes() {
+  const r = rel.ritmoDoMes(app, vista.mes);
+  if ($('g-ritmo')) {
+    const nomeAnt = nomeDoMes(r.mesAnterior).split(' ')[0];
+    $('frase-ritmo').textContent = r.parte == null
+      ? `Gasto de rotina até o dia ${r.hoje}: ${formatar(r.agora)}.`
+      : `${r.corrente ? `No dia ${r.hoje}` : 'No mês'}, ${formatar(r.agora)} — ${pct(r.parte)} de tudo o que se gastou em ${nomeAnt}${r.corrente ? ` (no mesmo dia de ${nomeAnt}: ${formatar(r.noMesmoDia)})` : ''}.`;
+    graficoDeLinhas($('g-ritmo'), {
+      series: [
+        { nome: nomeDoMes(vista.mes).split(' ')[0], cor: 'var(--tinta)', valores: r.atual },
+        { nome: nomeAnt, cor: 'var(--tinta-fraca)', valores: r.anterior, fina: true },
+      ],
+      rotulos: r.atual.map((_, i) => String(i + 1)),
+      dica: (i) => `<strong>dia ${i + 1}</strong>${r.atual[i] != null ? `<span>${esc(nomeDoMes(vista.mes).split(' ')[0])}: ${formatar(r.atual[i])}</span>` : ''}<span class="fino">${esc(nomeAnt)}: ${formatar(r.anterior[i] ?? 0)}</span>`,
+      formatar: compacto,
+      marcas: r.atual[r.hoje - 1] != null ? [{ serie: 0, i: r.hoje - 1, texto: formatar(r.agora) }] : [],
+    });
+  }
+  const fluxo = rel.fluxoDosMeses(app, vista.mes, 12);
+  if ($('g-fluxo')) {
+    if (fluxo.length < 2) $('g-fluxo').innerHTML = '<p class="nota-rel">Aparece a partir do segundo mês com lançamentos.</p>';
+    else {
+      colunas($('g-fluxo'), {
+        grupos: fluxo.map((m) => ({
+          rotulo: mesCurto(m.mes),
+          barras: [[{ valor: m.renda, cor: COR.renda }], [{ valor: m.rotina, cor: COR.gasto }, { valor: m.projeto, cor: COR.envelope }]],
+          dica: `<strong>${esc(nomeDoMes(m.mes))}</strong><span>entrou ${formatar(m.renda)}</span><span>gasto ${formatar(m.rotina)}${m.projeto ? ` + ${formatar(m.projeto)} do envelope` : ''}</span><span class="fino">${m.sobrou >= 0 ? `sobrou ${formatar(m.sobrou)}` : `faltou ${formatar(-m.sobrou)}`}</span>`,
+        })),
+        series: [{ nome: 'renda disponível', cor: COR.renda }, { nome: 'gasto de rotina', cor: COR.gasto }, { nome: 'pago por envelope', cor: COR.envelope }],
+        formatar: compacto,
+      });
+    }
+  }
+  const cats = rel.mesEmCategorias(app, vista.mes);
+  if ($('g-mapa') && cats.linhas.filter((x) => x.valor > 0).length > 1) {
+    mapaDeBlocos($('g-mapa'), {
+      itens: cats.linhas.filter((x) => x.valor > 0).map((x) => ({
+        nome: nomeCat(x.categoriaId), valor: x.valor,
+        dica: `<strong>${formatar(x.valor)}</strong><span>${esc(nomeCat(x.categoriaId))} · ${pct(x.valor / cats.rotina)}</span>${x.anterior ? `<span class="fino">mês anterior ${formatar(x.anterior)}</span>` : ''}`,
+      })),
+      formatar,
+      altura: 200,
+    });
+  }
+}
+
+/** O comprometimento em colunas empilhadas, com a renda por cima. */
+function desenharComprometimento() {
+  const raiz = $('g-comp');
+  if (!raiz) return;
+  const comp = rel.comprometimento(app, 12);
+  const renda = comp.map((x) => x.renda);
+  colunas(raiz, {
+    grupos: comp.map((x) => ({
+      rotulo: mesCurto(x.mes),
+      barras: [[
+        // Na ordem da paleta: só ficam vizinhas as cores validadas como par.
+        { valor: x.contratos, cor: COR.contratos },
+        { valor: x.cartao, cor: COR.cartao },
+        { valor: x.recorrentes, cor: COR.recorrentes },
+        { valor: x.agendados, cor: COR.agendados },
+      ]],
+      dica: `<strong>${x.estimado ? '~' : ''}${formatar(x.total)}</strong><span>${esc(nomeDoMes(x.mes))}${x.renda ? ` · ${pct(x.total / x.renda)} da renda` : ''}</span>
+        ${x.contratos ? `<span class="fino">contratos ${formatar(x.contratos)}</span>` : ''}${x.recorrentes ? `<span class="fino">recorrentes ${formatar(x.recorrentes)}</span>` : ''}
+        ${x.cartao ? `<span class="fino">cartão ${formatar(x.cartao)}</span>` : ''}${x.agendados ? `<span class="fino">agendados ${formatar(x.agendados)}</span>` : ''}`,
     })),
+    series: [
+      { nome: 'contratos', cor: COR.contratos }, { nome: 'cartão', cor: COR.cartao },
+      { nome: 'recorrentes', cor: COR.recorrentes }, { nome: 'agendados', cor: COR.agendados },
+      ...(renda.some((v) => v) ? [{ nome: 'renda prevista', cor: 'var(--tinta)', linha: true }] : []),
+    ],
+    linha: renda.some((v) => v) ? renda : null,
     formatar: compacto,
-    marcas: [{ i: curva.length - 1, texto: 'hoje' }],
-    rotulosX: curva.map((p, i) => ({ i, texto: i === curva.length - 1 ? 'hoje' : mesCurto(p.dia.slice(0, 7)) })),
-    altura: 200,
   });
 }
 

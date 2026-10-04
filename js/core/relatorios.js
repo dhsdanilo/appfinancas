@@ -11,9 +11,10 @@
 import { hoje, inicioDoMes, fimDoMes, somarMeses, somarDias, proximoMes } from './datas.js';
 import { lancados, visiveis, saldoReal, sinalDeSaida } from './lancamentos.js';
 import { ocorrenciasPrevistas, faturas, valorDaSerie } from './previsto.js';
-import { posicao, resumoDaConta, ativosDaConta, saldoAte } from './investimentos.js';
+import { posicao, resumoDaConta, ativosDaConta, saldoAte, CLASSES, nomeDaClasse } from './investimentos.js';
 import { saldoDevedor, cronograma } from './divida.js';
 import { rendaDisponivel } from './holerite.js';
+import { donosNoDia } from './envelopes.js';
 
 const CAIXA = new Set(['corrente', 'especie']);
 const ehCaixa = (estado, id) => CAIXA.has(estado.contas[id]?.tipo);
@@ -134,6 +135,102 @@ export function gastosPequenos(estado, mes, corte = 5000) {
   const total = rotina.reduce((t, g) => t + g.valor, 0);
   const soma = pequenos.reduce((t, g) => t + g.valor, 0);
   return { corte, quantos: pequenos.length, soma, parte: total ? soma / total : 0, lancamentos: pequenos.map((g) => g.l.id) };
+}
+
+/**
+ * O ritmo do mês (I5): o gasto de rotina acumulado dia a dia, este mês e o
+ * anterior, no mesmo dia. { dias, atual: [centavos|null], anterior: [centavos],
+ * hoje, parte } — `parte` é quanto do mês anterior inteiro já foi gasto até
+ * hoje.
+ */
+export function ritmoDoMes(estado, mes, dia = hoje()) {
+  const ant = somarMeses(`${mes}-01`, -1).slice(0, 7);
+  const ultimoDia = (m) => Number(fimDoMes(`${m}-01`).slice(8, 10));
+  const dias = Math.max(ultimoDia(mes), ultimoDia(ant));
+  const acumulado = (m, ate) => {
+    const porDia = new Array(dias + 1).fill(0);
+    for (const g of gastos(estado, `${m}-01`, fimDoMes(`${m}-01`))) {
+      if (!g.projeto) porDia[Number(g.l.dataCompetencia.slice(8, 10))] += g.valor;
+    }
+    const saida = [];
+    let t = 0;
+    for (let d = 1; d <= dias; d += 1) {
+      t += porDia[d];
+      saida.push(d > ate ? null : t);
+    }
+    return saida;
+  };
+  const corrente = mes === mesDe(dia);
+  const hojeNoMes = corrente ? Number(dia.slice(8, 10)) : ultimoDia(mes);
+  const atual = acumulado(mes, hojeNoMes);
+  const anterior = acumulado(ant, ultimoDia(ant));
+  const totalAnterior = anterior[ultimoDia(ant) - 1] ?? 0;
+  const agora = atual[hojeNoMes - 1] ?? 0;
+  return {
+    dias, atual, anterior, mesAnterior: ant, hoje: hojeNoMes, corrente,
+    noMesmoDia: anterior[Math.min(hojeNoMes, ultimoDia(ant)) - 1] ?? 0,
+    agora, parte: totalAnterior ? agora / totalAnterior : null,
+  };
+}
+
+/**
+ * Entrou × saiu (12 meses terminando em `mes`): renda disponível, gasto de
+ * rotina e o pago por envelope, mês a mês. Os meses antes do primeiro
+ * lançamento ficam de fora.
+ */
+export function fluxoDosMeses(estado, mes, quantos = 12) {
+  const primeiro = primeiroMes(estado);
+  if (!primeiro) return [];
+  const inicio = [primeiro, somarMeses(`${mes}-01`, -(quantos - 1)).slice(0, 7)].sort()[1];
+  if (inicio > mes) return [];
+  const meses = mesesEntre(inicio, mes).map((m) => {
+    const de = `${m}-01`;
+    const ate = fimDoMes(de);
+    const doMes = lancados(estado).filter((l) => l.confirmado && l.dataCompetencia >= de && l.dataCompetencia <= ate);
+    let rotina = 0;
+    let projeto = 0;
+    for (const g of gastos(estado, de, ate)) {
+      if (g.projeto) projeto += g.valor; else rotina += g.valor;
+    }
+    const renda = Math.max(0, rendaDisponivel(estado, doMes));
+    return { mes: m, renda, rotina: Math.max(0, rotina), projeto: Math.max(0, projeto), sobrou: renda - rotina };
+  });
+  // Os meses vazios do começo (antes de haver renda ou gasto) não dizem nada.
+  const primeiroCheio = meses.findIndex((x) => x.renda || x.rotina || x.projeto);
+  return primeiroCheio < 0 ? [] : meses.slice(primeiroCheio);
+}
+
+/**
+ * O investido hoje, por classe (as contas sem ativos e o caixa parado da
+ * corretora entram como "caixa e poupança") e por dono — de qual envelope é,
+ * e o sem dono (design/11).
+ */
+export function investido(estado, dia = hoje()) {
+  const porClasse = new Map();
+  for (const c of Object.values(estado.contas)) {
+    if (c.tipo !== 'investimento') continue;
+    const r = resumoDaConta(estado, c, dia);
+    for (const p of r.posicoes) somar(porClasse, p.ativo.classe, p.valorAtual);
+    if (r.caixa > 0) somar(porClasse, 'caixa', r.caixa);
+  }
+  const classes = [...porClasse.entries()]
+    .map(([id, valor]) => ({ id, nome: id === 'caixa' ? 'Caixa e poupança' : nomeDaClasse(id), valor, ordem: CLASSES.findIndex((x) => x.id === id) }))
+    .filter((x) => x.valor > 0);
+
+  // De quem é: só os lugares que são investimento (ativos, a conta que rende
+  // e o caixa parado da corretora) — a corrente fica de fora.
+  const donos = donosNoDia(estado, dia);
+  const porDono = new Map();
+  for (const x of donos.porLugar.values()) {
+    const conta = estado.contas[x.lugar.contaId];
+    if (!x.lugar.ativo && conta?.tipo !== 'investimento') continue;
+    for (const [env, v] of x.donos) somar(porDono, env, v);
+    if (x.semDono > 0) somar(porDono, '', x.semDono);
+  }
+  const envelopes = [...porDono.entries()]
+    .map(([id, valor]) => ({ id, nome: id ? estado.envelopes?.[id]?.nome ?? 'envelope' : 'sem dono', valor }))
+    .filter((x) => x.valor > 0);
+  return { classes, envelopes, total: classes.reduce((t, x) => t + x.valor, 0) };
 }
 
 // ── Futuro ──────────────────────────────────────────────────────────────────
