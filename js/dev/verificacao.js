@@ -27,6 +27,7 @@ import * as divida from '../core/divida.js';
 import * as investimentos from '../core/investimentos.js';
 import * as envelopes from '../core/envelopes.js';
 import * as relatorios from '../core/relatorios.js';
+import * as automaticas from '../core/automaticas.js';
 
 const BANCO_DE_TESTE = 'appfinancas-teste';
 
@@ -2138,6 +2139,26 @@ caso('relatório', 'o investido por classe e por envelope (o sem dono à parte)'
   const r = relatorios.investido(await estado.calcular(), '2026-10-04');
   igual(r.classes.map((x) => [x.id, x.valor]).sort(), [['renda_fixa', 100000], ['tesouro', 50000]], 'por classe');
   igual(r.envelopes.map((x) => [x.id, x.valor]).sort(), [['', 120000], ['ipva', 30000]], 'IPVA 300 no CDB; o resto sem dono');
+});
+
+caso('entrada', '★ conta fixa que cai sozinha: do dia em que se ligou, um por mês, sem duplicar', async () => {
+  const ev = await baseDeRelatorios();
+  await ev('recorrencia.criada', {
+    id: 'luz', nome: 'Energia', tipo: 'despesa', contaId: 'cc', categoriaId: 'luz', valor: 25000, dia: 10,
+    inicio: '2026-01-10', caiSozinha: true, caiSozinhaDesde: '2026-09-05',
+  });
+  let e = await estado.calcular();
+  let p = automaticas.automaticasPendentes(e, '2026-11-12');
+  igual(p.map((x) => [x.id, x.dataCompetencia, x.valor]), [['auto-rec:luz:2026-09', '2026-09-10', 25000], ['auto-rec:luz:2026-10', '2026-10-10', 25000], ['auto-rec:luz:2026-11', '2026-11-10', 25000]],
+    'setembro (ligada no dia 5), outubro e novembro — agosto não');
+  for (const dados of p) await ev('lancamento.registrado', dados);
+  e = await estado.calcular();
+  igual(automaticas.automaticasPendentes(e, '2026-11-12').length, 0, 'o que já caiu não cai de novo');
+  igual([e.lancamentos['auto-rec:luz:2026-10'].caiuSozinha, e.lancamentos['auto-rec:luz:2026-10'].recorrenciaId], [true, 'luz'], 'marcado, e amarrado à série');
+  await ev('lancamento.removido', { id: 'auto-rec:luz:2026-11' });
+  e = await estado.calcular();
+  igual(automaticas.automaticasPendentes(e, '2026-11-12').length, 0, 'apagado de propósito não volta');
+  igual(lanc.saldoReal(e, 'cc'), 500000 - 50000, 'setembro e outubro saíram da corrente');
 });
 
 // ── apoio ─────────────────────────────────────────────────────────────────

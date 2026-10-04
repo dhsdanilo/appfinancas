@@ -5,6 +5,7 @@
 import { criarFormulario } from './app/formulario.js';
 import { instalarServiceWorker } from './app/instalar.js';
 import { iniciarSincronia } from './app/sincronia-viva.js';
+import { ligarAutomaticas } from './app/automaticas.js';
 
 const formulario = await criarFormulario({
   raiz: document.getElementById('formulario'),
@@ -14,6 +15,9 @@ const formulario = await criarFormulario({
 });
 
 formulario.focar();
+
+// As contas fixas que caem sozinhas caem também quando se abre só o térreo.
+ligarAutomaticas();
 
 instalarServiceWorker();
 

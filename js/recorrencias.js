@@ -58,7 +58,8 @@ async function pintar() {
       r.fim && r.fim < hoje()
         ? `encerrada em ${diaCurto(r.fim)}`
         : p ? `próxima ${diaCurto(p.dataCompetencia)}` : 'em dia';
-    const explica = r.tipoValor === 'fixa' ? 'fixa' : r.tipo === 'receita' ? 'estimada pelo piso' : 'estimada pela média';
+    const explica = (r.tipoValor === 'fixa' ? 'fixa' : r.tipo === 'receita' ? 'estimada pelo piso' : 'estimada pela média')
+      + (r.caiSozinha ? ' · cai sozinha' : '');
     // O histórico do valor fica à vista: quando mudou, e quanto era.
     const ultimo = ultimoReajuste(r);
     const agendado = proximoReajuste(r);
@@ -143,6 +144,7 @@ function abrir(r = null) {
   f().dia.value = r?.dia ?? Number(hoje().slice(8, 10));
   f().inicio.value = r?.inicio ?? hoje();
   f().fim.value = r?.fim ?? '';
+  f().caiSozinha.checked = Boolean(r?.caiSozinha);
   $('campo-dia').hidden = f().periodicidade.value === 'anual';
   $('titulo-recorrencia').textContent = r ? 'Corrigir recorrência' : 'Nova recorrência';
   $('aviso-recorrencia').hidden = true;
@@ -177,7 +179,11 @@ async function salvar(e) {
     fim: f().fim.value || null,
     // Anual é o gasto esporádico: a R3 não acusa descontrole no mês do IPVA.
     esporadica: anual,
+    caiSozinha: f().caiSozinha.checked,
   };
+  // "Cai sozinha" vale do dia em que se liga em diante: não preenche os meses
+  // que já passaram (design/13 §1).
+  if (dados.caiSozinha && !editando?.caiSozinha) dados.caiSozinhaDesde = hoje();
 
   // A recusa diz o que falta, sempre.
   if (!dados.contaId) return recusar('Falta a conta.');

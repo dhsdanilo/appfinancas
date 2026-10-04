@@ -25,7 +25,7 @@ export const AREAS_PADRAO = ['caixa', 'cartoes'];
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 21;
+export const VERSAO_ESTADO = 22;
 
 export function estadoVazio() {
   return {
@@ -478,6 +478,10 @@ export const redutores = {
       fim: d.fim ?? null,                 // nulo = indeterminada
       esporadica: d.esporadica ?? false,
       envelopeId: d.envelopeId ?? null,
+      // Débito automático: no dia vira lançamento sozinho, a partir de
+      // `caiSozinhaDesde` (design/13 §1).
+      caiSozinha: d.caiSozinha ?? false,
+      caiSozinhaDesde: d.caiSozinhaDesde ?? null,
       arquivada: false,
     };
   },
@@ -608,6 +612,8 @@ export const redutores = {
       // De quem é o dinheiro que este movimento leva de um lugar a outro:
       // [{ envelopeId, valor }]. O resto é sem dono (design/11 §4).
       donos: d.donos ?? [],
+      // Caiu sozinho: a conta fixa em débito automático (design/13 §1).
+      caiuSozinha: d.caiuSozinha ?? false,
       extraordinario: d.extraordinario ?? Boolean(d.custeadoPor),
       lancadoPor: d.lancadoPor ?? null,
       // Só no estorno: quando o dinheiro voltou (02 §3.6). No cartão, é isso

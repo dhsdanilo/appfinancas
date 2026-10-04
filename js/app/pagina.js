@@ -12,6 +12,7 @@ import * as log from '../core/log.js';
 import { instalarServiceWorker } from './instalar.js';
 import { iniciarSincronia } from './sincronia-viva.js';
 import { enderecoDa } from './rotas.js';
+import { ligarAutomaticas } from './automaticas.js';
 
 const MEU_DINHEIRO = [
   { pagina: 'contas', titulo: 'Contas', area: 'caixa' },
@@ -180,6 +181,7 @@ export async function montarPagina() {
   });
 
   await garantirAparelho();
+  ligarAutomaticas();
   instalarServiceWorker();
   iniciarSincronia({ raiz: document.getElementById('nuvem') });
 }

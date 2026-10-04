@@ -334,3 +334,7 @@
 #lista-categorias .meta { overflow: visible; white-space: normal; }
 /* É frase, não rótulo: sem as maiúsculas dos rótulos de campo. */
 .campo label.obrigatoria-nova { text-transform: none; letter-spacing: 0; font-weight: 400; }
+/* "Cai sozinha" (design/13 §1): é frase, com a caixinha ao lado. */
+.cai-sozinha { flex: 1 1 100%; display: flex; gap: var(--e2); align-items: center; font-size: var(--t-apoio); color: var(--tinta-fraca); }
+.cai-sozinha input { flex: none; min-width: 0; width: auto; }
+.cai-sozinha strong { color: var(--tinta); }

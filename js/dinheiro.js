@@ -1329,7 +1329,7 @@ function linhaHTML(l, ids, saldoApos = null) {
     // Pago com o dinheiro de um envelope (design/11 §8).
     if (l.custeadoPor && app.envelopes?.[l.custeadoPor]) onde += ` · envelope ${app.envelopes[l.custeadoPor].nome}`;
   }
-  const rotuloEstado = (l.corrigida ? ' · corrigida' : '') +
+  const rotuloEstado = (l.corrigida ? ' · corrigida' : '') + (l.caiuSozinha ? ' · caiu sozinha' : '') +
     (est === 'realizado' ? (l.automatico ? ' · automática' : '') : ` · ${l.projetado ? 'previsto' : est}`);
 
   const parcela = l.parcela ? `<span class="parcela">${l.parcela.numero}/${l.parcela.total}</span>` : '';
