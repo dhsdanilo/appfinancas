@@ -28,6 +28,7 @@ import * as investimentos from '../core/investimentos.js';
 import * as envelopes from '../core/envelopes.js';
 import * as relatorios from '../core/relatorios.js';
 import * as automaticas from '../core/automaticas.js';
+import * as importar from '../core/importar.js';
 
 const BANCO_DE_TESTE = 'appfinancas-teste';
 
@@ -2159,6 +2160,74 @@ caso('entrada', '★ conta fixa que cai sozinha: do dia em que se ligou, um por 
   e = await estado.calcular();
   igual(automaticas.automaticasPendentes(e, '2026-11-12').length, 0, 'apagado de propósito não volta');
   igual(lanc.saldoReal(e, 'cc'), 500000 - 50000, 'setembro e outubro saíram da corrente');
+});
+
+const OFX_EXEMPLO = `OFXHEADER:100
+DATA:OFXSGML
+CHARSET:1252
+
+<OFX>
+<BANKMSGSRSV1><STMTTRNRS><STMTRS><CURDEF>BRL
+<BANKACCTFROM><BANKID>0001<ACCTID>12345-6<ACCTTYPE>CHECKING</BANKACCTFROM>
+<BANKTRANLIST><DTSTART>20261001<DTEND>20261010
+<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20261003120000[-3:BRT]<TRNAMT>-127.40<FITID>A1<MEMO>COMPRA CARTAO MERCADO BOM PRECO 0457</STMTTRN>
+<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20261005<TRNAMT>-250.00<FITID>A2<MEMO>DEBITO AUTOMATICO ENERGIA</STMTTRN>
+<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20261006<TRNAMT>-89.90<FITID>A3<MEMO>POSTO SHELL 123</STMTTRN>
+<STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20261008<TRNAMT>1500.00<FITID>A4<MEMO>PIX RECEBIDO JOAO</STMTTRN>
+</BANKTRANLIST>
+<LEDGERBAL><BALAMT>5033.70<DTASOF>20261010</LEDGERBAL>
+</STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>`;
+
+caso('importar', 'ler: OFX, valores e datas de banco, e o texto limpo', () => {
+  const o = importar.lerOFX(OFX_EXEMPLO);
+  igual([o.tipo, o.conta.numero, o.linhas.length, o.saldo], ['conta', '12345-6', 4, { valor: 503370, data: '2026-10-10' }], 'conta, número, 4 linhas, saldo do fim');
+  igual(o.linhas[0], { fitid: 'A1', data: '2026-10-03', valor: -12740, texto: 'COMPRA CARTAO MERCADO BOM PRECO 0457' }, 'a primeira linha');
+  igual([importar.lerValor('1.234,56'), importar.lerValor('-1234.56'), importar.lerValor('R$ -12,34'), importar.lerValor('50,00 D'), importar.lerValor('(10,00)')],
+    [123456, -123456, -1234, -5000, -1000], 'valores escritos de todo jeito');
+  igual([importar.lerData('03/10/2026'), importar.lerData('2026-10-03'), importar.lerData('03/10/26')], ['2026-10-03', '2026-10-03', '2026-10-03'], 'datas');
+  igual([importar.chave('COMPRA CARTAO POSTO SHELL 123'), importar.chave('POSTO SHELL 0457'), importar.chave('PIX ENVIADO MARIA SOUZA')],
+    ['posto shell', 'posto shell', 'maria souza'], 'o texto do banco, limpo');
+});
+
+caso('importar', 'ler: CSV com as colunas achadas sozinhas, débito e crédito separados', () => {
+  const csv = importar.lerCSV('Extrato da conta\nData;Histórico;Débito;Crédito;Saldo\n03/10/2026;Mercado X;127,40;;1.000,00\n08/10/2026;Salário;;3.000,00;4.000,00\n');
+  igual([csv.mapa.data, csv.mapa.texto, csv.mapa.debito, csv.mapa.credito], [0, 1, 2, 3], 'as colunas pelo nome');
+  const ls = importar.linhasDoCSV(csv);
+  igual(ls.map((l) => [l.data, l.valor, l.texto]), [['2026-10-03', -12740, 'Mercado X'], ['2026-10-08', 300000, 'Salário']], 'débito sai, crédito entra');
+  igual(importar.linhasDoCSV(csv)[0].fitid, ls[0].fitid, 'o mesmo arquivo dá o mesmo número: reimportar não duplica');
+});
+
+caso('importar', '★ casar: já lançada, prevista, nova pela regra — e reimportar não duplica', async () => {
+  const ev = await baseDeRelatorios();
+  await ev('categoria.criada', { id: 'comb', nome: 'Combustível' });
+  await ev('regra.definida', { id: importar.idDaRegra('posto shell'), padrao: 'posto shell', categoriaId: 'comb' });
+  // Lançado à mão dois dias antes do banco: casa.
+  await lanc1('m', 'despesa', 12740, 'cc', '2026-10-01', { categoriaId: 'merc' });
+  // A luz é recorrente e ainda não foi lançada: casa com a prevista.
+  await ev('recorrencia.criada', { id: 'r1', nome: 'Energia', tipo: 'despesa', contaId: 'cc', categoriaId: 'luz', valor: 25000, dia: 5, inicio: '2026-01-05' });
+  let e = await estado.calcular();
+  const o = importar.lerOFX(OFX_EXEMPLO);
+  let r = importar.casar(e, 'cc', o.linhas, { dia: '2026-10-10' });
+  igual(r.map((x) => x.situacao), ['lancada', 'prevista', 'nova', 'nova'], 'mercado já lançado, luz prevista, posto e pix novos');
+  igual([r[0].lancamento.id, r[1].ocorrencia.recorrenciaId], ['m', 'r1'], 'casou com o certo');
+  igual([r[2].sugestao.tipo, r[2].sugestao.categoriaId, r[3].sugestao.tipo, r[3].sugestao.categoriaId], ['despesa', 'comb', 'receita', null], 'a regra do posto; o pix sem regra');
+  // Gravado o posto com o número do banco, ele vira "já importada".
+  await lanc1('p', 'despesa', 8990, 'cc', '2026-10-06', { categoriaId: 'comb', fitid: 'A3', textoBanco: 'POSTO SHELL 123' });
+  await ev('importacao.ignorada', { contaId: 'cc', fitids: ['A4'] });
+  e = await estado.calcular();
+  r = importar.casar(e, 'cc', o.linhas, { dia: '2026-10-10' });
+  igual([r[2].situacao, r[3].situacao], ['importada', 'ignorada'], 'reimportar: o posto já está, o pix foi ignorado');
+  igual(importar.usosDasRegras(e).get(importar.idDaRegra('posto shell')), 1, 'a regra acertou uma vez');
+});
+
+caso('importar', 'cartão: a parcela de meses atrás cai na fatura escolhida', async () => {
+  const ev = await baseDeRelatorios();
+  const e = await estado.calcular();
+  igual(importar.deslocamentoParaFatura(e.contas.cart, '2026-07-10', '2026-10-25'), 3, 'compra de julho, fatura que fecha em outubro: 3 faturas à frente');
+  await lanc1('c', 'despesa', 10000, 'cart', '2026-07-10', { categoriaId: 'merc', faturaDesloca: 3 });
+  const l = (await estado.calcular()).lancamentos.c;
+  igual(l.cicloFatura, '2026-10-25', 'e cai nela');
+  void ev;
 });
 
 // ── apoio ─────────────────────────────────────────────────────────────────

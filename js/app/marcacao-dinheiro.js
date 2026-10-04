@@ -7,6 +7,7 @@ export const BARRA = `
     <div class="acoes-topo">
       <button type="button" class="principal" id="b-novo">Novo lançamento</button>
       <button type="button" id="b-transferir">Transferir</button>
+      <button type="button" id="b-importar">Importar extrato</button>
       <span class="atalho"><kbd>N</kbd> lança · <kbd>T</kbd> transfere</span>
     </div>
   </div>`;

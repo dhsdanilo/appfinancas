@@ -1014,3 +1014,39 @@ button.linha-rel:hover { background: var(--acento-fundo); }
 .grafico .mapa text.miudo-mapa { font-size: 11px; font-weight: 400; }
 #g-mapa { margin: var(--e2) 0 var(--e3); }
 .onde-env { margin: var(--e3) 0; }
+
+/* ── importar extrato (design/13 §3) ─────────────────────────────────────── */
+.dialogo-importar { width: min(1000px, calc(100vw - 2 * var(--e4))); }
+.dialogo-importar .form-simples { display: flex; flex-direction: column; gap: var(--e3); }
+.dialogo-importar .nota { margin: 0; }
+.dialogo-importar .linha-operacao { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--e3); }
+.dialogo-importar .linha-operacao [hidden], .dialogo-importar [hidden] { display: none; }
+.dialogo-importar input, .dialogo-importar select { min-width: 0; width: 100%; }
+.dialogo-importar .cai-sozinha input { width: auto; }
+.resumo-imp { margin: 0; }
+.lista-imp { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.linha-imp {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 110px 150px minmax(140px, 220px);
+  gap: var(--e2) var(--e3);
+  align-items: center;
+  padding: var(--e2) 0;
+  border-bottom: 1px solid var(--borda);
+  font-size: var(--t-apoio);
+  font-variant-numeric: tabular-nums;
+}
+.linha-imp.falta { box-shadow: inset 3px 0 0 var(--alerta); padding-left: var(--e2); }
+.linha-imp .quando { color: var(--tinta-fraca); }
+.linha-imp .texto-imp { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.linha-imp .texto-imp .fino { color: var(--tinta-fraca); font-size: var(--t-miudo); }
+.linha-imp .valor-imp { text-align: right; font-weight: 600; white-space: nowrap; }
+.linha-imp .valor-imp.entra { color: var(--positivo); }
+.linha-imp select { font-size: var(--t-apoio); min-height: 34px; }
+.linha-imp.casada { opacity: 0.8; }
+.detalhes-imp summary { cursor: pointer; color: var(--tinta-fraca); font-size: var(--t-apoio); padding: var(--e1) 0; }
+.dialogo-importar .bateu { color: var(--positivo); margin: 0; }
+.dialogo-importar .nao-bateu { color: var(--alerta); margin: 0; }
+@media (max-width: 700px) {
+  .linha-imp { grid-template-columns: 44px minmax(0, 1fr) auto; }
+  .linha-imp select { grid-column: 1 / -1; }
+}

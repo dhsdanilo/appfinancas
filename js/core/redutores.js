@@ -25,7 +25,7 @@ export const AREAS_PADRAO = ['caixa', 'cartoes'];
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 22;
+export const VERSAO_ESTADO = 23;
 
 export function estadoVazio() {
   return {
@@ -44,6 +44,10 @@ export function estadoVazio() {
     // movimento entre lugares.
     envelopes: {},
     alocacoes: {},
+    // O que o texto do banco vira (design/13 §2), e as linhas de extrato que
+    // se mandou ignorar ("conta|número do banco"), para não voltarem.
+    regras: {},
+    importIgnorados: {},
     // Fusões feitas, com o que foi movido — é o que permite desfazer (02 §3.15).
     fusoes: {},
     // Tipos de evento que este app não conhece. Não é erro fatal (um aparelho
@@ -131,6 +135,8 @@ export const redutores = {
       'caixaEm',
       'risco',
       'liquidez',
+      // O número da conta no arquivo do banco: a segunda importação já sabe qual é.
+      'importId',
     ]) {
       if (d[campo] !== undefined) c[campo] = d[campo];
     }
@@ -354,6 +360,31 @@ export const redutores = {
   'envelope.alocacaoRemovida'(e, d) {
     const a = e.alocacoes?.[d.id];
     if (a) a.removida = true;
+  },
+
+  // ── regras e importação (design/13) ─────────────────────────────────────
+
+  // Uma regra por texto limpo: o id é o próprio texto, então redefinir é
+  // substituir, e os dois celulares chegam à mesma regra.
+  'regra.definida'(e, d) {
+    e.regras ??= {};
+    e.regras[d.id] = {
+      id: d.id,
+      padrao: d.padrao,
+      categoriaId: d.categoriaId ?? null,
+      detalheId: d.detalheId ?? null,
+      etiquetas: d.etiquetas ?? [],
+      transferePara: d.transferePara ?? null,
+    };
+  },
+
+  'regra.removida'(e, d) {
+    delete e.regras?.[d.id];
+  },
+
+  'importacao.ignorada'(e, d) {
+    e.importIgnorados ??= {};
+    for (const f of d.fitids ?? []) e.importIgnorados[`${d.contaId}|${f}`] = true;
   },
 
   // ── categoria ───────────────────────────────────────────────────────────
@@ -614,6 +645,10 @@ export const redutores = {
       donos: d.donos ?? [],
       // Caiu sozinho: a conta fixa em débito automático (design/13 §1).
       caiuSozinha: d.caiuSozinha ?? false,
+      // Importado do banco (design/13 §3): o número que o banco dá à linha
+      // (reimportar não duplica) e o texto dele (é dele que a regra aprende).
+      fitid: d.fitid ?? null,
+      textoBanco: d.textoBanco ?? null,
       extraordinario: d.extraordinario ?? Boolean(d.custeadoPor),
       lancadoPor: d.lancadoPor ?? null,
       // Só no estorno: quando o dinheiro voltou (02 §3.6). No cartão, é isso

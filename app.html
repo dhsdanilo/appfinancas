@@ -97,6 +97,9 @@
   <button type="button" role="tab" id="aba-detalhes" data-aba="detalhes" aria-controls="painel-detalhes" aria-selected="false" tabindex="-1">
     Descrições <span class="contador" data-contador="detalhes"></span>
   </button>
+  <button type="button" role="tab" id="aba-regras" data-aba="regras" aria-controls="painel-regras" aria-selected="false" tabindex="-1">
+    Regras <span class="contador" id="contador-regras"></span>
+  </button>
   <button type="button" role="tab" id="aba-sincronizacao" data-aba="sincronizacao" aria-controls="painel-sincronizacao" aria-selected="false" tabindex="-1">
     Sincronização
   </button>
@@ -203,6 +206,16 @@
   <ul class="itens" id="lista-detalhes"></ul>
 </section>
 
+
+<!-- ── regras (design/13 §2) ──────────────────────────────────────────── -->
+<section class="cartao painel" role="tabpanel" id="painel-regras" aria-labelledby="aba-regras" data-painel="regras" hidden>
+  <p class="nota">
+    O texto que o banco escreve, limpo (sem números e sem "compra", "cartão", "pix"…), e o que ele
+    vira. As regras nascem sozinhas — da categoria que você escolhe ao importar um extrato, ou ao
+    corrigir um lançamento importado. Regra errada se apaga aqui.
+  </p>
+  <ul class="itens" id="lista-regras"></ul>
+</section>
 
 <!-- ── sincronização ──────────────────────────────────────────────────── -->
 <div class="painel-config" role="tabpanel" id="painel-sincronizacao" aria-labelledby="aba-sincronizacao" data-painel="sincronizacao" hidden>
@@ -417,6 +430,7 @@
   await import('./js/dinheiro.js');
   await import('./js/envelopes.js');
   await import('./js/relatorios.js');
+  await import('./js/regras.js');
   await import('./js/gestao.js');
   await import('./js/recorrencias.js');
   await import('./js/ajustes.js');

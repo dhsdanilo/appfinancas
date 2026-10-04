@@ -25,6 +25,7 @@ import { MARCACAO_CAMPO_VALOR, ligarCampoValor } from './campo-valor.js';
 import { ligarZonaDePerigo } from './zona-perigo.js';
 import { areaDaConta, opcoesDeConta, categoriaNaArea, areasParaConta } from './areas.js';
 import { envelopesAtivos, envelopesNoLugar, lugarDaConta } from '../core/envelopes.js';
+import { chave, idDaRegra } from '../core/importar.js';
 
 // As peças do formulário. O térreo (captura rápida do celular) começa pelo
 // valor, com o teclado já aberto — três toques (03-alimentacao §1). O "Novo
@@ -1004,6 +1005,16 @@ export async function criarFormulario({
 
     await estado.aplicarEvento('lancamento.alterado', { id: editando.id, ...mudancas });
     await propagarParaAsIrmas(mudancas);
+    // Corrigir a categoria de um lançamento importado ensina a regra do texto
+    // do banco (design/13 §2).
+    if (editando.textoBanco && mudancas.categoriaId) {
+      const padrao = chave(editando.textoBanco);
+      if (padrao) {
+        await estado.aplicarEvento('regra.definida', {
+          id: idDaRegra(padrao), padrao, categoriaId: categoriaId, detalheId, etiquetas: [...etiquetas],
+        });
+      }
+    }
     await recarregar();
     editando = app.lancamentos[editando.id] ?? editando;
     if (aoSalvar) await aoSalvar();

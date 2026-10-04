@@ -22,6 +22,7 @@ import { situacao, saldoDevedor, jurosDaParcela, cronograma, simularAmortizacao 
 import { fotografar, amortizar, pularParcela } from './app/contrato.js';
 import { lancarOcorrencia } from './app/ocorrencia.js';
 import { criarJanelaDoAtivo } from './app/ativo.js';
+import { criarImportacao } from './app/importar.js';
 import { resumoDaConta, ativosDaConta, nomeDaClasse, CLASSES } from './core/investimentos.js';
 import { donosNoDia } from './core/envelopes.js';
 import { aoLancar } from './app/pagina.js';
@@ -353,6 +354,7 @@ function textoDaLinha(l) {
     app.contas[l.contaId]?.nome,
     app.contas[l.contaDestinoId]?.nome,
     l.observacao,
+    l.textoBanco,
     formatar(l.valor),
     ...(l.etiquetas ?? []).map((t) => app.etiquetas?.[t]?.nome),
   ].filter(Boolean).join(' ').toLocaleLowerCase('pt-BR');
@@ -1321,6 +1323,8 @@ function linhaHTML(l, ids, saldoApos = null) {
   } else {
     oque = nomeDaCategoria(app, l.categoriaId) || l.tipo;
     onde = conta?.nome ?? '—';
+    // Importado sem descrição: o texto do banco diz o que foi (design/13 §3).
+    if (l.textoBanco) onde = `${l.textoBanco} · ${onde}`;
   }
   if (!l.fatura && !transferencia && !ajuste && !devolucao) {
     // A compra mostra o que já voltou dela (03 §3.3).
@@ -1649,6 +1653,9 @@ function abrirTransferencia() {
 }
 
 $('b-transferir').addEventListener('click', abrirTransferencia);
+// Importar extrato ou fatura (design/13 §3), já na conta da tela quando há uma.
+const importacao = criarImportacao({ aoSalvar: pintar });
+$('b-importar').addEventListener('click', () => importacao.abrir(contaDaVista()));
 $('b-fechar-edicao').addEventListener('click', () => dialogoEdicao.close());
 $('b-fechar-transferencia').addEventListener('click', () => dialogoTransferencia.close());
 
