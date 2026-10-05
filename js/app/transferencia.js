@@ -52,6 +52,14 @@ const MARCACAO = `
     </label>
   </div>
 
+  <!-- Repetir todo mês (design/03 §3.2, pedido dele 05/10/2026): a série nasce
+       desta transferência; "cai sozinha" é o débito automático (13 §1). -->
+  <div class="repete-transf" data-papel="linha-repete">
+    <label><input type="checkbox" data-papel="repete"> repete todo mês</label>
+    <label data-papel="linha-cai" hidden><input type="checkbox" data-papel="cai-sozinha"> cai sozinha no dia</label>
+    <span class="fino" data-papel="pista-repete"></span>
+  </div>
+
   <!-- De quem é o dinheiro que sai, quando há envelope na origem (design/11 §4). -->
   <div class="donos-saida" data-papel="donos" hidden></div>
 
@@ -136,6 +144,7 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
     el('b-salvar').textContent = editando || daParcela ? 'Salvar' : pagandoFatura() ? 'Pagar fatura' : 'Transferir';
     if (aoMudarTitulo) aoMudarTitulo(daParcela ? 'Corrigir parcela' : pagandoFatura() ? 'Pagar fatura' : 'Transferência');
     el('recado-parcela').hidden = !daParcela;
+    pintarRepete();
 
     // A recusa diz o que resolve, nunca só que não dá.
     const mesma = origem() && origem() === destino();
@@ -143,6 +152,24 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
     el('recado').textContent = recusa;
     el('recado').hidden = !recusa;
     if (recusa) el('b-salvar').disabled = true;
+  }
+
+  /**
+   * "Repete todo mês" só na transferência nova e avulsa: não na correção, não
+   * na ocorrência de uma série que já existe, não na parcela de dívida, e não
+   * no pagamento de fatura — o valor dela muda todo mês e ela já aparece
+   * prevista sozinha.
+   */
+  function pintarRepete() {
+    const pode = !editando && !daSerie && !daParcela && !pagandoFatura();
+    el('linha-repete').hidden = !pode;
+    if (!pode) el('repete').checked = false;
+    const repete = el('repete').checked;
+    el('linha-cai').hidden = !repete;
+    if (!repete) el('cai-sozinha').checked = false;
+    el('pista-repete').textContent = repete && app && origem() && destino()
+      ? `todo dia ${Number(data.slice(8, 10))}, ${valor.centavos() ? formatar(valor.centavos()) : 'o mesmo valor'} de ${app.contas[origem()]?.nome ?? '—'} para ${app.contas[destino()]?.nome ?? '—'}${el('cai-sozinha').checked ? ', lançada sozinha no dia' : ' — aparece prevista nos meses seguintes'}`
+      : '';
   }
 
   function contasDisponiveis() {
@@ -204,8 +231,31 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
     return true;
   }
 
+  /** Marcado "repete", a série nasce desta transferência: mesmo valor, mesmo dia. */
+  async function criarSerie() {
+    if (!el('repete').checked || el('linha-repete').hidden) return null;
+    const id = novoId('rec');
+    const cai = el('cai-sozinha').checked;
+    await estado.aplicarEvento('recorrencia.criada', {
+      id,
+      nome: `${app.contas[origem()]?.nome ?? '—'} → ${app.contas[destino()]?.nome ?? '—'}`,
+      tipo: 'transferencia',
+      contaId: origem(),
+      contaDestinoId: destino(),
+      tipoValor: 'fixa',
+      valor: valor.centavos(),
+      periodicidade: 'mensal',
+      dia: Number(data.slice(8, 10)),
+      inicio: data,
+      caiSozinha: cai,
+      caiSozinhaDesde: cai ? hoje() : null,
+    });
+    return id;
+  }
+
   async function registrar() {
     const ap = await log.aparelho();
+    const serie = await criarSerie();
     await estado.aplicarEvento('lancamento.registrado', {
       id: novoId('lan'),
       tipo: tipoDaTransferencia(app, destino()),
@@ -217,11 +267,13 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
       // Sem categoria: não é gasto nem ganho (§3.1).
       categoriaId: null,
       confirmado: nasceConfirmado({ manual: true, dataCaixa: data }),
-      recorrenciaId: daSerie,
+      recorrenciaId: daSerie ?? serie,
       donos: donos.ler(),
       lancadoPor: ap?.id ?? null,
     });
     daSerie = null;
+    el('repete').checked = false;
+    el('cai-sozinha').checked = false;
     await recarregar();
     if (aoSalvar) await aoSalvar();
     return true;
@@ -275,7 +327,10 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
   el('data').addEventListener('change', () => {
     if (!el('data').value) { pintarData(); return; }
     data = el('data').value;
+    pintarRepete();
   });
+  el('repete').addEventListener('change', pintarRepete);
+  el('cai-sozinha').addEventListener('change', pintarRepete);
 
   // ── partida ─────────────────────────────────────────────────────────────
 
@@ -303,11 +358,23 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
       await recarregar();
     },
 
+    /** A data em que a transferência nova abre (o mês da tela, D35). */
+    usarData(dia) {
+      if (!dia) return;
+      data = dia;
+      pintarData();
+    },
+
+    /** A data na tela agora: a da última transferência salva, depois de salvar. */
+    dataAtual: () => data,
+
     limpar: () => {
       editando = null;
       daSerie = null;
       daParcela = null;
       data = hoje();
+      el('repete').checked = false;
+      el('cai-sozinha').checked = false;
       valor.limpar();
       el('origem').value = '';
       el('destino').value = '';

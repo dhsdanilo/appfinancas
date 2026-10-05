@@ -1689,7 +1689,11 @@ const dialogoTransferencia = $('dialogo-transferencia');
 
 const transferencia = await criarTransferencia({
   raiz: $('formulario-transferencia'),
-  aoSalvar: pintar,
+  // A data da transferência salva vale para a próxima, no mesmo mês da tela (D35).
+  aoSalvar: async () => {
+    ultimaData = { dia: transferencia.dataAtual(), mes: vista.mes };
+    await pintar();
+  },
   aoFechar: () => dialogoTransferencia.close(),
   aoMudarTitulo: (titulo) => { $('titulo-transferencia').textContent = titulo; },
 });
@@ -1871,6 +1875,7 @@ document.addEventListener('click', async (e) => {
 
 function abrirTransferencia() {
   transferencia.limpar();
+  transferencia.usarData(dataDaVista());
   transferencia.recarregar();
   dialogoTransferencia.showModal();
   transferencia.focar();

@@ -551,3 +551,8 @@ input[type="text"].observacao {
   border-top: 1px solid var(--borda);
 }
 .formulario-app .linha-fatura { margin: 0 0 var(--e2); }
+
+/* Transferência: "repete todo mês" e "cai sozinha no dia" (design/03 §3.2). */
+.repete-transf { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e2) var(--e4); }
+.repete-transf label { display: inline-flex; align-items: center; gap: var(--e1); min-height: 36px; }
+.repete-transf .fino { flex-basis: 100%; color: var(--tinta-fraca); font-size: var(--t-miudo); }
