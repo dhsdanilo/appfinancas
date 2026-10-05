@@ -25,8 +25,8 @@ import { criarJanelaDoAtivo } from './app/ativo.js';
 import { criarImportacao } from './app/importar.js';
 import { resumoDaConta, ativosDaConta, nomeDaClasse, CLASSES } from './core/investimentos.js';
 import { donosNoDia } from './core/envelopes.js';
-import { mesDosInvestimentos } from './core/relatorios.js';
-import { colunas, cor as corDaSerie } from './app/graficos.js';
+import { mesDosInvestimentos, rendimentoNoPeriodo } from './core/relatorios.js';
+import { areas, cor as corDaSerie } from './app/graficos.js';
 import { aoLancar } from './app/pagina.js';
 import { enderecoDa } from './app/rotas.js';
 import { BARRA, PRINCIPAL, DIALOGOS } from './app/marcacao-dinheiro.js';
@@ -1062,30 +1062,45 @@ function numerosDoMesInvestido(ids, estimado) {
 const desdeOInicio = (investido, rendeu) =>
   `<p class="nota-rel">Desde o início: investido ${formatar(investido)} · rendeu ${rendeuTexto(rendeu)}${investido ? ` (${pctTexto(rendeu / investido)})` : ''}.</p>`;
 
-/** Os 12 meses até o da tela: o aporte e o rendimento de cada mês, lado a lado. */
+/**
+ * Os 12 meses até o da tela, em áreas que acumulam (pedido dele, 05/10/2026):
+ * embaixo o que foi aportado até ali, por cima o rendimento acumulado, e a
+ * linha é o saldo — o mesmo desenho da evolução dos envelopes.
+ */
 function desenharMesesDosInvestimentos(contas) {
   const raiz = $('g-invest');
   if (!raiz) return;
   const ids = new Set(contas.map((c) => c.id));
   const meses = [];
   for (let i = 11; i >= 0; i -= 1) meses.push(somarMeses(`${vista.mes}-01`, -i).slice(0, 7));
-  const dados = meses.map((m) => mesDosInvestimentos(app, ids, m)).filter((x) => x.inicio || x.fim || x.aportado || x.resgatado);
-  // Sem aporte nem rendimento em mês nenhum, o gráfico seria só o eixo.
-  if (dados.length < 2 || dados.every((x) => !x.aportado && !x.resgatado && !x.rendeu)) { raiz.innerHTML = ''; return; }
-  const AZUL = corDaSerie(1);
-  const VERDE = corDaSerie(3);
-  colunas(raiz, {
-    grupos: dados.map((x) => ({
-      rotulo: `${nomeDoMes(x.mes).split(' ')[0].slice(0, 3)}/${x.mes.slice(2, 4)}`,
-      barras: [[{ valor: x.aportado - x.resgatado, cor: AZUL }], [{ valor: x.rendeu, cor: VERDE }]],
-      dica: `<strong>${escapar(nomeDoMes(x.mes))}</strong><span>aportado ${formatar(x.aportado)}${x.resgatado ? ` · resgatado ${formatar(x.resgatado)}` : ''}</span><span>rendeu ${rendeuTexto(x.rendeu)}</span><span class="fino">saldo ${formatar(x.fim)}</span>`,
+  const dados = meses.map((m) => {
+    const x = mesDosInvestimentos(app, ids, m);
+    const ate = fimDoMes(`${m}-01`) > hoje() ? hoje() : fimDoMes(`${m}-01`);
+    // O rendimento desde sempre até o fim do mês; o resto do saldo é o que foi posto.
+    const rendeu = rendimentoNoPeriodo(app, '2000-01-01', ate, ids);
+    return { ...x, rendeuAcumulado: rendeu, aportadoAcumulado: x.fim - rendeu };
+  }).filter((x) => x.inicio || x.fim || x.aportado || x.resgatado);
+  if (dados.length < 2) { raiz.innerHTML = ''; return; }
+  const ultimo = dados.length - 1;
+  const perdeu = dados.some((x) => x.rendeuAcumulado < 0);
+  areas(raiz, {
+    pontos: dados.map((x, i) => ({
+      rotulo: i === ultimo && x.mes === hoje().slice(0, 7) ? 'hoje' : `${nomeDoMes(x.mes).split(' ')[0].slice(0, 3)}/${x.mes.slice(2, 4)}`,
+      acima: [Math.max(0, x.aportadoAcumulado), Math.max(0, x.rendeuAcumulado)],
+      abaixo: perdeu ? [Math.max(0, -x.rendeuAcumulado)] : [],
+      linha: x.fim,
+      dica: `<strong>${formatar(x.fim)}</strong><span>${escapar(nomeDoMes(x.mes))}</span>
+        <span class="fino">aportado até aqui ${formatar(x.aportadoAcumulado)} · rendeu até aqui ${rendeuTexto(x.rendeuAcumulado)}</span>
+        <span class="fino">no mês: aportou ${formatar(x.aportado)}${x.resgatado ? `, resgatou ${formatar(x.resgatado)}` : ''}, rendeu ${rendeuTexto(x.rendeu)}</span>`,
     })),
-    series: [{ nome: 'aporte do mês', cor: AZUL }, { nome: 'rendimento do mês', cor: VERDE }],
+    acima: [{ nome: 'aportado', cor: corDaSerie(1) }, { nome: 'rendimento', cor: corDaSerie(3) }],
+    abaixo: perdeu ? [{ nome: 'perdeu', cor: corDaSerie(2) }] : [],
+    linha: { nome: 'saldo', cor: 'var(--tinta)' },
     formatar: (v) => {
       const abs = Math.abs(v / 100);
       return `${v < 0 ? '−' : ''}${abs >= 1000 ? `${(abs / 1000).toLocaleString('pt-BR', { maximumFractionDigits: abs >= 10000 ? 0 : 1 })} mil` : Math.round(abs).toLocaleString('pt-BR')}`;
     },
-    altura: 170,
+    altura: 190,
   });
 }
 
