@@ -13,9 +13,23 @@
 
 import { hoje, fimDoMes, somarMeses, proximoMes } from './datas.js';
 import { lancados } from './lancamentos.js';
-import { ehProjeto, primeiroMes } from './relatorios.js';
+import { ehProjeto } from './relatorios.js';
 
 const mesDe = (dia) => dia.slice(0, 7);
+
+/**
+ * O primeiro mês com gasto ou receita: daí em diante há o que mostrar. A
+ * aplicação de "antes do app", de anos atrás, não conta — ela diluiria a
+ * média e esticaria o "tudo".
+ */
+export function primeiroMes(estado) {
+  let primeiro = null;
+  for (const l of lancados(estado)) {
+    if (!l.confirmado || !['despesa', 'estorno', 'receita'].includes(l.tipo)) continue;
+    if (!primeiro || l.dataCompetencia < primeiro) primeiro = l.dataCompetencia;
+  }
+  return primeiro ? mesDe(primeiro) : null;
+}
 
 /** Nenhum filtro escolhido: o relatório é de tudo. */
 export const selecaoVazia = (s) =>
@@ -139,11 +153,12 @@ function agruparPor(itens, agrupar) {
  * lançamento —, empilham por categoria, para nada contar duas vezes.
  */
 export function relatorio(estado, sel, per, { natureza = 'gasto', agrupar = 'categoria', tempo = 'mes' } = {}, dia = hoje()) {
-  const daqui = movimentos(estado, sel, per.de, per.ate).filter((x) => x.natureza === natureza);
-  const ant = periodoAnterior(per);
   // O mês que ainda corre se compara com o anterior até o mesmo dia: outubro
-  // até o dia 5 contra setembro inteiro faria todo mês parecer econômico.
+  // até o dia 5 contra setembro inteiro faria todo mês parecer econômico. E
+  // os dois param no mesmo dia — a parcela do dia 20 não entra de um lado só.
   const ateODia = per.opcao === 'mes' && per.meses[0] === mesDe(dia);
+  const daqui = movimentos(estado, sel, per.de, ateODia && dia < per.ate ? dia : per.ate).filter((x) => x.natureza === natureza);
+  const ant = periodoAnterior(per);
   if (ateODia) {
     const mesmoDia = `${ant.meses[0]}-${dia.slice(8, 10)}`;
     if (mesmoDia < ant.ate) ant.ate = mesmoDia;

@@ -52,11 +52,12 @@ const memoria = new WeakMap();
 export function parcelasAutomaticas(estado, lancados, dia) {
   // Cálculo puro sobre o estado: enquanto nenhum evento novo entrou, a
   // resposta é a mesma. `aplicados` conta os eventos; sem ele, não guarda.
+  // Guarda um resultado por dia: quem percorre o tempo (a evolução dos
+  // envelopes, o mês dos investimentos) pede muitos dias seguidos.
   const guardavel = typeof estado.aplicados === 'number';
-  const antes = guardavel ? memoria.get(estado) : null;
-  if (antes && antes.aplicados === estado.aplicados && antes.dia === dia && antes.qtd === lancados.length) {
-    return antes.lista;
-  }
+  let antes = guardavel ? memoria.get(estado) : null;
+  if (antes && (antes.aplicados !== estado.aplicados || antes.qtd !== lancados.length)) antes = null;
+  if (antes?.porDia.has(dia)) return antes.porDia.get(dia);
 
   const lista = [];
   for (const conta of Object.values(estado.contas)) {
@@ -113,6 +114,9 @@ export function parcelasAutomaticas(estado, lancados, dia) {
     }
   }
 
-  if (guardavel) memoria.set(estado, { aplicados: estado.aplicados, dia, qtd: lancados.length, lista });
+  if (guardavel) {
+    if (!antes) { antes = { aplicados: estado.aplicados, qtd: lancados.length, porDia: new Map() }; memoria.set(estado, antes); }
+    antes.porDia.set(dia, lista);
+  }
   return lista;
 }

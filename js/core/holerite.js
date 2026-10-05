@@ -34,8 +34,8 @@ export function linhasDoHolerite(estado, folhaId, mes, dia = hoje()) {
 }
 
 /** O que já foi lançado na folha naquele mês — para dizer "lançado" em vez de oferecer de novo. */
-export function lancadosNoMes(estado, folhaId, mes) {
-  return visiveis(estado).filter(
+export function lancadosNoMes(estado, folhaId, mes, dia = hoje()) {
+  return visiveis(estado, dia).filter(
     (l) => (l.contaId === folhaId || l.contaDestinoId === folhaId) && l.dataCompetencia.slice(0, 7) === mes
   );
 }
@@ -53,8 +53,8 @@ export function liquido(linhas) {
  * linhas lançadas e o que entrou nela vindo de outra conta. O holerite fecha o
  * mês inteiro, então o líquido novo é só o que falta para ela zerar.
  */
-export function jaLancadoNoLiquido(estado, folhaId, mes) {
-  const ja = lancadosNoMes(estado, folhaId, mes);
+export function jaLancadoNoLiquido(estado, folhaId, mes, dia = hoje()) {
+  const ja = lancadosNoMes(estado, folhaId, mes, dia);
   return liquido(ja.filter((l) => l.contaId === folhaId))
     + ja.filter((l) => l.contaDestinoId === folhaId).reduce((t, l) => t + l.valor, 0);
 }
@@ -74,7 +74,7 @@ export function liquidoPrevisto(estado, folhaId, mes, dia = hoje()) {
   const previstas = linhasDoHolerite(estado, folhaId, mes, dia);
   // Só a parcela do consignado sobrando não é contracheque por lançar.
   if (!previstas.some((o) => !o.automatico)) return null;
-  const valor = liquido(previstas) + jaLancadoNoLiquido(estado, folhaId, mes);
+  const valor = liquido(previstas) + jaLancadoNoLiquido(estado, folhaId, mes, dia);
   if (valor <= 0) return null;
   return {
     folhaId,

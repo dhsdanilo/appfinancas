@@ -26,7 +26,7 @@ import { visiveis, lancados, parcelasPorVir, saldoReal, sinalDeSaida } from './l
  *
  * Devolve null para cartão sem ciclo configurado.
  */
-export function faturas(estado, cartaoId, dia = hoje()) {
+export function faturas(estado, cartaoId, dia = hoje(), { pagoAte = null } = {}) {
   const conta = estado.contas[cartaoId];
   if (!temCiclo(conta)) return null;
 
@@ -66,6 +66,9 @@ export function faturas(estado, cartaoId, dia = hoje()) {
       c.total += sinalDeSaida(l);
       c.itens.push(l);
     } else if (l.contaDestinoId === cartaoId) {
+      // O pagamento agendado para depois da janela que se olha ainda não
+      // abate: a fatura pesa no mês, e o pagamento, quando cair.
+      if (!l.confirmado && pagoAte && l.dataCaixa > pagoAte) continue;
       pago += l.valor;
     }
   }
@@ -115,8 +118,8 @@ export function resumoDoCartao(estado, cartaoId, dia = hoje()) {
  * As parcelas das faturas futuras ficam fora — ainda não estão em fatura
  * nenhuma.
  */
-export function aPagarAgora(estado, cartaoId, dia = hoje()) {
-  const lista = faturas(estado, cartaoId, dia);
+export function aPagarAgora(estado, cartaoId, dia = hoje(), { pagoAte = null } = {}) {
+  const lista = faturas(estado, cartaoId, dia, { pagoAte });
   if (!lista) return 0;
   return lista
     .filter((c) => c.situacao !== 'futura')
@@ -131,8 +134,8 @@ export function aPagarAgora(estado, cartaoId, dia = hoje()) {
  *
  * [{ ...fatura, projetadas: [ocorrência], previsto: aPagar + projetadas, estimado }]
  */
-export function faturasNoPeriodo(estado, cartaoId, de, ate, dia = hoje()) {
-  const lista = faturas(estado, cartaoId, dia);
+export function faturasNoPeriodo(estado, cartaoId, de, ate, dia = hoje(), { pagoAte = null } = {}) {
+  const lista = faturas(estado, cartaoId, dia, { pagoAte });
   if (!lista) return [];
   // A compra recorrente de um mês cai na fatura que vence no seguinte: olhar
   // desde o mês atual pega todas que vencem no período.
@@ -273,13 +276,15 @@ export function valorDaSerie(r, daSerie, data = hoje()) {
  * Só subtrai: receita futura não entra, porque dinheiro que ainda não chegou
  * não deve parecer disponível.
  */
-export function saldoPrevisto(estado, contaId, dia = hoje()) {
+export function saldoPrevisto(estado, contaId, dia = hoje(), ids = null) {
   const real = saldoReal(estado, contaId);
   const ate = fimDoMes(dia);
+  // No Geral, a transferência para outra conta do mesmo conjunto não sai dele.
+  const interna = (destinoId) => Boolean(ids?.has(destinoId));
 
   const faturasDaConta = Object.values(estado.contas)
     .filter((c) => c.tipo === 'cartao' && c.pagaCom === contaId)
-    .map((c) => ({ cartao: c, valor: aPagarAgora(estado, c.id, dia) }))
+    .map((c) => ({ cartao: c, valor: aPagarAgora(estado, c.id, dia, { pagoAte: ate }) }))
     .filter((f) => f.valor > 0);
 
   // Agendados e vencidos: o que foi lançado e ainda não saiu.
@@ -288,7 +293,7 @@ export function saldoPrevisto(estado, contaId, dia = hoje()) {
   // §6) — o recorrente do cartão não aparece na lista da conta.
   const partes = { agendados: 0, recorrentes: 0, cartoes: new Map() };
   for (const l of visiveis(estado, dia)) {
-    if (l.confirmado || l.contaId !== contaId || l.dataCaixa > ate) continue;
+    if (l.confirmado || l.contaId !== contaId || l.dataCaixa > ate || interna(l.contaDestinoId)) continue;
     const saida = sinalDeSaida(l);
     if (saida > 0) {
       aSair += saida;
@@ -304,6 +309,7 @@ export function saldoPrevisto(estado, contaId, dia = hoje()) {
   let estimado = false;
   for (const o of ocorrenciasPrevistas(estado, inicioDoMes(dia), ate, dia)) {
     if (o.contaId !== contaId && !cartoes.has(o.contaId)) continue;
+    if (interna(o.contaDestinoId)) continue;
     const saida = sinalDeSaida(o);
     if (saida <= 0) continue;
     aSair += saida;

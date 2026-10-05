@@ -804,6 +804,8 @@ export async function criarFormulario({
     el('linha-envelope').hidden = !mostra;
     if (!mostra) return;
     const opcoes = atual && !lista.includes(atual) ? [...lista, atual] : lista;
+    // O envelope que pagou e não existe mais aparece pelo nome que dá: some da lista.
+    if (custeadoPor && !atual) custeadoPor = null;
     el('envelope').innerHTML = `<option value="">—</option>${opcoes
       .map((v) => `<option value="${escapar(v.id)}"${v.id === custeadoPor ? ' selected' : ''}>${escapar(v.nome)}</option>`).join('')}`;
     if (!custeadoPor) { el('pista-envelope').textContent = ''; return; }
@@ -1067,6 +1069,7 @@ export async function criarFormulario({
     // linha-mãe com o total, que seria a forma mais fácil de contar o mesmo
     // dinheiro duas vezes (03-alimentacao §6.1).
     const compraId = quantas > 1 ? novoId('cmp') : null;
+    const daSerieAntes = daSerie;
     const recorrenciaId = daSerie ?? (await garantirRecorrencia());
     // No cartão a parcela é realizada desde a compra (D4): o que vem depois é
     // o pagamento, não o gasto. Na corrente, parcela futura é compromisso.
@@ -1112,6 +1115,8 @@ export async function criarFormulario({
     const quanto = formatar(valor.centavos());
     ultimo = {
       ids,
+      // A série que nasceu com este lançamento: desfazer leva ela junto.
+      serie: !daSerieAntes && recorrenciaId ? recorrenciaId : null,
       resumo:
         (quantas > 1 ? `${quantas}× de ${quanto}` : quanto) +
         ` · ${nomeDaCategoria(app, categoriaId)}`,
@@ -1162,7 +1167,8 @@ export async function criarFormulario({
    * meses em que ninguém lançou nada (03-alimentacao §4).
    */
   async function garantirRecorrencia() {
-    if (repete === 'nao') return null;
+    // Parcelado não repete: cada parcela cobriria um mês da série.
+    if (repete === 'nao' || parcelas() > 1) return null;
     const id = novoId('rec');
     await estado.aplicarEvento('recorrencia.criada', {
       id,
@@ -1189,6 +1195,7 @@ export async function criarFormulario({
     faixa.querySelector('[data-papel="b-desfazer"]').addEventListener('click', async () => {
       // Desfazer uma compra em 10× desfaz as dez: foi um ato só.
       for (const id of ultimo.ids) await estado.aplicarEvento('lancamento.removido', { id });
+      if (ultimo.serie) await estado.aplicarEvento('recorrencia.removida', { id: ultimo.serie });
       faixa.hidden = true;
       await recarregar();
       if (aoSalvar) await aoSalvar();
@@ -1330,7 +1337,13 @@ export async function criarFormulario({
     }
     pintarCategorias();
     valor.pintar();
-    // Cada conta tem o seu marco zero: trocar de conta pode mudar o piso da data.
+    // Cada conta tem o seu marco zero: trocar de conta pode mudar o piso da
+    // data — e a data que ficou antes dele sobe para ele, dito na tela.
+    const piso = pisoDaConta();
+    if (piso && data < piso) {
+      data = piso;
+      recadar(`${app.contas[contaId].nome} começou em ${rotuloDoDia(piso)}: a data foi para esse dia.`);
+    }
     pintarData();
   });
 
@@ -1637,6 +1650,7 @@ export async function criarFormulario({
       tipo = r.tipo === 'receita' ? 'receita' : 'despesa';
       data = r.data || hoje();
       contaId = r.contaId ?? contaId;
+      if (pisoDaConta() && data < pisoDaConta()) data = pisoDaConta();
       categoriaId = r.categoriaId ?? null;
       detalheId = r.detalheId ?? null;
       etiquetas = [...(r.etiquetas ?? [])];
@@ -1652,6 +1666,9 @@ export async function criarFormulario({
 
     /** Zera tudo: usado ao reabrir o diálogo depois de fechado. */
     limpar: () => {
+      tipo = 'despesa';
+      categoriaId = null;
+      el('novo-detalhe').value = '';
       editando = null;
       daSerie = null;
       previstoDe = null;

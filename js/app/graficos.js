@@ -85,8 +85,11 @@ const moldura = (svg, extra = '') => `<div class="grafico">${svg}<div class="dic
 export function colunas(raiz, { grupos, series, linha = null, formatar, altura = 220 }) {
   const largura = larguraDe(raiz);
   const m = { cima: 12, baixo: 26, esq: 62, dir: 12 };
-  const totais = grupos.flatMap((g) => g.barras.map((b) => b.reduce((t, p) => t + p.valor, 0)));
-  const { y, marcas } = escala([...totais, ...(linha ?? []).filter((v) => v != null)], altura - m.cima - m.baixo, m.cima);
+  // A escala vai do fundo das partes negativas ao topo das positivas — a soma
+  // líquida da pilha cortaria a barra quando há devolução no mês.
+  const topos = grupos.flatMap((g) => g.barras.map((b) => b.reduce((t, p) => t + Math.max(0, p.valor), 0)));
+  const fundos = grupos.flatMap((g) => g.barras.map((b) => b.reduce((t, p) => t + Math.min(0, p.valor), 0)));
+  const { y, marcas } = escala([...topos, ...fundos, ...(linha ?? []).filter((v) => v != null)], altura - m.cima - m.baixo, m.cima);
   const faixa = (largura - m.esq - m.dir) / grupos.length;
   const porGrupo = grupos[0]?.barras.length ?? 1;
   // Barra fina (até 24px), centralizada no grupo, 2px de fresta entre vizinhas.
@@ -100,9 +103,14 @@ export function colunas(raiz, { grupos, series, linha = null, formatar, altura =
     const largGrupo = porGrupo * grossura + (porGrupo - 1) * 2;
     const pilhas = g.barras.map((pilha, bi) => {
       const x = centro - largGrupo / 2 + bi * (grossura + 2);
-      // O negativo (o mês em que o investimento perdeu) desce do zero.
-      const negativos = pilha.filter((p) => p.valor < 0).map((p) =>
-        `<rect x="${x}" y="${y(0)}" width="${grossura}" height="${Math.max(0, y(p.valor) - y(0))}" fill="${p.cor}"/>`).join('');
+      // O negativo (devolução, o mês em que o investimento perdeu) desce do
+      // zero, um embaixo do outro.
+      let fundo = 0;
+      const negativos = pilha.filter((p) => p.valor < 0).map((p) => {
+        const y0 = y(fundo);
+        fundo += p.valor;
+        return `<rect x="${x}" y="${y0}" width="${grossura}" height="${Math.max(0, y(fundo) - y0)}" fill="${p.cor}"/>`;
+      }).join('');
       let base = 0;
       const partes = pilha.filter((p) => p.valor > 0);
       return partes.map((p, pi) => {

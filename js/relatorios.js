@@ -347,7 +347,8 @@ function abaPatrimonio() {
     </div>`;
 
   // A lista: cada conta no fim do período e quanto mudou, por área.
-  const contas = Object.values(app.contas).filter((c) => entraNoPatrimonio(c) && !c.arquivada && (!ids || ids.has(c.id)));
+  // A arquivada que ainda tem saldo entra: o número do topo conta com ela.
+  const contas = Object.values(app.contas).filter((c) => entraNoPatrimonio(c) && (!ids || ids.has(c.id)));
   const lista = AREAS.filter((a) => a.id !== 'folha').map((a) => {
     const daArea = contas.filter((c) => a.tipos.includes(c.tipo))
       .map((c) => ({ c, agora: rel.valorDaConta(app, c, hoje()), antes: rel.valorDaConta(app, c, vespera) }))
@@ -357,7 +358,7 @@ function abaPatrimonio() {
     return `<p class="classe-ativos"><span>${esc(a.titulo.toLowerCase())}</span><span>${valorComSinal(soma)}</span></p>
       ${daArea.sort((x, y) => Math.abs(y.agora) - Math.abs(x.agora)).map((x) => {
         const d = x.agora - x.antes;
-        return `<div class="linha-rel fixa"><span class="nome-rel">${esc(x.c.nome)}</span><span></span>
+        return `<div class="linha-rel fixa"><span class="nome-rel">${esc(x.c.nome)}${x.c.arquivada ? '<span class="fino">arquivada</span>' : ''}</span><span></span>
           <span class="valor-rel">${valorComSinal(x.agora)}</span>
           <span class="dif-rel ${d > 0 ? 'bom' : d < 0 ? 'ruim' : ''}">${d ? comSinal(d) : ''}</span></div>`;
       }).join('')}`;
@@ -380,7 +381,7 @@ function desenharPatrimonio() {
     pontos: curva.map((p, i) => ({
       rotulo: i === ultimo && p.dia === hoje() ? 'hoje' : rotuloDoBalde(p.balde),
       acima: [Math.max(0, p.caixa), p.investimentos],
-      abaixo: [p.cartoes + p.dividas],
+      abaixo: [p.cartoes + p.dividas + Math.max(0, -p.caixa)],
       linha: p.total,
       dica: `<strong>${valorComSinal(p.total)}</strong><span>${i === ultimo && p.dia === hoje() ? 'hoje' : `fim de ${p.balde.length === 4 ? p.balde : nomeDoMes(p.balde)}`}</span>
         <span class="fino">contas ${formatar(p.caixa)} · investimentos ${formatar(p.investimentos)}</span>
@@ -402,7 +403,7 @@ async function salvarSelecao(id, nome) {
 }
 
 function abrirSalva(s) {
-  tela.filtros = { categorias: [...s.categorias], etiquetas: [...s.etiquetas], descricoes: [...s.descricoes], contas: [...s.contas], cruzar: s.cruzar };
+  tela.filtros = { categorias: [...(s.categorias ?? [])], etiquetas: [...(s.etiquetas ?? [])], descricoes: [...(s.descricoes ?? [])], contas: [...(s.contas ?? [])], cruzar: Boolean(s.cruzar) };
   tela.vista = { ...vistaPadrao(), ...s.vista };
   tela.salvaId = s.id;
   tela.salvando = false;

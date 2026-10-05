@@ -270,8 +270,13 @@ export function projecaoDeSaldo(estado, dias = 90, dia = hoje()) {
   }
   // As ocorrências de recorrência e as parcelas de contrato que ainda vão cair.
   // A do cartão sai, no vencimento da fatura dela, da conta que paga o cartão.
-  for (const o of ocorrenciasPrevistas(estado, dia, ate, dia)) {
+  // Desde o começo do mês: a conta fixa que venceu e ninguém lançou ainda vai
+  // sair (pesa hoje), como no saldo previsto.
+  for (const o of ocorrenciasPrevistas(estado, inicioDoMes(dia), ate, dia)) {
     const conta = estado.contas[o.contaId];
+    // Vencido e não lançado: o que sai pesa hoje; o que entra não conta —
+    // dinheiro que não chegou não pode parecer disponível.
+    if (o.dataCaixa < dia && sinalDeSaida(o) < 0) continue;
     // O que sai da folha para o caixa é o líquido, previsto logo abaixo.
     if (conta?.tipo === 'folha') continue;
     if (o.estimado) estimado = true;
@@ -330,7 +335,9 @@ export function comprometimento(estado, meses = 12, dia = hoje()) {
       if (x) x.cartao += f.aPagar;
     }
   }
-  for (const o of ocorrenciasPrevistas(estado, dia, ate, dia)) {
+  for (const o of ocorrenciasPrevistas(estado, inicioDoMes(dia), ate, dia)) {
+    // A renda que já devia ter caído e não caiu não conta; o gasto vencido, sim.
+    if (o.dataCaixa < dia && o.tipo === 'receita') continue;
     const x = em(o.dataCaixa);
     if (!x) continue;
     if (o.estimado) x.estimado = true;
@@ -442,7 +449,7 @@ export function paraOndeVai(estado, de, ate, meses = 1) {
 /** O que se deve no cartão num dia: compras até ali (pela data da compra) menos o que foi pago. */
 function dividaDoCartao(estado, conta, dia) {
   let saldo = conta.dataInicial && conta.dataInicial > dia ? 0 : conta.saldoInicial ?? 0;
-  for (const l of lancados(estado)) {
+  for (const l of visiveis(estado, dia)) {
     if (!l.confirmado) continue;
     if (l.contaId === conta.id && l.dataCompetencia <= dia) saldo -= sinalDeSaida(l);
     if (l.contaDestinoId === conta.id && l.dataCaixa <= dia) saldo += l.valor;
@@ -589,7 +596,7 @@ export function rendimentoNoPeriodo(estado, de, ate, ids = null) {
  * rendeu. Comprar ativo com o caixa da própria corretora é movimento interno:
  * não é aporte. No mês que corre, o fim é hoje.
  *
- * { mes, inicio, fim, aportado, resgatado, rendeu }
+ * { mes, inicio, fim, aportado, resgatado, proventosFora, rendeu }
  */
 export function mesDosInvestimentos(estado, ids, mes, dia = hoje()) {
   const de = `${mes}-01`;
@@ -599,14 +606,20 @@ export function mesDosInvestimentos(estado, ids, mes, dia = hoje()) {
   const ativos = new Set(Object.values(estado.ativos ?? {}).filter((a) => ids.has(a.contaId)).map((a) => a.id));
   let aportado = 0;
   let resgatado = 0;
+  let proventosFora = 0;
+  let custos = 0;
   for (const l of lancados(estado)) {
     if (!l.confirmado || l.dataCompetencia < de || l.dataCompetencia > ate) continue;
     const deFora = !l.contaId || !ids.has(l.contaId);
     if (l.ativoId && ativos.has(l.ativoId)) {
       if (l.tipo === 'aplicacao' && deFora) aportado += l.valor;
       if (l.tipo === 'resgate' && deFora) resgatado += l.valor;
+      // O provento que cai na corrente é rendimento que saiu daqui.
+      if (l.tipo === 'provento' && deFora) proventosFora += l.valor;
       continue;
     }
+    // Taxa ou imposto cobrado no caixa da corretora: abate o rendimento.
+    if (l.tipo === 'despesa' && ids.has(l.contaId)) custos += l.valor;
     // Transferência para a corretora (ou poupança) e de volta.
     if (l.tipo === 'transferencia') {
       const entra = ids.has(l.contaDestinoId) && deFora;
@@ -616,7 +629,8 @@ export function mesDosInvestimentos(estado, ids, mes, dia = hoje()) {
     }
   }
   const soma = (d) => contas.reduce((t, c) => t + valorDaConta(estado, c, d), 0);
-  return { mes, inicio: soma(vespera), fim: soma(ate), aportado, resgatado, rendeu: rendimentoNoPeriodo(estado, de, ate, ids) };
+  // Começo + aporte − resgate − proventos pagos fora + rendimento = fim.
+  return { mes, inicio: soma(vespera), fim: soma(ate), aportado, resgatado, proventosFora, rendeu: rendimentoNoPeriodo(estado, de, ate, ids) - custos };
 }
 
 // ── Tendência ───────────────────────────────────────────────────────────────

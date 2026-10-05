@@ -136,7 +136,8 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
     const lugar = lugarDaConta(app, origem())?.id ?? null;
     if (!forcar && lugar === donosDe) return;
     donosDe = lugar;
-    donos.pintar(app, lugar, { doMovimento: editando?.donos ?? [], dia: data });
+    const lugarDeAntes = editando ? lugarDaConta(app, editando.contaId)?.id ?? null : null;
+    donos.pintar(app, lugar, { doMovimento: lugar === lugarDeAntes ? editando?.donos ?? [] : [], dia: data });
   }
 
   const origem = () => el('origem').value || null;
@@ -493,6 +494,9 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
     async pagarFatura({ cartaoId, origemId, centavos }) {
       editando = null;
       daParcela = null;
+      daSerie = null;
+      el('repete').checked = false;
+      el('cai-sozinha').checked = false;
       data = hoje();
       await recarregar();
       el('origem').value = origemId ?? '';

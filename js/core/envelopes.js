@@ -187,7 +187,13 @@ export function donosNoDia(estado, dia = hoje()) {
       let total = soma(c);
       if (total > 0 && valor <= 0) { c.clear(); total = 0; }
       // Valor sem dono de cota nenhuma (o que já estava lá antes): sem dono.
-      if (total <= 0 && valor > 0) { c.set(inteiroDe.get(lugar.id) ?? SEM_DONO, valor); total = valor; }
+      if (total <= 0 && valor > 0) {
+        const dono = inteiroDe.get(lugar.id);
+        c.set(dono ?? SEM_DONO, valor);
+        // Do envelope dono do lugar inteiro, isso foi posto — não rendimento.
+        if (dono) somar(posto, dono, valor);
+        total = valor;
+      }
       const p = total > 0 ? valor / total : 1;
       precos.set(lugar.id, p);
       return p;
@@ -338,6 +344,7 @@ export function donosNoDia(estado, dia = hoje()) {
         for (const [dono, u] of c) if (dono !== SEM_DONO && u > 1e-9) donos.set(dono, Math.round((u / total) * lugar.valor));
       } else if (lugar.valor > 0 && inteiroDe.has(lugar.id)) {
         donos.set(inteiroDe.get(lugar.id), lugar.valor);
+        somar(posto, inteiroDe.get(lugar.id), lugar.valor);
       }
     } else {
       for (const [dono, v] of caixa.get(lugar.id) ?? []) if (Math.round(v) > 0) donos.set(dono, Math.round(v));
@@ -379,7 +386,9 @@ export function donosNoDia(estado, dia = hoje()) {
  */
 export function evolucaoDosEnvelopes(estado, ids, meses, tempo = 'mes', dia = hoje()) {
   const alocacoes = Object.values(estado.alocacoes ?? {}).filter((a) => !a.removida);
-  const primeiro = alocacoes.reduce((m, a) => (!m || a.data < m ? a.data : m), null);
+  const temInteiro = Object.values(estado.envelopes ?? {}).some((v) => v.inteiros?.length);
+  // Sem aporte, o envelope dono de um lugar inteiro tem história desde sempre.
+  const primeiro = alocacoes.reduce((m, a) => (!m || a.data < m ? a.data : m), null) ?? (temInteiro ? '0000-00-00' : null);
   if (!primeiro) return [];
   const baldes = tempo === 'ano' ? [...new Set(meses.map((m) => m.slice(0, 4)))] : meses;
   return baldes

@@ -186,7 +186,8 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
       env('b-arquivar').textContent = editando.arquivado ? 'desarquivar' : 'arquivar';
       // Só se exclui o envelope que nunca recebeu nada; o resto se arquiva.
       const usado = Object.values(app.alocacoes ?? {}).some((a) => a.de === editando.id || a.para === editando.id)
-        || (editando.inteiros ?? []).length > 0;
+        || (editando.inteiros ?? []).length > 0
+        || Object.values(app.lancamentos ?? {}).some((l) => !l.removido && l.custeadoPor === editando.id);
       env('b-excluir').hidden = usado;
       env('b-excluir').dataset.confirmar = '';
       env('b-excluir').textContent = 'excluir';

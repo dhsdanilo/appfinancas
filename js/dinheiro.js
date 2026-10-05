@@ -449,7 +449,9 @@ function pintarResumoDeCaixa(contas) {
     return;
   }
   const aEntrar = aEntrarNoMes(app, ids);
-  const previstos = contas.map((c) => ({ conta: c, p: saldoPrevisto(app, c.id) }));
+  // No Geral, a transferência entre duas destas contas não sai do conjunto.
+  const doConjunto = contas.length > 1 ? ids : null;
+  const previstos = contas.map((c) => ({ conta: c, p: saldoPrevisto(app, c.id, hoje(), doConjunto) }));
   const blocos = previstos.length === 1 ? [blocoDeCaixa(previstos[0].conta.nome, previstos[0].p, false, previstos[0].conta, aEntrar)] : [];
 
   if (previstos.length > 1) {
@@ -587,12 +589,10 @@ function pintarResumoDeCartoes(cartoes) {
  * entrar nela (as recorrentes do cartão que ninguém lançou).
  */
 function faturaDoMes(c) {
-  const f = (faturas(app, c.id) ?? []).find((x) => x.vencimento.slice(0, 7) === vista.mes);
+  const f = faturasNoPeriodo(app, c.id, `${vista.mes}-01`, fimDoMes(`${vista.mes}-01`))[0];
   if (!f) return null;
-  const projetadas = ocorrenciasPrevistas(app, somarMeses(`${vista.mes}-01`, -2), fimDoMes(`${vista.mes}-01`))
-    .filter((o) => o.contaId === c.id && o.cicloFatura === f.fechamento);
-  const aVir = projetadas.reduce((t, o) => t + sinalDeSaida(o), 0);
-  return { ...f, previsto: f.total + aVir, estimado: projetadas.some((o) => o.estimado) };
+  const aVir = f.projetadas.reduce((t, o) => t + sinalDeSaida(o), 0);
+  return { ...f, previsto: f.total + aVir };
 }
 
 /**
@@ -1060,6 +1060,7 @@ function numerosDoMesInvestido(ids, estimado) {
     numeroDaFaixa(`aportado em ${nome}`, formatar(m.aportado)),
   ];
   if (m.resgatado) numeros.push(numeroDaFaixa(`resgatado em ${nome}`, formatar(m.resgatado)));
+  if (m.proventosFora) numeros.push(numeroDaFaixa(`proventos pagos fora em ${nome}`, formatar(m.proventosFora)));
   numeros.push(numeroDaFaixa(`rendeu em ${nome}`, `${rendeuTexto(m.rendeu)}${m.inicio > 0 ? ` · ${pctTexto(m.rendeu / m.inicio)}` : ''}`));
   return numeros;
 }
@@ -1303,7 +1304,12 @@ function pintarLista(aba, contas) {
       if (cartao.tipo !== 'cartao' || !ids.has(cartao.pagaCom)) continue;
       // A fatura a pagar com as compras recorrentes que ainda vão cair nela:
       // a linha bate com a faixa, e a fatura só de recorrentes não some.
-      for (const f of faturasNoPeriodo(app, cartao.id, de, ate)) {
+      const doMesAtual = modoDaTela() === 'mes' && vista.mes === hoje().slice(0, 7);
+      const daConta = doMesAtual
+        ? faturasNoPeriodo(app, cartao.id, '2000-01-01', somarMeses(ate, 2), hoje(), { pagoAte: ate })
+          .filter((f) => noPeriodo(f.vencimento) || (f.situacao !== 'futura' && f.aPagar > 0))
+        : faturasNoPeriodo(app, cartao.id, de, ate);
+      for (const f of daConta) {
         if (f.previsto <= 0) continue;
         linhas.push({
           id: `fatura:${cartao.id}:${f.fechamento}`,
@@ -1907,6 +1913,16 @@ $('b-fechar-edicao').addEventListener('click', () => dialogoEdicao.close());
 $('b-fechar-transferencia').addEventListener('click', () => dialogoTransferencia.close());
 
 async function abrir() {
+  // Fora das telas de dinheiro (Envelopes, Relatórios…) o "+" da barra abre um
+  // lançamento comum: a área e o mês da última tela de dinheiro não valem.
+  if (!ativa) {
+    formulario.limpar();
+    await formulario.recarregar();
+    formulario.usarData(hoje());
+    dialogo.showModal();
+    formulario.focar();
+    return;
+  }
   // Em Dívidas não se lança: o "+" e o N criam um empréstimo.
   if (AREA === 'dividas') {
     $('b-nova-conta')?.click();
@@ -2017,7 +2033,7 @@ document.addEventListener('keydown', async (e) => {
 
 // Atalho global: lançar sem tirar a mão do teclado é o ponto do PC.
 document.addEventListener('keydown', (e) => {
-  if (document.querySelector('dialog[open]')) return;
+  if (!ativa || document.querySelector('dialog[open]')) return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   // O alvo pode ser o próprio document (que não tem `matches`), então a
   // verificação precisa ser à prova disso antes de perguntar o que ele é.
