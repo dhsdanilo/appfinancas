@@ -470,22 +470,51 @@ function valorDoInvestimento(estado, conta, dia) {
  * se deve nos cartões − o saldo devedor das dívidas. Conta que ainda não
  * existia no dia não entra.
  */
-export function patrimonioNoDia(estado, dia = hoje()) {
-  const existia = (c) => !c.dataInicial || c.dataInicial <= dia;
+export function patrimonioNoDia(estado, dia = hoje(), ids = null) {
   let caixa = 0;
   let investimentos = 0;
   let cartoes = 0;
   let dividas = 0;
   for (const c of Object.values(estado.contas)) {
-    // Conta e cartão só existem depois do marco deles; investimento e dívida
-    // trazem a própria história (a aplicação de antes, o contrato).
-    if ((CAIXA.has(c.tipo) || c.tipo === 'cartao') && !existia(c)) continue;
-    if (CAIXA.has(c.tipo)) caixa += dia >= hoje() ? saldoReal(estado, c.id) : saldoAte(estado, c.id, dia);
-    else if (c.tipo === 'investimento') investimentos += valorDoInvestimento(estado, c, dia);
-    else if (c.tipo === 'cartao') cartoes += dividaDoCartao(estado, c, dia);
-    else if (c.tipo === 'divida') dividas += saldoDevedor(estado, c.id, dia) ?? 0;
+    if (ids && !ids.has(c.id)) continue;
+    const v = valorDaConta(estado, c, dia);
+    if (CAIXA.has(c.tipo)) caixa += v;
+    else if (c.tipo === 'investimento') investimentos += v;
+    else if (c.tipo === 'cartao') cartoes -= v;
+    else if (c.tipo === 'divida') dividas -= v;
   }
   return { dia, caixa, investimentos, cartoes, dividas, total: caixa + investimentos - cartoes - dividas };
+}
+
+/**
+ * O que uma conta soma ao patrimônio num dia: positivo o que se tem,
+ * negativo o que se deve. Conta e cartão só existem depois do marco deles;
+ * investimento e dívida trazem a própria história (a aplicação de antes, o
+ * contrato). Folha não entra: o dinheiro dela passa, não fica.
+ */
+export function valorDaConta(estado, c, dia = hoje()) {
+  const existia = !c.dataInicial || c.dataInicial <= dia;
+  if ((CAIXA.has(c.tipo) || c.tipo === 'cartao') && !existia) return 0;
+  if (CAIXA.has(c.tipo)) return dia >= hoje() ? saldoReal(estado, c.id) : saldoAte(estado, c.id, dia);
+  if (c.tipo === 'investimento') return valorDoInvestimento(estado, c, dia);
+  if (c.tipo === 'cartao') return -dividaDoCartao(estado, c, dia);
+  if (c.tipo === 'divida') return -(saldoDevedor(estado, c.id, dia) ?? 0);
+  return 0;
+}
+
+/**
+ * O patrimônio no fim de cada mês (ou de cada ano) dos `meses` dados — o
+ * último balde, se é o de hoje, vale hoje. `ids` filtra as contas.
+ */
+export function patrimonioNoTempo(estado, meses, tempo = 'mes', ids = null, dia = hoje()) {
+  const desde = primeiroMes(estado);
+  const baldes = tempo === 'ano' ? [...new Set(meses.map((m) => m.slice(0, 4)))] : meses;
+  return baldes
+    .filter((b) => !desde || b >= (tempo === 'ano' ? desde.slice(0, 4) : desde))
+    .map((b) => {
+      const fim = tempo === 'ano' ? `${b}-12-31` : fimDoMes(`${b}-01`);
+      return { balde: b, ...patrimonioNoDia(estado, fim >= dia ? dia : fim, ids) };
+    });
 }
 
 /** O primeiro mês com lançamento: daí em diante há o que mostrar. */

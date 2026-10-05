@@ -84,7 +84,7 @@ async function pintar() {
     </li>`;
   };
 
-  const porNome = (a, b) => a.nome.localeCompare(b.nome, 'pt-BR');
+  const porNome = (a, b) => (a.nome ?? '').localeCompare(b.nome ?? '', 'pt-BR');
   $('lista-recorrencias').innerHTML =
     ativas.sort(porNome).map(linhaHTML).join('') +
     (encerradas.length

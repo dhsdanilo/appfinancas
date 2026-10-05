@@ -920,6 +920,25 @@ p.divisao-envelopes { margin: var(--e2) 0 0; }
 }
 .chips-periodo button[aria-pressed="true"] { border-color: var(--tinta-fraca); color: var(--tinta); font-weight: 600; }
 
+/* ── Relatórios enxutos (design/12 §0): controles, número, gráfico, lista ── */
+.controles-rel { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e2) var(--e3); margin: 0 0 var(--e3); }
+.controles-rel .chips-periodo.inline { margin-left: 0; flex-wrap: wrap; }
+.passos-rel { display: inline-flex; align-items: center; gap: var(--e2); }
+.botao-filtros { margin-left: auto; }
+.numero-rel { margin: var(--e3) 0 var(--e2); }
+.numero-rel .rotulo-numero { margin: 0; }
+.valor-rel-grande { margin: 0; font-size: var(--t-destaque); font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.valor-rel-grande.negativo { color: var(--alerta); }
+.rodape-ex.solto { border-top: 0; padding-top: 0; margin-bottom: var(--e3); }
+.vazio-rel { padding: var(--e5) 0; text-align: center; }
+.secao-rel .classe-ativos .chips-periodo { text-transform: none; letter-spacing: 0; }
+/* No celular cada grupo de botões é uma linha que rola para o lado, como as
+   abas — quatro linhas de botões empurravam o número para fora da tela. */
+@media (max-width: 600px) {
+  .controles-rel .chips-periodo.inline { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; scrollbar-width: none; }
+  .controles-rel .chips-periodo button { flex: none; }
+}
+
 /* ── Explorar (design/14): as salvas, o filtro e o "explorar ›" ──────────── */
 .salvas-ex { display: flex; flex-wrap: wrap; gap: var(--e2); margin: 0 0 var(--e3); }
 .salvas-ex button {

@@ -398,6 +398,9 @@ export const redutores = {
       descricoes: d.descricoes ?? [],
       contas: d.contas ?? [],
       cruzar: Boolean(d.cruzar),
+      // Como a seleção se mostra: período, mês ou ano, gasto ou renda, e o
+      // agrupamento da lista (design/12 §0).
+      vista: d.vista ?? null,
     };
   },
 
