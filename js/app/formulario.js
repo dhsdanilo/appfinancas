@@ -1564,6 +1564,19 @@ export async function criarFormulario({
       await recarregar();
     },
 
+    /** A data em que o lançamento novo abre (o mês da tela, D35). */
+    usarData(dia) {
+      if (!dia) return;
+      // Nunca antes do começo da conta: ali o saldo não é dela.
+      const piso = pisoDaConta();
+      data = piso && dia < piso ? piso : dia;
+      faturaDesloca = 0;
+      pintarData();
+    },
+
+    /** A data na tela agora: a do último lançamento salvo, depois de salvar. */
+    dataAtual: () => data,
+
     /**
      * Abre na conta da área em que a pessoa está: o botão que veste a cor do
      * cartão tem que lançar no cartão (08-telas §4.1).

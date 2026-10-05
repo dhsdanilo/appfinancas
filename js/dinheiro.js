@@ -86,6 +86,9 @@ function lerGuardado(chave) {
   return {};
 }
 
+// A data do último lançamento salvo e o mês da tela em que foi (D35).
+let ultimaData = null;
+
 const vista = {
   aba: 'caixa',
   ...FOCO_PADRAO,
@@ -155,6 +158,8 @@ const previstosNaTela = new Map();
 
 async function pintar() {
   if (!ativa) return;
+  // Mudou o mês da tela: a data do último lançamento salvo deixa de valer (D35).
+  if (ultimaData && ultimaData.mes !== vista.mes) ultimaData = null;
   app = await estado.calcular();
   previstosNaTela.clear();
   // A fila do que precisa de você mora no Início (08-telas §6).
@@ -1624,9 +1629,24 @@ const formulario = await criarFormulario({
     { id: 'nova', rotulo: 'Salvar e nova', principal: true, fecha: false },
     { id: 'fechar', rotulo: 'Salvar e fechar', fecha: true },
   ],
-  aoSalvar: pintar,
+  aoSalvar: async () => {
+    // A data do que acabou de ser salvo vale para o próximo, enquanto o mês
+    // da tela for o mesmo (D35).
+    ultimaData = { dia: formulario.dataAtual(), mes: vista.mes };
+    await pintar();
+  },
   aoFechar: () => dialogo.close(),
 });
+
+/**
+ * A data em que o lançamento novo abre (D35, pedido dele, 05/10/2026): a do
+ * último salvo, se o mês da tela não mudou desde então; senão, o mês da tela
+ * — hoje, no mês atual; dia 1, em qualquer outro.
+ */
+function dataDaVista() {
+  if (ultimaData && ultimaData.mes === vista.mes) return ultimaData.dia;
+  return vista.mes === hoje().slice(0, 7) ? hoje() : `${vista.mes}-01`;
+}
 
 // Corrigir e apagar são do andar de cima, nunca do térreo (D11) — então vivem
 // aqui, no extrato, e não na captura. O formulário é o mesmo (design/03 §9).
@@ -1876,6 +1896,7 @@ async function abrir() {
   }
   formulario.limpar();
   await formulario.usarConta(contaDaVista());
+  formulario.usarData(dataDaVista());
   dialogo.showModal();
   formulario.focar();
 }
