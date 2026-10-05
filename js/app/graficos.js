@@ -171,11 +171,10 @@ export function areas(raiz, { pontos, acima, abaixo, linha, formatar, altura = 2
     return `<rect class="alvo" x="${ini}" y="${m.cima}" width="${Math.max(1, fim - ini)}" height="${altura - m.cima - m.baixo}" data-dica="${esc(p.dica)}" tabindex="0"/>`;
   }).join('');
   const caminho = pontos.map((p, i) => `${x(i)},${y(p.linha)}`).join(' ');
-  const pontosLinha = pontos.map((p, i) => `<circle class="ponto-linha" cx="${x(i)}" cy="${y(p.linha)}" r="4"/>`).join('');
   raiz.innerHTML = moldura(`<svg viewBox="0 0 ${largura} ${altura}" role="img" aria-label="Gráfico de áreas">
       ${grade}${camadas(acima, 1, 'acima')}${camadas(abaixo, -1, 'abaixo')}
       <line class="base" x1="${m.esq}" x2="${largura - m.dir}" y1="${y(0)}" y2="${y(0)}"/>
-      <polyline class="linha-total" points="${caminho}"/>${pontosLinha}${rotulos}${alvos}</svg>`,
+      <polyline class="linha-total" points="${caminho}"/>${rotulos}${alvos}</svg>`,
   legenda([...acima, ...abaixo, { ...linha, linha: true }]));
   ligarDicas(raiz);
 }
