@@ -15,7 +15,7 @@ import { nomeDaCategoria } from './core/lancamentos.js';
 import { periodo as periodoDe, PERIODOS } from './core/explorar.js';
 import { criarJanelasDeEnvelope } from './app/envelope.js';
 import { criarJanelasDeUso } from './app/envelope-uso.js';
-import { areas, cor } from './app/graficos.js';
+import { areas, pizza, cor } from './app/graficos.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -70,6 +70,7 @@ async function pintar() {
   evolucao = evolucaoDosEnvelopes(app, ids, periodoDe(app, vista.periodo).meses, vista.tempo);
   $('corpo-envelopes').innerHTML = foco === 'geral' ? geral(lista, donos) : doEnvelope(app.envelopes[foco], donos);
   desenharEvolucao();
+  if (foco !== 'geral') desenharOnde(donos);
   if (foco === 'geral' && (encerrados.length || arquivados.length)) {
     $('corpo-envelopes').insertAdjacentHTML('beforeend', `<p class="arquivadas-area fino">${[
       encerrados.length ? `encerrados: ${encerrados.map((v) => `<button type="button" class="elo" data-env-aba="${esc(v.id)}">${esc(v.nome)}</button>`).join(' · ')}` : '',
@@ -234,7 +235,12 @@ function doEnvelope(v, donos) {
   if (r.rendeu) partes.push(`<span class="dif-rel ${r.rendeu >= 0 ? 'bom' : 'ruim'}">${comSinal(r.rendeu)}</span> de rendimento`);
 
   const onde = [...r.porLugar.entries()].filter(([, val]) => val > 0).sort((a, b) => b[1] - a[1]);
-  const ondeHTML = onde.length
+  // Em mais de um lugar, a pizza (pedido dele: voltou em 05/10/2026) — ela
+  // já traz a lista com valor e parte ao lado. Num lugar só, uma linha basta.
+  const ondeHTML = onde.length > 1
+    ? `<p class="classe-ativos"><span>onde está</span><span>${formatar(r.total)}</span></p>
+      <div id="g-onde-env" class="onde-env"></div>`
+    : onde.length
     ? `<p class="classe-ativos"><span>onde está</span><span>${formatar(r.total)}</span></p>
       ${onde.map(([id, val]) => `<div class="linha-ativo">
         <span class="nome-ativo">${esc(nomeCompleto(id))}${(v.inteiros ?? []).includes(id) ? '<span class="fino">inteiro dele</span>' : ''}</span>
@@ -282,6 +288,20 @@ function doEnvelope(v, donos) {
     <div class="ativos">${ondeHTML}${fechamento(v, r)}</div>
     <div class="cabeca-lista"><h2>Extrato</h2></div>
     ${extrato}`;
+}
+
+/** Onde está o dinheiro do envelope, em pizza com a lista ao lado. */
+function desenharOnde(donos) {
+  const raiz = $('g-onde-env');
+  if (!raiz) return;
+  const r = donos.porEnvelope.get(foco);
+  const onde = [...(r?.porLugar ?? new Map()).entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  pizza(raiz, {
+    fatias: onde.map(([id, v], i) => ({ nome: nomeCompleto(id), valor: v, cor: cor(i + 1) })),
+    formatar,
+    centro: formatar(r.total).replace(/,\d\d$/, ''),
+    subtitulo: 'onde está',
+  });
 }
 
 function linhaDoExtrato(x) {
