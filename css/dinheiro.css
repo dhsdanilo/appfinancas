@@ -920,6 +920,40 @@ p.divisao-envelopes { margin: var(--e2) 0 0; }
 }
 .chips-periodo button[aria-pressed="true"] { border-color: var(--tinta-fraca); color: var(--tinta); font-weight: 600; }
 
+/* ── Explorar (design/14): as salvas, o filtro e o "explorar ›" ──────────── */
+.salvas-ex { display: flex; flex-wrap: wrap; gap: var(--e2); margin: 0 0 var(--e3); }
+.salvas-ex button {
+  min-height: 36px; padding: 0 var(--e3); border: 1px solid var(--borda); border-radius: var(--raio-pilula);
+  background: var(--superficie); color: var(--tinta);
+}
+.salvas-ex button[aria-pressed="true"] { border: 2px solid var(--tinta); font-weight: 600; }
+.salvas-ex .nova-ex { border-style: dashed; color: var(--tinta-fraca); }
+.filtro-ex {
+  display: grid; gap: var(--e2); margin: 0 0 var(--e4); padding: var(--e3);
+  border: 1px solid var(--borda); border-radius: var(--raio-cartao); background: var(--superficie);
+}
+.linha-filtro-ex { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e2); }
+.rotulo-ex { min-width: 84px; color: var(--tinta-fraca); font-size: var(--t-miudo); text-transform: uppercase; letter-spacing: .04em; }
+.chip-ex {
+  min-height: 32px; padding: 0 var(--e2) 0 var(--e3); border: 1px solid var(--tinta-fraca); border-radius: var(--raio-pilula);
+  background: none; color: var(--tinta); font-size: var(--t-apoio);
+}
+.linha-filtro-ex select {
+  flex: none; min-width: 0; max-width: 100%; min-height: 32px; padding: 0 var(--e3);
+  border: 1px dashed var(--borda); border-radius: var(--raio-pilula);
+  background: none; color: var(--tinta-fraca); font-size: var(--t-apoio);
+}
+.rodape-ex { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e3); padding-top: var(--e2); border-top: 1px solid var(--borda); }
+.rodape-ex .chips-periodo.inline { margin-left: 0; }
+.cruzar-ex { display: inline-flex; align-items: center; gap: var(--e1); font-size: var(--t-apoio); }
+.acoes-ex, .salvar-ex { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--e3); margin-left: auto; }
+.salvar-ex input[type="text"] { flex: none; min-width: 0; width: 200px; }
+.numeros-ex { margin-bottom: 0; }
+.explorar-daqui { margin: var(--e1) 0; text-align: right; }
+@media (pointer: coarse) {
+  .chip-ex, .linha-filtro-ex select, .chips-periodo button { min-height: 44px; }
+}
+
 /* A linha de relatório: nome · barra · valor · diferença. Abre nos lançamentos. */
 .linha-rel {
   display: grid;

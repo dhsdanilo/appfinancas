@@ -29,6 +29,7 @@ import * as envelopes from '../core/envelopes.js';
 import * as relatorios from '../core/relatorios.js';
 import * as automaticas from '../core/automaticas.js';
 import * as importar from '../core/importar.js';
+import * as explorar from '../core/explorar.js';
 
 const BANCO_DE_TESTE = 'appfinancas-teste';
 
@@ -2228,6 +2229,33 @@ caso('importar', 'cartão: a parcela de meses atrás cai na fatura escolhida', a
   const l = (await estado.calcular()).lancamentos.c;
   igual(l.cicloFatura, '2026-10-25', 'e cai nela');
   void ev;
+});
+
+caso('explorar', '★ seleção: soma ou cruza, devolução abate, receita à parte, a conta restringe', async () => {
+  const ev = await baseDeRelatorios();
+  await ev('etiqueta.criada', { id: 'carro', nome: 'carro' });
+  await lanc1('m1', 'despesa', 40000, 'cc', '2026-09-10', { categoriaId: 'merc' });
+  await lanc1('m2', 'despesa', 20000, 'cart', '2026-10-05', { categoriaId: 'merc', etiquetas: ['carro'] });
+  await lanc1('d1', 'estorno', 5000, 'cart', '2026-10-06', { categoriaId: 'merc', estornoDe: 'm2' });
+  await lanc1('l1', 'despesa', 15000, 'cc', '2026-10-08', { categoriaId: 'luz', etiquetas: ['carro'] });
+  await lanc1('s1', 'receita', 300000, 'cc', '2026-10-01', { categoriaId: 'sal' });
+  await lanc1('i1', 'despesa', 70000, 'fol', '2026-10-01', { categoriaId: 'ir' });
+  const e = await estado.calcular();
+  const per = explorar.periodoDoExplorar(e, '12', '2026-10-15');
+  igual([per.meses[0], per.meses.at(-1), per.meses.length], ['2025-11', '2026-10', 12], '12 meses terminando no atual');
+  const total = (sel) => explorar.explorar(e, { categorias: [], etiquetas: [], descricoes: [], contas: [], ...sel }, per);
+  igual(total({ categorias: ['merc'], etiquetas: ['carro'] }).total, 70000, 'soma: todo o mercado (400 + 200 − 50) e tudo do carro (150), sem contar duas vezes');
+  igual(total({ categorias: ['merc'], etiquetas: ['carro'], cruzar: true }).total, 15000, 'cruza: só o mercado do carro, com a devolução herdando a etiqueta da compra');
+  igual(total({ categorias: ['merc'], contas: ['cart'] }).total, 15000, 'a conta restringe');
+  const comReceita = total({ categorias: ['merc', 'sal'] });
+  igual([comReceita.total, comReceita.receita, comReceita.natureza], [55000, 300000, 'gasto'], 'a receita fica à parte, nunca somada ao gasto');
+  igual([total({ etiquetas: ['carro'] }).total, total({ categorias: ['ir'] }).total], [30000, 70000], 'o IR só entra quando a categoria dele foi escolhida');
+  igual([total({ categorias: ['merc', 'luz'] }).empilha, total({ categorias: ['merc'] }).empilha], ['categoria', 'descricao'], 'empilha por categoria; com uma só, pelas descrições');
+  igual(explorar.serieDaSelecao(e, { categorias: ['merc'] }, per).slice(-2), [40000, 15000], 'a série mês a mês para comparar');
+  await ev('selecao.salva', { id: 'sel1', nome: 'Carro', etiquetas: ['carro'] });
+  igual((await estado.calcular()).selecoes.sel1.etiquetas, ['carro'], 'salva como evento: vai para os dois aparelhos');
+  await ev('selecao.removida', { id: 'sel1' });
+  igual((await estado.calcular()).selecoes.sel1, undefined, 'e apagada some');
 });
 
 // ── apoio ─────────────────────────────────────────────────────────────────

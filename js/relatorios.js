@@ -1,5 +1,5 @@
-// A tela Relatórios (design/12-relatorios.md, D28): cinco abas — Mês, Futuro,
-// Para onde vai, Patrimônio e Tendência. Toda soma desce até os lançamentos
+// A tela Relatórios (design/12-relatorios.md, D28): seis abas — Mês, Futuro,
+// Para onde vai, Explorar (design/14, D32), Patrimônio e Tendência. Toda soma desce até os lançamentos
 // que a formam (toque na linha); o que precisa de histórico diz quanto falta.
 
 import * as estado from './core/estado.js';
@@ -7,6 +7,8 @@ import { formatar } from './core/dinheiro.js';
 import { hoje, diaCurto, nomeDoMes, somarMeses } from './core/datas.js';
 import { nomeDaCategoria } from './core/lancamentos.js';
 import * as rel from './core/relatorios.js';
+import * as ex from './core/explorar.js';
+import { novoId } from './core/id.js';
 import { graficoDeLinha } from './app/grafico.js';
 import { colunas, areas, linhas as graficoDeLinhas, pizza, mapaDeBlocos, cor } from './app/graficos.js';
 
@@ -23,6 +25,7 @@ const ABAS = [
   { id: 'mes', nome: 'Mês' },
   { id: 'futuro', nome: 'Futuro' },
   { id: 'onde', nome: 'Para onde vai' },
+  { id: 'explorar', nome: 'Explorar' },
   { id: 'patrimonio', nome: 'Patrimônio' },
   { id: 'tendencia', nome: 'Tendência' },
 ];
@@ -35,8 +38,21 @@ try {
 } catch {
   // sem armazenamento: abre no padrão
 }
+// O Explorar (design/14): a seleção na tela, a salva de onde ela veio (se
+// veio), o período, as salvas escolhidas para comparar e o "salvar como".
+const selVazia = () => ({ categorias: [], etiquetas: [], descricoes: [], contas: [], cruzar: false });
+const exp = { sel: selVazia(), salvaId: null, periodo: '12', comparar: [], salvando: false };
+try {
+  const v = JSON.parse(localStorage.getItem('relatorios.explorar') ?? 'null');
+  if (v?.sel) Object.assign(exp, { sel: { ...selVazia(), ...v.sel }, salvaId: v.salvaId ?? null, periodo: v.periodo ?? '12', comparar: v.comparar ?? [] });
+} catch {
+  // sem armazenamento: começa vazio
+}
 const guardar = () => {
-  try { localStorage.setItem('relatorios.vista', JSON.stringify({ aba: vista.aba, quantos: vista.quantos })); } catch { /* só não lembra */ }
+  try {
+    localStorage.setItem('relatorios.vista', JSON.stringify({ aba: vista.aba, quantos: vista.quantos }));
+    localStorage.setItem('relatorios.explorar', JSON.stringify({ sel: exp.sel, salvaId: exp.salvaId, periodo: exp.periodo, comparar: exp.comparar }));
+  } catch { /* só não lembra */ }
 };
 
 let ativa = false;
@@ -53,9 +69,10 @@ async function pintar() {
   $('abas-relatorios').innerHTML = ABAS
     .map((a) => `<button type="button" data-rel-aba="${a.id}" aria-pressed="${a.id === vista.aba}">${esc(a.nome)}</button>`).join('');
   pintarPeriodo();
-  const corpo = { mes: abaMes, futuro: abaFuturo, onde: abaOnde, patrimonio: abaPatrimonio, tendencia: abaTendencia }[vista.aba]();
+  const corpo = { mes: abaMes, futuro: abaFuturo, onde: abaOnde, explorar: abaExplorar, patrimonio: abaPatrimonio, tendencia: abaTendencia }[vista.aba]();
   $('corpo-relatorios').innerHTML = corpo;
   if (vista.aba === 'mes') desenharMes();
+  if (vista.aba === 'explorar') desenharExplorar();
   if (vista.aba === 'futuro') { desenharProjecao(); desenharComprometimento(); }
   if (vista.aba === 'patrimonio') desenharPatrimonio();
   guardar();
@@ -76,10 +93,16 @@ function pintarPeriodo() {
     : '';
 }
 
-/** Uma linha que abre nos lançamentos que a formam. */
+/**
+ * Uma linha que abre nos lançamentos que a formam. Aberta a linha de uma
+ * categoria, etiqueta ou descrição, o "explorar ›" leva ao Explorar já com
+ * ela (design/14 §1).
+ */
 function linhaQueAbre(chave, conteudo, ids) {
   const aberta = abertas.has(chave);
+  const exploravel = /^(cat|et|desc):./.test(chave) && !chave.endsWith(':null');
   return `<button type="button" class="linha-rel ${aberta ? 'aberta' : ''}" data-rel-abrir="${esc(chave)}" aria-expanded="${aberta}">${conteudo}</button>
+    ${aberta && exploravel ? `<p class="explorar-daqui"><button type="button" class="elo" data-explorar="${esc(chave)}">explorar ›</button></p>` : ''}
     ${aberta ? listaDeLancamentos(ids) : ''}`;
 }
 
@@ -293,6 +316,215 @@ function abaOnde() {
       ${semana}
       <p class="nota-rel">Primeira quinzena ${formatar(q[0])}${qTotal ? ` (${pct(q[0] / qTotal)})` : ''} · segunda ${formatar(q[1])}${qTotal ? ` (${pct(q[1] / qTotal)})` : ''}.</p>
     </div>`;
+}
+
+// ── Explorar (design/14, D32) ─────────────────────────────────────────────
+
+const DIMENSOES = [
+  { id: 'categorias', rotulo: 'categorias', mais: '+ categoria' },
+  { id: 'etiquetas', rotulo: 'etiquetas', mais: '+ etiqueta' },
+  { id: 'descricoes', rotulo: 'descrições', mais: '+ descrição' },
+  { id: 'contas', rotulo: 'contas', mais: '+ conta ou cartão' },
+];
+const PERIODOS = [['6', '6 meses'], ['12', '12 meses'], ['ano', 'este ano'], ['tudo', 'tudo']];
+
+/** O nome de um item escolhido, em qualquer dimensão. */
+function nomeDoItem(dim, id) {
+  if (dim === 'categorias') return nomeCat(id);
+  if (dim === 'etiquetas') return app.etiquetas?.[id]?.nome ?? 'etiqueta';
+  if (dim === 'descricoes') return app.detalhes?.[id]?.nome ?? 'descrição';
+  return app.contas?.[id]?.nome ?? 'conta';
+}
+
+/** As opções que ainda dá para acrescentar a uma dimensão. */
+function opcoesDe(dim) {
+  const ja = new Set(exp.sel[dim]);
+  const por = (a, b) => a.nome.localeCompare(b.nome, 'pt-BR');
+  const opt = (x) => `<option value="${esc(x.id)}">${esc(x.nome)}</option>`;
+  if (dim === 'categorias') {
+    const todas = Object.values(app.categorias).filter((c) => !c.arquivada && !ja.has(c.id)).map((c) => ({ ...c, nome: nomeCat(c.id) })).sort(por);
+    const grupo = (nat, rotulo) => {
+      const daqui = todas.filter((c) => c.natureza === nat);
+      return daqui.length ? `<optgroup label="${rotulo}">${daqui.map(opt).join('')}</optgroup>` : '';
+    };
+    return grupo('despesa', 'despesa') + grupo('receita', 'receita');
+  }
+  if (dim === 'etiquetas') return Object.values(app.etiquetas ?? {}).filter((t) => !t.arquivada && !ja.has(t.id)).sort(por).map(opt).join('');
+  if (dim === 'descricoes') return Object.values(app.detalhes ?? {}).filter((d) => !d.arquivado && !ja.has(d.id)).sort(por).map(opt).join('');
+  return Object.values(app.contas).filter((c) => !c.arquivada && !ja.has(c.id) && !['investimento', 'divida'].includes(c.tipo)).sort(por).map(opt).join('');
+}
+
+/** A seleção na tela é diferente da salva de onde veio? */
+function mexida() {
+  const salva = app.selecoes?.[exp.salvaId];
+  if (!salva) return false;
+  const igual = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
+  return !DIMENSOES.every((d) => igual(exp.sel[d.id], salva[d.id] ?? [])) || Boolean(exp.sel.cruzar) !== Boolean(salva.cruzar);
+}
+
+// O que a aba calculou, para os gráficos desenharem depois do HTML.
+let explorado = null;
+
+function abaExplorar() {
+  if (exp.salvaId && !app.selecoes?.[exp.salvaId]) exp.salvaId = null;
+  const salvas = Object.values(app.selecoes ?? {}).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  const chipsSalvas = `<div class="salvas-ex" role="group" aria-label="Seleções salvas">
+      ${salvas.map((x) => `<button type="button" data-ex-abrir="${esc(x.id)}" aria-pressed="${x.id === exp.salvaId}">${esc(x.nome)}</button>`).join('')}
+      <button type="button" class="nova-ex" data-ex-nova>+ nova</button>
+    </div>`;
+
+  const linhasFiltro = DIMENSOES.map((d) => {
+    const escolhidos = exp.sel[d.id].map((id) => `<button type="button" class="chip-ex" data-ex-tirar="${d.id}:${esc(id)}" aria-label="Tirar ${esc(nomeDoItem(d.id, id))}">${esc(nomeDoItem(d.id, id))} <span aria-hidden="true">×</span></button>`).join('');
+    const opcoes = opcoesDe(d.id);
+    return `<div class="linha-filtro-ex"><span class="rotulo-ex">${d.rotulo}</span>${escolhidos}
+      ${opcoes ? `<select data-ex-add="${d.id}" aria-label="${esc(d.mais)}"><option value="">${esc(d.mais)}</option>${opcoes}</select>` : ''}</div>`;
+  }).join('');
+
+  const tipos = ['categorias', 'etiquetas', 'descricoes'].filter((d) => exp.sel[d].length).length;
+  const cruzar = tipos >= 2
+    ? `<label class="cruzar-ex"><input type="checkbox" data-ex-cruzar ${exp.sel.cruzar ? 'checked' : ''}> só o que tem os dois</label>`
+    : '';
+  const periodo = `<span class="chips-periodo inline" role="group" aria-label="Período">${PERIODOS.map(([v, n]) =>
+    `<button type="button" data-ex-periodo="${v}" aria-pressed="${v === exp.periodo}">${n}</button>`).join('')}</span>`;
+  const vazia = ex.selecaoVazia(exp.sel);
+  const acoes = exp.salvando
+    ? `<span class="salvar-ex"><input type="text" data-ex-nome maxlength="40" placeholder="nome da seleção" aria-label="Nome da seleção">
+        <button type="button" class="principal" data-ex-confirmar>Salvar</button><button type="button" class="elo" data-ex-cancelar>cancelar</button></span>`
+    : `<span class="acoes-ex">
+        ${exp.salvaId && mexida() ? '<button type="button" class="elo" data-ex-atualizar>salvar</button>' : ''}
+        ${vazia ? '' : '<button type="button" class="elo" data-ex-salvar-como>salvar como…</button>'}
+        ${exp.salvaId ? '<button type="button" class="elo" data-ex-apagar>apagar</button>' : ''}
+      </span>`;
+
+  const painel = `<div class="filtro-ex">${linhasFiltro}<div class="rodape-ex">${cruzar}${periodo}${acoes}</div></div>`;
+  if (vazia) {
+    explorado = null;
+    return `${chipsSalvas}${painel}<p class="nota-rel">Escolha uma categoria, etiqueta, descrição ou conta para ver a evolução dela. Várias juntas somam; salve a seleção para abrir num toque depois.</p>`;
+  }
+
+  const per = ex.periodoDoExplorar(app, exp.periodo);
+  const r = ex.explorar(app, exp.sel, per);
+  explorado = { r, per };
+  if (r.vazia) return `${chipsSalvas}${painel}<p class="nota-rel">Nada com esta seleção no período.</p>`;
+
+  const gasto = r.natureza === 'gasto';
+  const antes = r.anoAnterior;
+  const numeros = `<div class="numeros-renda numeros-ex">
+      ${numero(gasto ? 'gasto no período' : 'entrou no período', formatar(r.totalDaBase))}
+      ${numero('média por mês', formatar(r.media))}
+      ${gasto && r.parteDoGasto != null ? numero('do gasto total', pct(r.parteDoGasto)) : ''}
+      ${antes ? numero('contra um ano antes', `${r.totalDaBase >= antes ? '+' : '−'}${Math.abs((r.totalDaBase / antes - 1) * 100).toFixed(0)}%`) : ''}
+      ${gasto && r.receita ? numero('entrou', formatar(r.receita)) : ''}
+    </div>
+    ${r.projeto ? `<p class="nota-rel">Dos quais ${formatar(r.projeto)} pagos por envelope.</p>` : ''}`;
+
+  const lista = (titulo, itens, prefixo, nome) => {
+    if (!itens.length) return '';
+    const maior = Math.max(...itens.map((x) => x.valor), 1);
+    return `<p class="classe-ativos"><span>${titulo}</span><span></span></p>
+      ${itens.slice(0, 12).map((x) => linhaQueAbre(`${prefixo}:${x.chave}`, `
+        <span class="nome-rel">${esc(nome(x.chave))}<span class="fino">${x.vezes} ${x.vezes === 1 ? 'vez' : 'vezes'}${x.vezes ? ` · ${formatar(Math.round(x.valor / x.vezes))} cada` : ''}</span></span>
+        ${barra(x.valor, maior)}
+        <span class="valor-rel">${formatar(x.valor)}</span>
+        <span class="dif-rel">${r.totalDaBase ? pct(x.valor / r.totalDaBase) : ''}</span>`, x.lancamentos)).join('')}`;
+  };
+
+  const outras = salvas.filter((x) => x.id !== exp.salvaId);
+  const comparar = outras.length
+    ? `<p class="classe-ativos"><span>comparar com</span><span></span></p>
+      <div class="salvas-ex" role="group" aria-label="Comparar com">${outras.map((x) =>
+        `<button type="button" data-ex-comparar="${esc(x.id)}" aria-pressed="${exp.comparar.includes(x.id)}">${esc(x.nome)}</button>`).join('')}</div>
+      ${exp.comparar.some((id) => app.selecoes?.[id]) ? '<div class="grafico-rel" id="g-ex-comparar"></div>' : ''}`
+    : '';
+
+  return `${chipsSalvas}${painel}
+    <div class="blocos"><div class="bloco largo total">${numeros}</div></div>
+    <div class="secao-rel">
+      <p class="classe-ativos"><span>mês a mês · ${r.empilha === 'descricao' ? 'pelas descrições' : 'por categoria'}</span><span>tracejado: a média</span></p>
+      <div class="grafico-rel" id="g-ex-meses"></div>
+      <p class="classe-ativos"><span>ano contra ano · acumulado</span><span></span></p>
+      <div class="grafico-rel" id="g-ex-ano"></div>
+      ${comparar}
+      ${lista('onde mais pesa · por categoria', r.categorias, 'xc', nomeCat)}
+      ${lista('por etiqueta', r.etiquetas, 'xe', (k) => app.etiquetas?.[k]?.nome ?? 'etiqueta')}
+      ${lista('por descrição', r.descricoes, 'xd', (k) => app.detalhes?.[k]?.nome ?? '—')}
+    </div>`;
+}
+
+const nomeDaSerie = (r, chave) => (chave === 'outras' ? 'outras'
+  : r.empilha === 'descricao' ? (app.detalhes?.[chave]?.nome ?? 'sem descrição') : nomeCat(chave === '—' ? null : chave));
+
+function desenharExplorar() {
+  if (!explorado) return;
+  const { r, per } = explorado;
+  const cores = new Map(r.series.map((x, i) => [x.chave, x.chave === 'outras' ? 'var(--serie-outros)' : cor(i + 1)]));
+  if ($('g-ex-meses')) {
+    colunas($('g-ex-meses'), {
+      grupos: r.porMes.map((m) => {
+        const total = [...m.partes.values()].reduce((t, v) => t + v, 0);
+        return {
+          rotulo: mesCurto(m.mes),
+          barras: [r.series.map((x) => ({ valor: m.partes.get(x.chave) ?? 0, cor: cores.get(x.chave) }))],
+          dica: `<strong>${esc(nomeDoMes(m.mes))}: ${formatar(total)}</strong>${r.series.filter((x) => m.partes.get(x.chave)).map((x) =>
+            `<span>${esc(nomeDaSerie(r, x.chave))}: ${formatar(m.partes.get(x.chave))}</span>`).join('')}<span class="fino">média ${formatar(r.media)}</span>`,
+        };
+      }),
+      series: r.series.map((x) => ({ nome: `${nomeDaSerie(r, x.chave)} · ${formatar(x.valor)}`, cor: cores.get(x.chave) })),
+      linha: r.porMes.map(() => r.media),
+      formatar: compacto,
+    });
+    $('g-ex-meses').querySelector('.linha-sobre')?.setAttribute('stroke-dasharray', '5 4');
+  }
+  const ano = ex.anoContraAno(app, exp.sel);
+  if ($('g-ex-ano')) {
+    if (!ano) $('g-ex-ano').innerHTML = '<p class="nota-rel">Aparece quando houver lançamento no ano passado.</p>';
+    else {
+      const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+      const este = [...ano.este, ...Array(12 - ano.este.length).fill(null)];
+      graficoDeLinhas($('g-ex-ano'), {
+        series: [
+          { nome: String(ano.ano), cor: cor(1), valores: este },
+          { nome: String(ano.ano - 1), cor: 'var(--tinta-fraca)', valores: ano.passado, fina: true },
+        ],
+        rotulos: MESES,
+        dica: (i) => `<strong>até ${MESES[i]}</strong>${este[i] != null ? `<span>${ano.ano}: ${formatar(este[i])}</span>` : ''}<span class="fino">${ano.ano - 1}: ${formatar(ano.passado[i])}</span>`,
+        formatar: compacto,
+      });
+      if (ano.desdeOPassado) $('g-ex-ano').insertAdjacentHTML('beforeend', `<p class="nota-rel">${ano.ano - 1} só tem lançamentos desde ${esc(nomeDoMes(ano.desdeOPassado))}.</p>`);
+    }
+  }
+  const comparadas = exp.comparar.map((id) => app.selecoes?.[id]).filter(Boolean);
+  if ($('g-ex-comparar') && comparadas.length) {
+    const atual = app.selecoes?.[exp.salvaId]?.nome ?? 'esta seleção';
+    const series = [{ nome: atual, cor: cor(1), valores: ex.serieDaSelecao(app, exp.sel, per) },
+      ...comparadas.map((x, i) => ({ nome: x.nome, cor: cor(i + 2), valores: ex.serieDaSelecao(app, x, per) }))];
+    graficoDeLinhas($('g-ex-comparar'), {
+      series,
+      rotulos: per.meses.map(mesCurto),
+      dica: (i) => `<strong>${esc(nomeDoMes(per.meses[i]))}</strong>${series.map((x) => `<span>${esc(x.nome)}: ${formatar(x.valores[i])}</span>`).join('')}`,
+      formatar: compacto,
+    });
+  }
+}
+
+/** Abre o Explorar com uma linha de outro relatório (cat:, et:, desc:). */
+function explorarDaqui(chave) {
+  const i = chave.indexOf(':');
+  const dim = { cat: 'categorias', et: 'etiquetas', desc: 'descricoes' }[chave.slice(0, i)];
+  if (!dim) return;
+  exp.sel = selVazia();
+  exp.sel[dim] = [chave.slice(i + 1)];
+  exp.salvaId = null;
+  exp.salvando = false;
+  vista.aba = 'explorar';
+  abertas.clear();
+  pintar();
+}
+
+async function salvarSelecao(id, nome) {
+  exp.salvaId = id;
+  exp.salvando = false;
+  await estado.aplicarEvento('selecao.salva', { id, nome, ...exp.sel });
 }
 
 // ── Patrimônio ────────────────────────────────────────────────────────────
@@ -530,8 +762,66 @@ function abaTendencia() {
 
 // ── eventos ───────────────────────────────────────────────────────────────
 
-document.addEventListener('click', (e) => {
+document.addEventListener('click', async (e) => {
   if (!ativa) return;
+  const daqui = e.target.closest('[data-explorar]');
+  if (daqui) { explorarDaqui(daqui.dataset.explorar); return; }
+  if (e.target.closest('[data-ex-nova]')) { exp.sel = selVazia(); exp.salvaId = null; exp.salvando = false; abertas.clear(); pintar(); return; }
+  const abrirSalva = e.target.closest('[data-ex-abrir]');
+  if (abrirSalva) {
+    const s = app.selecoes?.[abrirSalva.dataset.exAbrir];
+    if (!s) return;
+    exp.sel = { categorias: [...s.categorias], etiquetas: [...s.etiquetas], descricoes: [...s.descricoes], contas: [...s.contas], cruzar: s.cruzar };
+    exp.salvaId = s.id;
+    exp.comparar = exp.comparar.filter((id) => id !== s.id);
+    exp.salvando = false;
+    abertas.clear();
+    pintar();
+    return;
+  }
+  const tirar = e.target.closest('[data-ex-tirar]');
+  if (tirar) {
+    const valor = tirar.dataset.exTirar;
+    const i = valor.indexOf(':');
+    exp.sel[valor.slice(0, i)] = exp.sel[valor.slice(0, i)].filter((x) => x !== valor.slice(i + 1));
+    pintar();
+    return;
+  }
+  const per = e.target.closest('[data-ex-periodo]');
+  if (per) { exp.periodo = per.dataset.exPeriodo; pintar(); return; }
+  const comp = e.target.closest('[data-ex-comparar]');
+  if (comp) {
+    const id = comp.dataset.exComparar;
+    exp.comparar = exp.comparar.includes(id) ? exp.comparar.filter((x) => x !== id) : [...exp.comparar, id].slice(-5);
+    pintar();
+    return;
+  }
+  if (e.target.closest('[data-ex-salvar-como]')) {
+    exp.salvando = true;
+    await pintar();
+    document.querySelector('[data-ex-nome]')?.focus();
+    return;
+  }
+  if (e.target.closest('[data-ex-cancelar]')) { exp.salvando = false; pintar(); return; }
+  if (e.target.closest('[data-ex-confirmar]')) {
+    const campo = document.querySelector('[data-ex-nome]');
+    const nome = campo?.value.trim();
+    if (!nome) { campo?.focus(); return; }
+    await salvarSelecao(novoId('sel'), nome);
+    return;
+  }
+  if (e.target.closest('[data-ex-atualizar]')) {
+    const s = app.selecoes?.[exp.salvaId];
+    if (s) await salvarSelecao(s.id, s.nome);
+    return;
+  }
+  if (e.target.closest('[data-ex-apagar]')) {
+    const s = app.selecoes?.[exp.salvaId];
+    if (!s || !confirm(`Apagar a seleção "${s.nome}"? Os lançamentos não mudam.`)) return;
+    exp.salvaId = null;
+    await estado.aplicarEvento('selecao.removida', { id: s.id });
+    return;
+  }
   const aba = e.target.closest('[data-rel-aba]');
   if (aba) { vista.aba = aba.dataset.relAba; abertas.clear(); pintar(); return; }
   const mes = e.target.closest('[data-rel-mes]');
@@ -552,6 +842,24 @@ document.addEventListener('click', (e) => {
     if (abertas.has(chave)) abertas.delete(chave); else abertas.add(chave);
     pintar();
   }
+});
+
+// O Explorar: acrescentar à seleção, cruzar, e Enter no nome salva.
+document.addEventListener('change', (e) => {
+  if (!ativa) return;
+  const add = e.target.closest('[data-ex-add]');
+  if (add && add.value) {
+    exp.sel[add.dataset.exAdd] = [...exp.sel[add.dataset.exAdd], add.value];
+    pintar();
+    return;
+  }
+  const cruzar = e.target.closest('[data-ex-cruzar]');
+  if (cruzar) { exp.sel.cruzar = cruzar.checked; pintar(); }
+});
+document.addEventListener('keydown', (e) => {
+  if (!ativa || e.key !== 'Enter' || !e.target.closest('[data-ex-nome]')) return;
+  e.preventDefault();
+  document.querySelector('[data-ex-confirmar]')?.click();
 });
 
 document.addEventListener('app:tela', (e) => {

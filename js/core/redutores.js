@@ -25,7 +25,7 @@ export const AREAS_PADRAO = ['caixa', 'cartoes'];
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 23;
+export const VERSAO_ESTADO = 24;
 
 export function estadoVazio() {
   return {
@@ -48,6 +48,9 @@ export function estadoVazio() {
     // se mandou ignorar ("conta|número do banco"), para não voltarem.
     regras: {},
     importIgnorados: {},
+    // As seleções salvas do Explorar (design/14, D32): categorias, etiquetas,
+    // descrições e contas com um nome. Só leitura de lançamento, nunca escrita.
+    selecoes: {},
     // Fusões feitas, com o que foi movido — é o que permite desfazer (02 §3.15).
     fusoes: {},
     // Tipos de evento que este app não conhece. Não é erro fatal (um aparelho
@@ -380,6 +383,26 @@ export const redutores = {
 
   'regra.removida'(e, d) {
     delete e.regras?.[d.id];
+  },
+
+  // ── seleções do Explorar (design/14) ──────────────────────────────────────
+
+  // Salvar de novo com o mesmo id atualiza: é assim que "salvar" edita.
+  'selecao.salva'(e, d) {
+    e.selecoes ??= {};
+    e.selecoes[d.id] = {
+      id: d.id,
+      nome: d.nome,
+      categorias: d.categorias ?? [],
+      etiquetas: d.etiquetas ?? [],
+      descricoes: d.descricoes ?? [],
+      contas: d.contas ?? [],
+      cruzar: Boolean(d.cruzar),
+    };
+  },
+
+  'selecao.removida'(e, d) {
+    delete e.selecoes?.[d.id];
   },
 
   'importacao.ignorada'(e, d) {
