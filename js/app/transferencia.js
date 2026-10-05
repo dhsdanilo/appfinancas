@@ -18,6 +18,7 @@ import { novoId } from '../core/id.js';
 import * as log from '../core/log.js';
 import * as estado from '../core/estado.js';
 import { hoje, nasceConfirmado, correcao, tipoDaTransferencia } from '../core/lancamentos.js';
+import { somarDias } from '../core/datas.js';
 import { MARCACAO_CAMPO_VALOR, ligarCampoValor } from './campo-valor.js';
 import { ligarZonaDePerigo } from './zona-perigo.js';
 import { areaDaConta, opcoesDeConta } from './areas.js';
@@ -33,28 +34,41 @@ import { ligarDonos } from './envelope.js';
 // `pagamento_fatura` sai do destino sozinho — não existe como errar
 // (03-alimentacao §6.2). O holerite (D25) ainda não tem tipo próprio.
 
+// O mesmo desenho do "Novo lançamento" (pedido dele, 05/10/2026): a data em
+// cima com − hoje +, as contas, o valor, o "mais" com o que é exceção, e os
+// dois botões.
 const MARCACAO = `
-  ${MARCACAO_CAMPO_VALOR}
-
   <div class="contexto contexto-transferencia">
-    <input type="date" class="data-exata" data-papel="data" aria-label="Data da transferência">
+    <span class="tipo-transf" aria-hidden="true">→ transferência</span>
+    <div class="quando">
+      <button type="button" class="passo" data-papel="dia-menos" aria-label="Um dia antes">−</button>
+      <button type="button" class="elo" data-papel="rotulo-data" aria-label="Escolher a data no calendário">hoje</button>
+      <button type="button" class="passo" data-papel="dia-mais" aria-label="Um dia depois">+</button>
+      <input type="date" class="data-exata" data-papel="data" aria-label="Data da transferência" tabindex="-1">
+    </div>
   </div>
 
   <div class="rota">
     <label class="perna">
-      <span class="miudo">de</span>
+      <span class="rotulo-campo">de onde sai</span>
       <select data-papel="origem" aria-label="Conta de origem"></select>
     </label>
     <span class="seta" aria-hidden="true">→</span>
     <label class="perna">
-      <span class="miudo">para</span>
+      <span class="rotulo-campo">para onde vai</span>
       <select data-papel="destino" aria-label="Conta de destino"></select>
     </label>
   </div>
 
-  <!-- Repetir todo mês (design/03 §3.2, pedido dele 05/10/2026): a série nasce
-       desta transferência; "cai sozinha" é o débito automático (13 §1). -->
-  <div class="repete-transf" data-papel="linha-repete">
+  <p class="rotulo-campo">valor</p>
+  ${MARCACAO_CAMPO_VALOR}
+
+  <!-- O que é exceção fica no "mais", como no lançamento: repetir todo mês
+       (design/03 §3.2) e o débito automático (13 §1). -->
+  <div class="linha-mais-transf" data-papel="linha-mais">
+    <button type="button" class="elo" data-papel="b-mais" aria-expanded="false">mais ▾</button>
+  </div>
+  <div class="repete-transf" data-papel="linha-repete" hidden>
     <label><input type="checkbox" data-papel="repete"> repete todo mês</label>
     <label data-papel="linha-cai" hidden><input type="checkbox" data-papel="cai-sozinha"> cai sozinha no dia</label>
     <span class="fino" data-papel="pista-repete"></span>
@@ -74,7 +88,8 @@ const MARCACAO = `
   </p>
 
   <div class="acoes">
-    <button type="button" class="principal" data-papel="b-salvar" disabled>Transferir</button>
+    <button type="button" class="principal" data-papel="b-salvar-nova" disabled>Transferir e nova</button>
+    <button type="button" data-papel="b-salvar" disabled>Transferir e fechar</button>
   </div>
 
   <p class="zona-perigo" data-papel="perigo" hidden></p>
@@ -88,6 +103,8 @@ const MARCACAO = `
  */
 export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitulo }) {
   raiz.innerHTML = MARCACAO;
+  // O desenho do "Novo lançamento": os mesmos rótulos e espaçamentos.
+  raiz.classList.add('formulario-app');
   // Transferência não é de área: leva a cor do próprio tipo, ela e a janela.
   raiz.dataset.area = 'transferencia';
   const janela = raiz.closest('dialog');
@@ -140,8 +157,14 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
   function pintarAcao() {
     pintarAreas();
     pintarDonos();
+    // Corrigir, a parcela e a fatura são uma coisa só: um botão. A transferência
+    // nova tem os dois, como o lançamento.
+    const unico = Boolean(editando || daParcela || pagandoFatura());
+    el('b-salvar-nova').hidden = unico;
+    el('b-salvar').classList.toggle('principal', unico);
     el('b-salvar').disabled = !pronto();
-    el('b-salvar').textContent = editando || daParcela ? 'Salvar' : pagandoFatura() ? 'Pagar fatura' : 'Transferir';
+    el('b-salvar-nova').disabled = !pronto();
+    el('b-salvar').textContent = editando || daParcela ? 'Salvar' : pagandoFatura() ? 'Pagar fatura' : 'Transferir e fechar';
     if (aoMudarTitulo) aoMudarTitulo(daParcela ? 'Corrigir parcela' : pagandoFatura() ? 'Pagar fatura' : 'Transferência');
     el('recado-parcela').hidden = !daParcela;
     pintarRepete();
@@ -151,7 +174,7 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
     const recusa = mesma ? 'Escolha duas contas diferentes: transferência é dinheiro trocando de bolso.' : donos.conferir(valor.centavos());
     el('recado').textContent = recusa;
     el('recado').hidden = !recusa;
-    if (recusa) el('b-salvar').disabled = true;
+    if (recusa) { el('b-salvar').disabled = true; el('b-salvar-nova').disabled = true; }
   }
 
   /**
@@ -160,9 +183,13 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
    * no pagamento de fatura — o valor dela muda todo mês e ela já aparece
    * prevista sozinha.
    */
+  let maisAberto = false;
   function pintarRepete() {
     const pode = !editando && !daSerie && !daParcela && !pagandoFatura();
-    el('linha-repete').hidden = !pode;
+    el('linha-mais').hidden = !pode;
+    el('linha-repete').hidden = !pode || !maisAberto;
+    el('b-mais').textContent = maisAberto ? 'menos ▴' : `mais ▾${el('repete').checked ? ' · repete todo mês' : ''}`;
+    el('b-mais').setAttribute('aria-expanded', String(maisAberto));
     if (!pode) el('repete').checked = false;
     const repete = el('repete').checked;
     el('linha-cai').hidden = !repete;
@@ -190,6 +217,21 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
 
   function pintarData() {
     el('data').value = data;
+    el('rotulo-data').textContent = rotuloDoDia(data);
+  }
+
+  function rotuloDoDia(dia) {
+    if (dia === hoje()) return 'hoje';
+    if (dia === somarDias(hoje(), -1)) return 'ontem';
+    if (dia === somarDias(hoje(), 1)) return 'amanhã';
+    const [ano, mes, d] = dia.split('-');
+    return ano === hoje().slice(0, 4) ? `${d}/${mes}` : `${d}/${mes}/${ano}`;
+  }
+
+  function irPara(dia) {
+    data = dia;
+    pintarData();
+    pintarRepete();
   }
 
   // ── apagar ──────────────────────────────────────────────────────────────
@@ -233,7 +275,7 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
 
   /** Marcado "repete", a série nasce desta transferência: mesmo valor, mesmo dia. */
   async function criarSerie() {
-    if (!el('repete').checked || el('linha-repete').hidden) return null;
+    if (!el('repete').checked || el('linha-mais').hidden) return null;
     const id = novoId('rec');
     const cai = el('cai-sozinha').checked;
     await estado.aplicarEvento('recorrencia.criada', {
@@ -305,6 +347,29 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
     if (salvou && aoFechar) aoFechar();
   });
 
+  // "Transferir e nova": guarda a data e as contas, e limpa o valor — a
+  // pilha de aportes do mês, uma atrás da outra.
+  el('b-salvar-nova').addEventListener('click', async () => {
+    const salvou = await salvar();
+    if (!salvou) return;
+    valor.limpar();
+    pintarAcao();
+    valor.focar();
+  });
+
+  el('b-mais').addEventListener('click', () => { maisAberto = !maisAberto; pintarRepete(); });
+  el('dia-menos').addEventListener('click', () => irPara(somarDias(data, -1)));
+  el('dia-mais').addEventListener('click', () => irPara(somarDias(data, 1)));
+  el('rotulo-data').addEventListener('click', () => {
+    const campo = el('data');
+    // O calendário do próprio aparelho, como no lançamento.
+    if (typeof campo.showPicker === 'function') {
+      try { campo.showPicker(); return; } catch { /* fora de gesto: cai abaixo */ }
+    }
+    campo.focus();
+    campo.click();
+  });
+
   el('b-pular').addEventListener('click', async () => {
     if (!daParcela) return;
     await pularParcela(daParcela.dividaId, daParcela.k);
@@ -326,8 +391,7 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
   el('destino').addEventListener('change', pintarAcao);
   el('data').addEventListener('change', () => {
     if (!el('data').value) { pintarData(); return; }
-    data = el('data').value;
-    pintarRepete();
+    irPara(el('data').value);
   });
   el('repete').addEventListener('change', pintarRepete);
   el('cai-sozinha').addEventListener('change', pintarRepete);
@@ -375,6 +439,7 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
       data = hoje();
       el('repete').checked = false;
       el('cai-sozinha').checked = false;
+      maisAberto = false;
       valor.limpar();
       el('origem').value = '';
       el('destino').value = '';

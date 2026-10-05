@@ -217,7 +217,12 @@ input[type="text"].nova-etiqueta {
 
 /* ── transferência ──────────────────────────────────────────────────────── */
 
-.contexto-transferencia { justify-content: flex-end; }
+.contexto-transferencia { justify-content: space-between; align-items: center; }
+.tipo-transf {
+  padding: var(--e1) var(--e3); border-radius: var(--raio-pilula);
+  border: 1px solid var(--area); color: var(--area); font-weight: 600; font-size: var(--t-apoio);
+}
+.linha-mais-transf { display: flex; justify-content: flex-end; }
 
 .rota {
   display: flex;
@@ -238,6 +243,11 @@ input[type="text"].nova-etiqueta {
   color: var(--tinta);
 }
 .rota .seta { padding-bottom: var(--e3); color: var(--tinta-fraca); }
+/* No celular, uma conta embaixo da outra: lado a lado elas estouravam a janela. */
+@media (max-width: 600px) {
+  .rota { flex-direction: column; align-items: stretch; }
+  .rota .seta { display: none; }
+}
 
 .recado {
   margin: var(--e2) 0 0;
