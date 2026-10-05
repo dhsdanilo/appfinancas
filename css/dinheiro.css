@@ -150,6 +150,13 @@ button.linha.vencido { border-left: 3px solid var(--alerta); background: var(--a
 .linha.transferencia .quanto .moeda,
 .linha.transferencia .quanto .centavos { color: var(--transferencia); }
 
+/* A fatura e o pagamento dela vestem a cor dos cartões: no azul da
+   transferência ela se confundia com a receita (pedido dele, 05/10/2026). */
+.linha.da-fatura .marca { background: color-mix(in srgb, var(--area-cartoes) 14%, transparent); color: var(--area-cartoes); }
+.linha.da-fatura .quanto,
+.linha.da-fatura .quanto .moeda,
+.linha.da-fatura .quanto .centavos { color: var(--area-cartoes); }
+
 /* O nome fica em tinta normal: colorir o texto também deixaria a lista
    ilegível, e o que precisa de cor é a natureza do movimento, não a palavra. */
 .linha .cat { color: var(--tinta); }

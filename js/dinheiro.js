@@ -1504,7 +1504,7 @@ function linhaHTML(l, ids, saldoApos = null) {
     ? `<button type="button" class="lancar-rapido" data-lancar-previsto="${escapar(l.id)}" title="Lançar como previsto" aria-label="Lançar ${escapar(oque)} como previsto">✓</button>`
     : '';
 
-  return `<li class="${rapido ? 'com-rapido' : ''}"><button type="button" class="linha ${tom} ${est === 'realizado' ? '' : est} ${saldoApos ? 'com-saldo' : ''}"
+  return `<li class="${rapido ? 'com-rapido' : ''}"><button type="button" class="linha ${tom} ${l.tipo === 'pagamento_fatura' ? 'da-fatura' : ''} ${est === 'realizado' ? '' : est} ${saldoApos ? 'com-saldo' : ''}"
       ${alvo} aria-label="${acao} ${escapar(nomeDoTom.toLowerCase())} de ${escapar(diaCurto(dia))}">
     <span class="marca" title="${nomeDoTom}" aria-hidden="true">${marca}</span>
     <span class="quando">${escapar(diaCurto(dia))}</span>
