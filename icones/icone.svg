@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="App Finanças">
-  <rect width="512" height="512" rx="96" fill="#16302b"/>
-  <!-- Um envelope, que é o conceito central do app. -->
-  <g fill="none" stroke="#6fcfae" stroke-width="26" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="104" y="150" width="304" height="212" rx="20"/>
-    <path d="M104 178l152 104 152-104"/>
-  </g>
+  <rect width="512" height="512" rx="96" fill="#2c2c2a"/>
+  <!-- As cores das áreas: em caixa, cartões, investimentos, dívidas. -->
+  <rect x="110" y="122" width="292" height="48" rx="24" fill="#5dcaa5"/>
+  <rect x="110" y="190" width="230" height="48" rx="24" fill="#d9b23a"/>
+  <rect x="110" y="258" width="260" height="48" rx="24" fill="#9a93f0"/>
+  <rect x="110" y="326" width="180" height="48" rx="24" fill="#e0805c"/>
 </svg>
