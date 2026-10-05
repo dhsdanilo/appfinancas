@@ -540,23 +540,7 @@ export function curvaDoPatrimonio(estado, dia = hoje(), maximo = 12) {
  * quanto foi pago de juros nas dívidas (ideia nova, design/12 §3).
  */
 export function dinheiroTrabalhando(estado, de, ate) {
-  const vespera = somarDias(de, -1);
-  let rendeu = 0;
-  for (const a of Object.values(estado.ativos ?? {})) {
-    const fim = posicao(estado, a.id, ate)?.rendeu ?? 0;
-    const comeco = posicao(estado, a.id, vespera)?.rendeu ?? 0;
-    rendeu += fim - comeco;
-  }
-  // A poupança sem ativos rende pela foto.
-  for (const c of Object.values(estado.contas)) {
-    if (c.tipo !== 'investimento' || c.caixaEm || ativosDaConta(estado, c.id).length) continue;
-    // O rendimento acumulado até um dia: a última foto menos o que tinha sido posto até ela.
-    const r = (d) => {
-      const foto = (c.fotos ?? []).filter((f) => f.data <= d).pop();
-      return foto ? foto.valor - saldoAte(estado, c.id, foto.data) : 0;
-    };
-    rendeu += r(ate) - r(vespera);
-  }
+  const rendeu = rendimentoNoPeriodo(estado, de, ate);
   let juros = 0;
   const porDivida = [];
   for (const c of Object.values(estado.contas)) {
@@ -569,6 +553,70 @@ export function dinheiroTrabalhando(estado, de, ate) {
     juros += j;
   }
   return { rendeu, juros, porDivida, saldo: rendeu - juros };
+}
+
+/**
+ * Quanto os investimentos renderam entre `de` e `ate`: a diferença do
+ * rendimento de cada ativo, e a poupança sem ativos pela foto. `ids` filtra as
+ * contas de investimento (null = todas).
+ */
+export function rendimentoNoPeriodo(estado, de, ate, ids = null) {
+  const vespera = somarDias(de, -1);
+  const daqui = (contaId) => !ids || ids.has(contaId);
+  let rendeu = 0;
+  for (const a of Object.values(estado.ativos ?? {})) {
+    if (!daqui(a.contaId)) continue;
+    const fim = posicao(estado, a.id, ate)?.rendeu ?? 0;
+    const comeco = posicao(estado, a.id, vespera)?.rendeu ?? 0;
+    rendeu += fim - comeco;
+  }
+  // A poupança sem ativos rende pela foto.
+  for (const c of Object.values(estado.contas)) {
+    if (c.tipo !== 'investimento' || !daqui(c.id) || c.caixaEm || ativosDaConta(estado, c.id).length) continue;
+    // O rendimento acumulado até um dia: a última foto menos o que tinha sido posto até ela.
+    const r = (d) => {
+      const foto = (c.fotos ?? []).filter((f) => f.data <= d).pop();
+      return foto ? foto.valor - saldoAte(estado, c.id, foto.data) : 0;
+    };
+    rendeu += r(ate) - r(vespera);
+  }
+  return rendeu;
+}
+
+/**
+ * O mês dos investimentos (pedido dele, 05/10/2026): o saldo no começo e no
+ * fim, o que entrou de fora (aporte), o que saiu para fora (resgate) e o que
+ * rendeu. Comprar ativo com o caixa da própria corretora é movimento interno:
+ * não é aporte. No mês que corre, o fim é hoje.
+ *
+ * { mes, inicio, fim, aportado, resgatado, rendeu }
+ */
+export function mesDosInvestimentos(estado, ids, mes, dia = hoje()) {
+  const de = `${mes}-01`;
+  const ate = fimDoMes(de) > dia ? dia : fimDoMes(de);
+  const vespera = somarDias(de, -1);
+  const contas = [...ids].map((id) => estado.contas[id]).filter(Boolean);
+  const ativos = new Set(Object.values(estado.ativos ?? {}).filter((a) => ids.has(a.contaId)).map((a) => a.id));
+  let aportado = 0;
+  let resgatado = 0;
+  for (const l of lancados(estado)) {
+    if (!l.confirmado || l.dataCompetencia < de || l.dataCompetencia > ate) continue;
+    const deFora = !l.contaId || !ids.has(l.contaId);
+    if (l.ativoId && ativos.has(l.ativoId)) {
+      if (l.tipo === 'aplicacao' && deFora) aportado += l.valor;
+      if (l.tipo === 'resgate' && deFora) resgatado += l.valor;
+      continue;
+    }
+    // Transferência para a corretora (ou poupança) e de volta.
+    if (l.tipo === 'transferencia') {
+      const entra = ids.has(l.contaDestinoId) && deFora;
+      const sai = ids.has(l.contaId) && !ids.has(l.contaDestinoId);
+      if (entra) aportado += l.valor;
+      if (sai) resgatado += l.valor;
+    }
+  }
+  const soma = (d) => contas.reduce((t, c) => t + valorDaConta(estado, c, d), 0);
+  return { mes, inicio: soma(vespera), fim: soma(ate), aportado, resgatado, rendeu: rendimentoNoPeriodo(estado, de, ate, ids) };
 }
 
 // ── Tendência ───────────────────────────────────────────────────────────────

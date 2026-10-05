@@ -100,6 +100,9 @@ export function colunas(raiz, { grupos, series, linha = null, formatar, altura =
     const largGrupo = porGrupo * grossura + (porGrupo - 1) * 2;
     const pilhas = g.barras.map((pilha, bi) => {
       const x = centro - largGrupo / 2 + bi * (grossura + 2);
+      // O negativo (o mês em que o investimento perdeu) desce do zero.
+      const negativos = pilha.filter((p) => p.valor < 0).map((p) =>
+        `<rect x="${x}" y="${y(0)}" width="${grossura}" height="${Math.max(0, y(p.valor) - y(0))}" fill="${p.cor}"/>`).join('');
       let base = 0;
       const partes = pilha.filter((p) => p.valor > 0);
       return partes.map((p, pi) => {
@@ -112,7 +115,7 @@ export function colunas(raiz, { grupos, series, linha = null, formatar, altura =
         return topo
           ? `<path d="${barraArredondada(x, y1, grossura, h)}" fill="${p.cor}"/>`
           : `<rect x="${x}" y="${y1 + 2}" width="${grossura}" height="${Math.max(0, h)}" fill="${p.cor}"/>`;
-      }).join('');
+      }).join('') + negativos;
     }).join('');
     const alvo = `<rect class="alvo" x="${m.esq + faixa * gi}" y="${m.cima}" width="${faixa}" height="${altura - m.cima - m.baixo}" data-dica="${esc(g.dica)}" tabindex="0"/>`;
     const rotulo = gi % pulo === 0 || gi === grupos.length - 1 ? `<text class="eixo" x="${centro}" y="${altura - 8}" text-anchor="middle">${esc(g.rotulo)}</text>` : '';

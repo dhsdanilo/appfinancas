@@ -25,6 +25,8 @@ import { criarJanelaDoAtivo } from './app/ativo.js';
 import { criarImportacao } from './app/importar.js';
 import { resumoDaConta, ativosDaConta, nomeDaClasse, CLASSES } from './core/investimentos.js';
 import { donosNoDia } from './core/envelopes.js';
+import { mesDosInvestimentos } from './core/relatorios.js';
+import { colunas, cor as corDaSerie } from './app/graficos.js';
 import { aoLancar } from './app/pagina.js';
 import { enderecoDa } from './app/rotas.js';
 import { BARRA, PRINCIPAL, DIALOGOS } from './app/marcacao-dinheiro.js';
@@ -1013,15 +1015,12 @@ function pintarInvestimentos(contas) {
   const linkEnvelopes = `<a class="elo" href="${enderecoDa('envelopes')}">${temEnvelopes ? 'envelopes' : 'separar em envelopes'}</a>`;
   if (resumos.length > 1) {
     $('resumo').innerHTML = `<div class="blocos">${blocoGeralDosInvestimentos(resumos, linkEnvelopes)}</div>`;
+    desenharMesesDosInvestimentos(contas);
     return;
   }
   const r = resumos[0];
   const c = r.conta;
-  const numeros = [
-    numeroDaFaixa(r.semAtivos && r.foto ? `valor em ${diaCurto(r.foto.data)}` : 'valor atual', `${r.estimado ? '~' : ''}${formatar(r.valorAtual)}`),
-    numeroDaFaixa('investido', formatar(r.investido)),
-    numeroDaFaixa('rendeu', `${rendeuTexto(r.rendeu)}${r.investido ? ` · ${pctTexto(r.rendeu / r.investido)}` : ''}`),
-  ];
+  const numeros = numerosDoMesInvestido([c.id], r.estimado);
   if (r.proprio && !r.semAtivos) numeros.push(numeroDaFaixa('caixa parado', formatar(r.caixa)));
   const dinheiro = r.proprio ? 'o dinheiro fica na própria conta' : `o dinheiro sai e volta de ${escapar(app.contas[c.caixaEm]?.nome ?? '—')}`;
   const valorDeHoje = r.semAtivos && r.proprio
@@ -1030,6 +1029,8 @@ function pintarInvestimentos(contas) {
   $('resumo').innerHTML = `<div class="blocos"><div class="bloco largo investimento-resumo">
     <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(c.nome)}</p>
     <div class="numeros-renda">${numeros.join('')}</div>
+    ${desdeOInicio(r.investido, r.rendeu)}
+    <div class="grafico-rel grafico-invest" id="g-invest"></div>
     ${r.semAtivos && donos ? `<p class="divisao-envelopes fino">${escapar(divisao(donos, c.id))}</p>` : ''}
     ${listaDeAtivos(r, donos)}
     <div class="pe-bloco">
@@ -1037,6 +1038,55 @@ function pintarInvestimentos(contas) {
       <span class="acoes-investimento">${linkEnvelopes}${valorDeHoje}<button type="button" class="${r.semAtivos ? 'elo' : 'principal'}" data-novo-ativo="${escapar(c.id)}">novo ativo</button></span>
     </div>
   </div></div>`;
+  desenharMesesDosInvestimentos(contas);
+}
+
+/**
+ * O mês da tela nos investimentos (pedido dele, 05/10/2026): o saldo, o que
+ * se aportou, o que se resgatou e o que rendeu naquele mês. O total investido
+ * desde o início desce para uma linha miúda.
+ */
+function numerosDoMesInvestido(ids, estimado) {
+  const m = mesDosInvestimentos(app, new Set(ids), vista.mes);
+  const atual = vista.mes === hoje().slice(0, 7);
+  const nome = nomeDoMes(vista.mes).split(' ')[0];
+  const numeros = [
+    numeroDaFaixa(atual ? 'saldo hoje' : `saldo em ${diaCurto(fimDoMes(`${vista.mes}-01`))}`, `${estimado && atual ? '~' : ''}${formatar(m.fim)}`),
+    numeroDaFaixa(`aportado em ${nome}`, formatar(m.aportado)),
+  ];
+  if (m.resgatado) numeros.push(numeroDaFaixa(`resgatado em ${nome}`, formatar(m.resgatado)));
+  numeros.push(numeroDaFaixa(`rendeu em ${nome}`, `${rendeuTexto(m.rendeu)}${m.inicio > 0 ? ` · ${pctTexto(m.rendeu / m.inicio)}` : ''}`));
+  return numeros;
+}
+
+const desdeOInicio = (investido, rendeu) =>
+  `<p class="nota-rel">Desde o início: investido ${formatar(investido)} · rendeu ${rendeuTexto(rendeu)}${investido ? ` (${pctTexto(rendeu / investido)})` : ''}.</p>`;
+
+/** Os 12 meses até o da tela: o aporte e o rendimento de cada mês, lado a lado. */
+function desenharMesesDosInvestimentos(contas) {
+  const raiz = $('g-invest');
+  if (!raiz) return;
+  const ids = new Set(contas.map((c) => c.id));
+  const meses = [];
+  for (let i = 11; i >= 0; i -= 1) meses.push(somarMeses(`${vista.mes}-01`, -i).slice(0, 7));
+  const dados = meses.map((m) => mesDosInvestimentos(app, ids, m)).filter((x) => x.inicio || x.fim || x.aportado || x.resgatado);
+  // Sem aporte nem rendimento em mês nenhum, o gráfico seria só o eixo.
+  if (dados.length < 2 || dados.every((x) => !x.aportado && !x.resgatado && !x.rendeu)) { raiz.innerHTML = ''; return; }
+  const AZUL = corDaSerie(1);
+  const VERDE = corDaSerie(3);
+  colunas(raiz, {
+    grupos: dados.map((x) => ({
+      rotulo: `${nomeDoMes(x.mes).split(' ')[0].slice(0, 3)}/${x.mes.slice(2, 4)}`,
+      barras: [[{ valor: x.aportado - x.resgatado, cor: AZUL }], [{ valor: x.rendeu, cor: VERDE }]],
+      dica: `<strong>${escapar(nomeDoMes(x.mes))}</strong><span>aportado ${formatar(x.aportado)}${x.resgatado ? ` · resgatado ${formatar(x.resgatado)}` : ''}</span><span>rendeu ${rendeuTexto(x.rendeu)}</span><span class="fino">saldo ${formatar(x.fim)}</span>`,
+    })),
+    series: [{ nome: 'aporte do mês', cor: AZUL }, { nome: 'rendimento do mês', cor: VERDE }],
+    formatar: (v) => {
+      const abs = Math.abs(v / 100);
+      return `${v < 0 ? '−' : ''}${abs >= 1000 ? `${(abs / 1000).toLocaleString('pt-BR', { maximumFractionDigits: abs >= 10000 ? 0 : 1 })} mil` : Math.round(abs).toLocaleString('pt-BR')}`;
+    },
+    altura: 170,
+  });
 }
 
 /**
@@ -1103,12 +1153,10 @@ function blocoGeralDosInvestimentos(resumos, linkEnvelopes = '') {
     .map(([cl, v]) => `<p class="classe-ativos"><span>${escapar(cl === 'caixa' ? 'Caixa e contas sem ativos' : nomeDaClasse(cl))}</span><span>${formatar(v)}${valor ? ` · ${pctTexto(v / valor)}` : ''}</span></p>`)
     .join('');
   return `<div class="bloco total largo investimento-resumo">
-    <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>geral</p>
-    <div class="numeros-renda">
-      ${numeroDaFaixa('valor atual', `${resumos.some((r) => r.estimado) ? '~' : ''}${formatar(valor)}`)}
-      ${numeroDaFaixa('investido', formatar(investido))}
-      ${numeroDaFaixa('rendeu', `${rendeuTexto(rendeu)}${investido ? ` · ${pctTexto(rendeu / investido)}` : ''}`)}
-    </div>
+    <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>geral · ${escapar(nomeDoMes(vista.mes).split(' ')[0])}</p>
+    <div class="numeros-renda">${numerosDoMesInvestido(resumos.map((r) => r.conta.id), resumos.some((r) => r.estimado)).join('')}</div>
+    ${desdeOInicio(investido, rendeu)}
+    <div class="grafico-rel grafico-invest" id="g-invest"></div>
     ${linhas ? `<div class="ativos">${linhas}</div>` : ''}
     ${linkEnvelopes ? `<div class="pe-bloco"><span class="fino">De quem é cada pedaço do que está guardado.</span>${linkEnvelopes}</div>` : ''}
   </div>`;

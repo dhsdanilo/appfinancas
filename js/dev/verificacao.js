@@ -1841,6 +1841,21 @@ caso('envelope', '★ distribuir: aportes do sem dono, e o rendimento segue a fr
   igual(r.porEnvelope.get('res').extrato.map((x) => x.tipo), ['aporte'], 'o extrato do envelope tem o aporte');
 });
 
+caso('investimento', 'o mês dos investimentos: saldo, aporte e rendimento fecham entre si', async () => {
+  const ev = await baseDeEnvelopes();
+  await ev('lancamento.registrado', { id: 'a1', tipo: 'aplicacao', valor: 2000000, contaId: 'cc', ativoId: 'cdb', dataCompetencia: '2026-09-10', confirmado: true });
+  await ev('ativo.avaliado', { id: 'cdb', data: '2026-09-30', valor: 2020000 });
+  await ev('lancamento.registrado', { id: 'a2', tipo: 'aplicacao', valor: 100000, contaId: 'cc', ativoId: 'cdb', dataCompetencia: '2026-10-10', confirmado: true });
+  await ev('ativo.avaliado', { id: 'cdb', data: '2026-10-31', valor: 2130000 });
+  const e = await estado.calcular();
+  const ids = new Set(['inv']);
+  const set = relatorios.mesDosInvestimentos(e, ids, '2026-09', '2026-11-15');
+  igual([set.inicio, set.aportado, set.rendeu, set.fim], [0, 2000000, 20000, 2020000], 'setembro: aportou 20.000, rendeu 200');
+  const out = relatorios.mesDosInvestimentos(e, ids, '2026-10', '2026-11-15');
+  igual([out.inicio, out.aportado, out.resgatado, out.rendeu, out.fim], [2020000, 100000, 0, 10000, 2130000], 'outubro: começa onde setembro acabou, aporta 1.000, rende 100');
+  igual(out.inicio + out.aportado - out.resgatado + out.rendeu, out.fim, 'começo + aporte − resgate + rendimento = fim');
+});
+
 caso('envelope', 'a evolução: aportado e rendimento no fim de cada mês, partindo do zero', async () => {
   const ev = await baseDeEnvelopes();
   await ev('lancamento.registrado', { id: 'a1', tipo: 'aplicacao', valor: 2000000, contaId: null, ativoId: 'cdb', dataCompetencia: '2025-01-10', confirmado: true });
