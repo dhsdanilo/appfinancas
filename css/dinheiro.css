@@ -872,6 +872,17 @@ body[data-pagina="investimentos"] .acoes-topo .atalho { display: none; }
 .fica-sem-dono { margin: 0; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
 .fica-sem-dono.negativo { color: var(--alerta); }
 .dialogo-envelope .campo-data-dist { max-width: 200px; }
+/* Distribuir com barra (pedido dele): o disponível parado no alto, a barra
+   que enche com a cor de cada envelope, e em cada linha arrastar ou digitar. */
+.disponivel-dist { display: grid; gap: var(--e1); padding: var(--e3); border: 1px solid var(--borda); border-radius: var(--raio-cartao); }
+.disponivel-dist strong { font-size: var(--t-secao); font-variant-numeric: tabular-nums; }
+.disponivel-dist .fica-sem-dono { text-align: left; font-weight: 400; color: var(--tinta-fraca); font-size: var(--t-apoio); }
+.barra-dist { display: flex; height: 10px; border-radius: 5px; background: var(--borda); overflow: hidden; }
+.barra-dist i { display: block; height: 100%; }
+.linha-distribuir.com-barra { grid-template-columns: minmax(0, 1fr) 130px; row-gap: var(--e1); }
+.linha-distribuir.com-barra .faixa-dist { grid-column: 1 / -1; width: 100%; min-width: 0; accent-color: var(--cor); }
+.linha-distribuir.com-barra .atalhos-dist { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: var(--e3); }
+@media (pointer: coarse) { .linha-distribuir.com-barra .faixa-dist { height: 32px; } .atalhos-dist .elo { min-height: 36px; } }
 .donos-saida { display: flex; flex-direction: column; gap: var(--e1); }
 .donos-saida[hidden] { display: none; }
 .donos-saida .nota { margin: 0; }
@@ -1120,3 +1131,31 @@ button.linha-rel:hover { background: var(--acento-fundo); }
   .linha-imp { grid-template-columns: 44px minmax(0, 1fr) auto; }
   .linha-imp select { grid-column: 1 / -1; }
 }
+
+/* ── Envelopes enxutos (design/11 §5.1, D34): número → gráfico → lista ───── */
+.barra-alvo { display: block; height: 8px; margin: var(--e1) 0; border-radius: 4px; background: var(--borda); overflow: hidden; }
+.barra-alvo.fina { height: 5px; }
+.barra-alvo i { display: block; height: 100%; border-radius: inherit; background: var(--area); }
+.lista-envelopes { display: flex; flex-direction: column; margin: var(--e3) 0; }
+.linha-envelope {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--e3); align-items: baseline;
+  width: 100%; min-height: 0; padding: var(--e3) 0; border: 0; border-bottom: 1px solid var(--borda); border-radius: 0;
+  background: none; color: var(--tinta); text-align: left; font: inherit;
+}
+.linha-envelope:hover { background: var(--fundo-hover, transparent); }
+.linha-envelope .nome-envelope { font-weight: 600; min-width: 0; }
+.linha-envelope .valor-envelope { font-variant-numeric: tabular-nums; }
+.linha-envelope .barra-alvo { grid-column: 1 / -1; }
+.frase-envelope { grid-column: 1 / -1; color: var(--tinta-fraca); font-size: var(--t-miudo); }
+.frase-envelope.ruim { color: var(--alerta); }
+.frase-envelope.bom { color: var(--positivo); }
+.linha-sem-dono-resumo {
+  display: flex; justify-content: space-between; align-items: center; width: 100%; min-height: 44px; padding: var(--e2) 0;
+  border: 0; border-radius: 0; background: none; color: var(--tinta-fraca); font: inherit; text-align: left;
+}
+.acoes-envelope { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e3); margin: var(--e3) 0; }
+.aportar-de { display: flex; flex-direction: column; margin: 0 0 var(--e3); padding: var(--e2) var(--e3); border: 1px solid var(--borda); border-radius: var(--raio-cartao); }
+.aportar-de .miudo { margin: 0 0 var(--e1); }
+.linha-aportar { width: 100%; border: 0; border-bottom: 1px solid var(--borda); border-radius: 0; background: none; color: var(--tinta); font: inherit; text-align: left; }
+.linha-aportar:last-child { border-bottom: 0; }
+.ver-tudo { margin: var(--e2) 0 0; text-align: center; }

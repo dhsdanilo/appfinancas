@@ -17,7 +17,7 @@
 //
 // Nada daqui é gravado: tudo sai dos lançamentos (com `donos`) e das alocações.
 
-import { hoje, somarMeses } from './datas.js';
+import { hoje, somarMeses, fimDoMes } from './datas.js';
 import { visiveis, saldoReal, sinalDeSaida } from './lancamentos.js';
 import { posicao, resumoDaConta, ativosDaConta, saldoAte } from './investimentos.js';
 
@@ -365,6 +365,43 @@ export function donosNoDia(estado, dia = hoje()) {
   }
   const semDono = [...porLugar.values()].reduce((t, x) => t + Math.max(0, x.semDono), 0);
   return { porLugar, porEnvelope, semDono };
+}
+
+// ── a evolução (§5.1, D34) ──────────────────────────────────────────────────
+
+/**
+ * O que os envelopes `ids` tinham no fim de cada mês (ou ano) dos `meses`,
+ * separado em aportado (o que entrou menos o que saiu deles — `posto`) e
+ * rendimento (o resto). O último balde, se é o atual, vale hoje. Dos baldes
+ * antes do primeiro aporte, só o último fica (zerado, o ponto de partida).
+ *
+ * [{ balde, dia, total, aportado, rendeu }]
+ */
+export function evolucaoDosEnvelopes(estado, ids, meses, tempo = 'mes', dia = hoje()) {
+  const alocacoes = Object.values(estado.alocacoes ?? {}).filter((a) => !a.removida);
+  const primeiro = alocacoes.reduce((m, a) => (!m || a.data < m ? a.data : m), null);
+  if (!primeiro) return [];
+  const baldes = tempo === 'ano' ? [...new Set(meses.map((m) => m.slice(0, 4)))] : meses;
+  return baldes
+    .map((b) => {
+      const fim = tempo === 'ano' ? `${b}-12-31` : fimDoMes(`${b}-01`);
+      return { balde: b, dia: fim >= dia ? dia : fim };
+    })
+    // Um balde de antes do primeiro aporte fica, zerado: é dele que a curva
+    // parte — senão o envelope novo seria um ponto só, sem subida.
+    .filter((p, i, todos) => p.dia >= primeiro || todos[i + 1]?.dia >= primeiro)
+    .map((p) => {
+      const porEnvelope = donosNoDia(estado, p.dia).porEnvelope;
+      let total = 0;
+      let aportado = 0;
+      for (const id of ids) {
+        const r = porEnvelope.get(id);
+        if (!r) continue;
+        total += r.total;
+        aportado += r.posto;
+      }
+      return { ...p, total, aportado, rendeu: total - aportado };
+    });
 }
 
 // ── os números de um envelope (§1) ──────────────────────────────────────────

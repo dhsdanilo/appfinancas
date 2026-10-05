@@ -1841,6 +1841,21 @@ caso('envelope', '★ distribuir: aportes do sem dono, e o rendimento segue a fr
   igual(r.porEnvelope.get('res').extrato.map((x) => x.tipo), ['aporte'], 'o extrato do envelope tem o aporte');
 });
 
+caso('envelope', 'a evolução: aportado e rendimento no fim de cada mês, partindo do zero', async () => {
+  const ev = await baseDeEnvelopes();
+  await ev('lancamento.registrado', { id: 'a1', tipo: 'aplicacao', valor: 2000000, contaId: null, ativoId: 'cdb', dataCompetencia: '2025-01-10', confirmado: true });
+  await aporte('x1', 'cdb', 'res', 1500000, '2025-01-10');
+  await ev('ativo.avaliado', { id: 'cdb', data: '2025-06-01', valor: 2020000 });
+  const meses = ['2024-11', '2024-12', '2025-01', '2025-02', '2025-03', '2025-04', '2025-05', '2025-06'];
+  const ev1 = envelopes.evolucaoDosEnvelopes(await estado.calcular(), ['res'], meses, 'mes', '2025-06-15');
+  igual(ev1.map((p) => p.balde)[0], '2024-12', 'novembro sai; dezembro fica, zerado, como ponto de partida');
+  igual([ev1[0].total, ev1[0].aportado], [0, 0], 'antes do aporte, nada');
+  const fim = ev1.at(-1);
+  igual([fim.dia, fim.total, fim.aportado, fim.rendeu], ['2025-06-15', 1515000, 1500000, 15000], 'o mês que corre vale hoje: aportou 15.000, rendeu 150');
+  const porAno = envelopes.evolucaoDosEnvelopes(await estado.calcular(), ['res'], meses, 'ano', '2025-06-15');
+  igual(porAno.map((p) => [p.balde, p.total]), [['2024', 0], ['2025', 1515000]], 'por ano, o fim de cada ano');
+});
+
 caso('envelope', '★ mover leva o dono: o IPVA da corrente vai para o CDB sem mudar de valor', async () => {
   const ev = await baseDeEnvelopes();
   await aporte('x1', 'cc', 'ipva', 100000, '2025-02-01');

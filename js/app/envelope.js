@@ -56,8 +56,15 @@ const MARCACAO = `
     <p class="nota" data-dist="cabeca"></p>
     <label class="campo-simples" data-dist="campo-inteiro" hidden><span class="miudo">este lugar inteiro é de</span>
       <select data-dist="inteiro"></select></label>
+    <!-- O disponível fica parado: é a referência de quanto dá para pôr
+         (pedido dele, 05/10/2026). A barra enche com cada envelope. -->
+    <div class="disponivel-dist">
+      <span class="miudo">disponível neste lugar</span>
+      <strong data-dist="disponivel"></strong>
+      <div class="barra-dist" data-dist="barra" aria-hidden="true"></div>
+      <p class="fica-sem-dono" data-dist="sobra"></p>
+    </div>
     <ol class="linhas-distribuir" data-dist="linhas"></ol>
-    <p class="fica-sem-dono" data-dist="sobra"></p>
     <label class="campo-simples campo-data-dist"><span class="miudo">data</span>
       <input type="date" data-dist="data"></label>
     <p class="recado" data-dist="recado" hidden></p>
@@ -201,11 +208,31 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
       .filter((x) => x.valor > 0);
   }
 
+  const campoDe = (id) => dist('linhas').querySelector(`[data-dist-env="${CSS.escape(id)}"]`);
+  const faixaDe = (id) => dist('linhas').querySelector(`[data-dist-faixa="${CSS.escape(id)}"]`);
+
+  /** O que ainda está livre para um envelope: o disponível menos o que os outros já pegaram. */
+  function livrePara(id) {
+    return semDono - lerLinhas().filter((x) => x.envelopeId !== id).reduce((t, x) => t + x.valor, 0);
+  }
+
+  /** Põe um valor num envelope — nunca além do que está livre — e acerta campo e barra. */
+  function definir(id, valor) {
+    const v = Math.max(0, Math.min(Math.round(valor), livrePara(id)));
+    campoDe(id).value = campoReais(v);
+    faixaDe(id).value = String(v);
+    pintarSobra();
+  }
+
   function pintarSobra() {
-    const total = lerLinhas().reduce((t, x) => t + x.valor, 0);
+    const linhas = lerLinhas();
+    const total = linhas.reduce((t, x) => t + x.valor, 0);
     const fica = semDono - total;
-    dist('sobra').textContent = `fica sem dono ${fica < 0 ? '−' : ''}${formatar(Math.abs(fica))}`;
+    dist('sobra').textContent = `distribuído ${formatar(total)} · fica sem dono ${fica < 0 ? '−' : ''}${formatar(Math.abs(fica))}`;
     dist('sobra').classList.toggle('negativo', fica < 0);
+    dist('barra').innerHTML = semDono > 0
+      ? linhas.map((x) => `<i style="width:${Math.min(100, (x.valor / semDono) * 100)}%;background:${faixaDe(x.envelopeId)?.style.getPropertyValue('--cor') || 'var(--area)'}"></i>`).join('')
+      : '';
   }
 
   async function abrirDistribuir(idDoLugar, { envelopeId = null } = {}) {
@@ -215,7 +242,10 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
     semDono = Math.max(0, r?.semDono ?? 0);
     const ativo = app.ativos?.[lugarId];
     document.getElementById('titulo-distribuir').textContent = `Distribuir · ${nomeDoLugar(app, lugarId)}`;
-    dist('cabeca').textContent = `sem dono ${formatar(semDono)}${ativo ? ` · ${app.contas[ativo.contaId]?.nome ?? ''}` : ''}. Cada linha vira um aporte no envelope; nada sai do lugar.`;
+    dist('cabeca').textContent = `${ativo ? `${app.contas[ativo.contaId]?.nome ?? ''} · ` : ''}Arraste ou digite quanto vai para cada envelope. Cada linha vira um aporte; nada sai do lugar.`;
+    dist('disponivel').textContent = formatar(semDono);
+    // O passo da barra: de real em real até R$ 1.000; acima, de 10 em 10.
+    const passo = semDono > 100000 ? 1000 : 100;
 
     // "Inteiro" só onde rende: a previdência que é toda da aposentadoria.
     const rende = r?.lugar.tipo === 'fracao';
@@ -225,7 +255,7 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
     dist('inteiro').innerHTML = `<option value="">— cada aporte decide</option>${lista.map((v) => `<option value="${esc(v.id)}"${v === dono ? ' selected' : ''}>${esc(v.nome)}</option>`).join('')}`;
 
     const totais = donosNoDia(app).porEnvelope;
-    dist('linhas').innerHTML = lista.map((v) => {
+    dist('linhas').innerHTML = lista.map((v, i) => {
       const tem = totais.get(v.id)?.total ?? 0;
       const n = numerosDoEnvelope(v, tem);
       const ali = r?.donos.get(v.id) ?? 0;
@@ -236,11 +266,17 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
       ].filter(Boolean).join(' · ');
       // A sugestão é o que falta para o "deveria ter": um toque preenche.
       const sugestao = n.deveriaTer != null && n.deveriaTer > tem ? Math.min(semDono, n.deveriaTer - tem) : 0;
-      return `<li class="linha-distribuir">
-        <span class="nome-dist">${esc(v.nome)}<span class="fino">${esc(dica)}</span>
-          ${sugestao > 0 ? `<button type="button" class="elo" data-sugerir="${esc(v.id)}">pôr ${formatar(sugestao)}, o que falta para o ritmo</button>` : ''}</span>
-        <input type="text" inputmode="decimal" autocomplete="off" placeholder="0,00" data-dist-env="${esc(v.id)}" aria-label="Aportar em ${esc(v.nome)}"
-          ${sugestao > 0 ? `data-sugestao="${sugestao}"` : ''}>
+      const atalhos = [
+        sugestao > 0 ? `<button type="button" class="elo" data-por="${esc(v.id)}" data-quanto="${sugestao}">o ritmo · ${formatar(sugestao)}</button>` : '',
+        n.falta ? `<button type="button" class="elo" data-por="${esc(v.id)}" data-quanto="${n.falta}">o que falta</button>` : '',
+        `<button type="button" class="elo" data-por="${esc(v.id)}" data-quanto="tudo">tudo que sobra</button>`,
+      ].filter(Boolean).join('');
+      return `<li class="linha-distribuir com-barra">
+        <span class="nome-dist">${esc(v.nome)}<span class="fino">${esc(dica)}</span></span>
+        <input type="text" inputmode="decimal" autocomplete="off" placeholder="0,00" data-dist-env="${esc(v.id)}" aria-label="Aportar em ${esc(v.nome)}">
+        <input type="range" class="faixa-dist" min="0" max="${semDono}" step="${passo}" value="0" data-dist-faixa="${esc(v.id)}"
+          style="--cor:var(--serie-${(i % 8) + 1})" aria-label="Arrastar quanto vai para ${esc(v.nome)}"${semDono ? '' : ' disabled'}>
+        <span class="atalhos-dist">${atalhos}</span>
       </li>`;
     }).join('') || '<li class="vazio">Nenhum envelope ainda.</li>';
     dist('data').value = hoje();
@@ -251,13 +287,27 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
     alvo?.focus();
   }
 
-  dist('linhas').addEventListener('input', pintarSobra);
+  // Arrastar acerta o campo; digitar acerta a barra. Nenhum dos dois passa do
+  // que está livre — o disponível do alto continua sendo a referência.
+  dist('linhas').addEventListener('input', (e) => {
+    const faixa = e.target.closest('[data-dist-faixa]');
+    if (faixa) { definir(faixa.dataset.distFaixa, Number(faixa.value)); return; }
+    const campo = e.target.closest('[data-dist-env]');
+    if (campo) {
+      const id = campo.dataset.distEnv;
+      faixaDe(id).value = String(Math.min(Math.abs(deTexto(campo.value)), livrePara(id)));
+      pintarSobra();
+    }
+  });
+  // Ao sair do campo, o que passou do livre volta ao livre.
+  dist('linhas').addEventListener('change', (e) => {
+    const campo = e.target.closest('[data-dist-env]');
+    if (campo && Math.abs(deTexto(campo.value)) > livrePara(campo.dataset.distEnv)) definir(campo.dataset.distEnv, Infinity);
+  });
   dist('linhas').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-sugerir]');
+    const b = e.target.closest('[data-por]');
     if (!b) return;
-    const i = dist('linhas').querySelector(`[data-dist-env="${CSS.escape(b.dataset.sugerir)}"]`);
-    i.value = campoReais(Number(i.dataset.sugestao));
-    pintarSobra();
+    definir(b.dataset.por, b.dataset.quanto === 'tudo' ? Infinity : Number(b.dataset.quanto));
   });
   dist('linhas').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.matches('input')) { e.preventDefault(); dist('b-ok').click(); } });
 

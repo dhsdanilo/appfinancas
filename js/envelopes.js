@@ -1,35 +1,40 @@
-// A área Envelopes (design/11 §5): de quem é o dinheiro guardado.
+// A área Envelopes (design/11 §5 e §5.1, D34): de quem é o dinheiro guardado.
 //
-// Geral: quanto cada envelope tem, o alvo e o ritmo, e o sem dono de cada
-// lugar com o seu "distribuir". A aba de um envelope: onde o dinheiro dele
-// está, o que ele já pagou (o fechamento do projeto, R28) e o extrato dele —
-// aportes, resgates, remanejamentos, mudanças de lugar e gastos.
+// Mesmo padrão dos Relatórios: número → gráfico → lista. Geral: o guardado,
+// a evolução de todos (aportado × rendimento), os envelopes com a barra até o
+// alvo e o sem dono numa linha que abre. A aba de um envelope: o que tem, a
+// barra, a evolução dele, as ações, onde está, o que já pagou e o extrato.
 
 import * as estado from './core/estado.js';
 import { formatar } from './core/dinheiro.js';
-import { hoje, diaCurto } from './core/datas.js';
+import { hoje, diaCurto, nomeDoMes } from './core/datas.js';
 import {
-  envelopesAtivos, ehProjeto, donosNoDia, numerosDoEnvelope, nomeDoLugar, estadoDoEnvelope,
+  envelopesAtivos, ehProjeto, donosNoDia, numerosDoEnvelope, nomeDoLugar, estadoDoEnvelope, evolucaoDosEnvelopes,
 } from './core/envelopes.js';
 import { nomeDaCategoria } from './core/lancamentos.js';
+import { periodo as periodoDe, PERIODOS } from './core/explorar.js';
 import { criarJanelasDeEnvelope } from './app/envelope.js';
 import { criarJanelasDeUso } from './app/envelope-uso.js';
-import { pizza, cor } from './app/graficos.js';
+import { areas, cor } from './app/graficos.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const mesAno = (dia) => `${dia.slice(5, 7)}/${dia.slice(0, 4)}`;
 const pct = (v) => `${Math.round(v * 100)}%`;
-const numero = (rotulo, valor, classe = '') =>
-  `<div class="numero-faixa ${classe}"><span class="rotulo-numero">${esc(rotulo)}</span><span class="valor-numero">${valor}</span></div>`;
+const comSinal = (v) => `${v >= 0 ? '+' : '−'}${formatar(Math.abs(v))}`;
+const dataCheia = (dia) => `${dia.slice(8, 10)}/${dia.slice(5, 7)}/${dia.slice(0, 4)}`;
+const mesCurto = (mes) => `${nomeDoMes(mes).split(' ')[0].slice(0, 3)}/${mes.slice(2, 4)}`;
 
 let ativa = false;
 let foco = 'geral';
 let app = null;
+// O período do gráfico de evolução (flexível, como nos Relatórios), o sem
+// dono aberto, o "aportar" aberto e o extrato inteiro.
+const vista = { periodo: '12', tempo: 'mes', semDonoAberto: false, aportarAberto: false, extratoInteiro: false };
+let evolucao = [];
 
 const janelas = criarJanelasDeEnvelope({ aoSalvar: () => pintar() });
 const uso = criarJanelasDeUso({ aoSalvar: () => pintar() });
-const dataCheia = (dia) => `${dia.slice(8, 10)}/${dia.slice(5, 7)}/${dia.slice(0, 4)}`;
 
 /** O lugar com o nome que se reconhece: "CDB · Banco", "Corrente". */
 function nomeCompleto(lugarId) {
@@ -59,73 +64,127 @@ async function pintar() {
     $('corpo-envelopes').innerHTML = `<p class="vazio">Envelope é dinheiro guardado que já tem dono: a reserva de emergência, a aposentadoria,
       o IPVA do ano, a viagem. Nada sai do lugar — o dinheiro continua no CDB ou na corrente, e cada pedaço ganha dono.
       Comece pelo botão "Novo envelope".</p>`;
-  } else {
-    $('corpo-envelopes').innerHTML = foco === 'geral' ? geral(lista, donos) : doEnvelope(app.envelopes[foco], donos);
-    desenharOnde(donos);
+    return;
   }
-  if (encerrados.length && foco === 'geral') {
-    $('corpo-envelopes').insertAdjacentHTML('beforeend', `<p class="arquivadas-area fino">encerrados: ${encerrados
-      .map((v) => `<button type="button" class="elo" data-env-aba="${esc(v.id)}">${esc(v.nome)}</button>`).join(' · ')}</p>`);
+  const ids = foco === 'geral' ? lista.map((v) => v.id) : [foco];
+  evolucao = evolucaoDosEnvelopes(app, ids, periodoDe(app, vista.periodo).meses, vista.tempo);
+  $('corpo-envelopes').innerHTML = foco === 'geral' ? geral(lista, donos) : doEnvelope(app.envelopes[foco], donos);
+  desenharEvolucao();
+  if (foco === 'geral' && (encerrados.length || arquivados.length)) {
+    $('corpo-envelopes').insertAdjacentHTML('beforeend', `<p class="arquivadas-area fino">${[
+      encerrados.length ? `encerrados: ${encerrados.map((v) => `<button type="button" class="elo" data-env-aba="${esc(v.id)}">${esc(v.nome)}</button>`).join(' · ')}` : '',
+      arquivados.length ? `arquivados: ${arquivados.map((v) => `<button type="button" class="elo" data-env-editar="${esc(v.id)}">${esc(v.nome)}</button>`).join(' · ')}` : '',
+    ].filter(Boolean).join(' — ')}</p>`);
   }
-  if (arquivados.length && foco === 'geral') {
-    $('corpo-envelopes').insertAdjacentHTML('beforeend', `<p class="arquivadas-area fino">arquivados: ${arquivados
-      .map((v) => `<button type="button" class="elo" data-env-editar="${esc(v.id)}">${esc(v.nome)}</button>`).join(' · ')}</p>`);
+}
+
+// ── peças comuns ──────────────────────────────────────────────────────────
+
+/** A barra até o alvo; sem alvo, nada. */
+function barraDoAlvo(tem, alvo, fina = false) {
+  if (!alvo) return '';
+  const p = Math.max(0, Math.min(1, tem / alvo));
+  return `<span class="barra-alvo ${fina ? 'fina' : ''}" role="img" aria-label="${pct(p)} do alvo"><i style="width:${(p * 100).toFixed(1)}%"></i></span>`;
+}
+
+/** A frase de um envelope, só quando diz algo: atrasado, completo, em uso. */
+function frase(v, r, n) {
+  const situacao = estadoDoEnvelope(v, r);
+  if (situacao === 'em uso') return { texto: `em uso · já pagou ${formatar(r.custo)}`, classe: '' };
+  if (n.completo) return { texto: 'completo ✓', classe: 'bom' };
+  if (n.deveriaTer != null && r.total < n.deveriaTer) return { texto: `atrasado: no ritmo, deveria ter ${formatar(n.deveriaTer)}`, classe: 'ruim' };
+  if (ehProjeto(v) && n.alvo) return { texto: `de ${formatar(n.alvo)} até ${mesAno(v.alvoData)}`, classe: '' };
+  if (n.alvo) return { texto: `de ${formatar(n.alvo)}`, classe: '' };
+  return { texto: '', classe: '' };
+}
+
+/** O período do gráfico: os mesmos botões dos Relatórios. */
+function controlesDaEvolucao() {
+  const chips = (dado, opcoes, atual) => `<span class="chips-periodo inline" role="group">${opcoes.map(([v, nome]) =>
+    `<button type="button" data-${dado}="${v}" aria-pressed="${v === atual}">${esc(nome)}</button>`).join('')}</span>`;
+  return `<div class="controles-rel">
+      ${chips('env-periodo', PERIODOS.filter(([v]) => v !== 'mes'), vista.periodo)}
+      ${chips('env-tempo', [['mes', 'por mês'], ['ano', 'por ano']], vista.tempo)}
+    </div>
+    <div class="grafico-rel" id="g-evolucao"></div>`;
+}
+
+/** Aportado embaixo, rendimento por cima, o total na linha; rendimento negativo abaixo do zero. */
+function desenharEvolucao() {
+  const raiz = $('g-evolucao');
+  if (!raiz) return;
+  if (evolucao.length < 2) {
+    raiz.innerHTML = `<p class="nota-rel">${evolucao.length ? 'A evolução aparece com dois pontos — escolha um período maior ou "por mês".' : 'A evolução aparece depois do primeiro aporte.'}</p>`;
+    return;
   }
+  const ultimo = evolucao.length - 1;
+  // "perdeu" só existe na legenda quando algum ponto perdeu.
+  const perdeu = evolucao.some((p) => p.rendeu < 0);
+  areas(raiz, {
+    pontos: evolucao.map((p, i) => ({
+      rotulo: i === ultimo && p.dia === hoje() ? 'hoje' : (p.balde.length === 4 ? p.balde : mesCurto(p.balde)),
+      acima: [Math.max(0, p.aportado), Math.max(0, p.rendeu)],
+      abaixo: perdeu ? [Math.max(0, -p.rendeu)] : [],
+      linha: p.total,
+      dica: `<strong>${formatar(p.total)}</strong><span>${i === ultimo && p.dia === hoje() ? 'hoje' : `fim de ${p.balde.length === 4 ? p.balde : nomeDoMes(p.balde)}`}</span>
+        <span class="fino">aportado ${formatar(p.aportado)}</span><span class="fino">rendimento ${comSinal(p.rendeu)}</span>`,
+    })),
+    acima: [{ nome: 'aportado', cor: cor(1) }, { nome: 'rendimento', cor: cor(3) }],
+    abaixo: perdeu ? [{ nome: 'perdeu', cor: cor(2) }] : [],
+    linha: { nome: 'total', cor: 'var(--tinta)' },
+    formatar: (v) => {
+      const abs = Math.abs(v / 100);
+      return `${v < 0 ? '−' : ''}${abs >= 1000 ? `${(abs / 1000).toLocaleString('pt-BR', { maximumFractionDigits: abs >= 10000 ? 0 : 1 })} mil` : Math.round(abs).toLocaleString('pt-BR')}`;
+    },
+  });
 }
 
 // ── Geral ─────────────────────────────────────────────────────────────────
 
 function geral(lista, donos) {
   const guardado = lista.reduce((t, v) => t + (donos.porEnvelope.get(v.id)?.total ?? 0), 0);
+  const aportado = lista.reduce((t, v) => t + (donos.porEnvelope.get(v.id)?.posto ?? 0), 0);
   const lugares = [...donos.porLugar.values()].filter((x) => !x.lugar.arquivado || x.semDono);
   const furos = lugares.filter((x) => x.semDono < 0);
+
   const linhas = lista.map((v) => {
     const r = donos.porEnvelope.get(v.id) ?? { total: 0 };
     const n = numerosDoEnvelope(v, r.total);
-    const situacao = estadoDoEnvelope(v, r);
-    const sub = ehProjeto(v)
-      ? [
-        `de ${formatar(n.alvo)} até ${mesAno(v.alvoData)}`,
-        situacao === 'em uso' ? `em uso · já pagou ${formatar(r.custo)}`
-          : n.completo ? 'completo' : n.deveriaTer != null ? (r.total >= n.deveriaTer ? 'no ritmo ✓' : `no ritmo, deveria ter ${formatar(n.deveriaTer)}`) : '',
-      ]
-      : [n.alvo != null ? `acumula · alvo ${formatar(n.alvo)}` : 'acumula', situacao === 'em uso' ? `já pagou ${formatar(r.custo)}` : n.completo ? 'completo' : ''];
-    const progresso = n.alvo ? pct(Math.min(1, r.total / n.alvo)) : '—';
-    return `<button type="button" class="linha-ativo" data-env-aba="${esc(v.id)}">
-      <span class="nome-ativo">${esc(v.nome)}<span class="fino">${esc(sub.filter(Boolean).join(' · '))}</span></span>
-      <span class="valor-ativo">${formatar(r.total)}</span>
-      <span class="rendeu-ativo">${progresso}</span>
+    const f = frase(v, r, n);
+    return `<button type="button" class="linha-envelope" data-env-aba="${esc(v.id)}">
+      <span class="nome-envelope">${esc(v.nome)}</span>
+      <span class="valor-envelope">${formatar(r.total)}</span>
+      ${barraDoAlvo(r.total, n.alvo, true)}
+      ${f.texto ? `<span class="frase-envelope ${f.classe}">${esc(f.texto)}</span>` : ''}
     </button>`;
   }).join('');
 
-  return `<div class="blocos"><div class="bloco largo total investimento-resumo">
-      <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>geral</p>
-      <div class="numeros-renda">
-        ${numero('guardado', formatar(guardado))}
-        ${numero('sem dono', formatar(donos.semDono))}
-        ${numero('confere', furos.length ? 'não fecha' : 'fecha ✓', furos.length ? 'nao-fecha' : '')}
-      </div>
-      ${furos.length ? `<p class="aviso-bloco">${furos.map((x) => `${esc(nomeCompleto(x.lugar.id))} tem ${formatar(x.valor)}, e os envelopes dizem ter ${formatar(x.valor - x.semDono)} ali`).join('; ')}: gastou-se dinheiro de envelope sem dizer de qual. Tire do envelope o que foi gasto.</p>` : ''}
-      <div class="ativos">
-        <p class="classe-ativos"><span>envelopes</span><span>${formatar(guardado)}</span></p>
-        ${linhas}
-        ${semDonoHTML(lugares)}
-      </div>
-    </div></div>`;
+  return `<div class="numero-rel">
+      <p class="rotulo-numero">guardado nos envelopes</p>
+      <p class="valor-rel-grande">${formatar(guardado)}</p>
+      <p class="nota-rel">${formatar(aportado)} aportados · <span class="dif-rel ${guardado - aportado >= 0 ? 'bom' : 'ruim'}">${comSinal(guardado - aportado)}</span> de rendimento</p>
+    </div>
+    ${furos.length ? `<p class="aviso-bloco">${furos.map((x) => `${esc(nomeCompleto(x.lugar.id))} tem ${formatar(x.valor)}, e os envelopes dizem ter ${formatar(x.valor - x.semDono)} ali`).join('; ')}: gastou-se dinheiro de envelope sem dizer de qual. Tire do envelope o que foi gasto.</p>` : ''}
+    ${controlesDaEvolucao()}
+    <div class="lista-envelopes">${linhas}</div>
+    ${semDonoHTML(lugares, donos.semDono)}`;
 }
 
-/** O sem dono de cada lugar, com o "distribuir" de cada um (§3.1). */
-function semDonoHTML(lugares) {
+/** O sem dono: uma linha que abre a lista dos lugares, com o "distribuir" de cada um (§3.1). */
+function semDonoHTML(lugares, total) {
   const comAlgo = lugares.filter((x) => x.semDono !== 0)
     .sort((a, b) => Number(b.lugar.tipo === 'fracao') - Number(a.lugar.tipo === 'fracao') || b.semDono - a.semDono);
   if (!comAlgo.length) return '';
-  const total = comAlgo.reduce((t, x) => t + x.semDono, 0);
-  return `<p class="classe-ativos"><span>sem dono</span><span>${formatar(total)}</span></p>
-    ${comAlgo.map((x) => `<div class="linha-ativo linha-sem-dono">
+  const aberto = vista.semDonoAberto;
+  return `<button type="button" class="linha-sem-dono-resumo" data-env-sem-dono aria-expanded="${aberto}">
+      <span>sem dono · ${formatar(total)} em ${comAlgo.length} ${comAlgo.length === 1 ? 'lugar' : 'lugares'}</span>
+      <span class="elo">distribuir ${aberto ? '▴' : '▾'}</span>
+    </button>
+    ${aberto ? `<div class="ativos">${comAlgo.map((x) => `<div class="linha-ativo linha-sem-dono">
       <span class="nome-ativo">${esc(x.lugar.nome)}<span class="fino">${esc(x.lugar.ativo ? x.lugar.contaNome : x.lugar.tipo === 'caixa' ? 'caixa' : 'rende')}</span></span>
       <span class="valor-ativo ${x.semDono < 0 ? 'negativo' : ''}">${x.semDono < 0 ? '−' : ''}${formatar(Math.abs(x.semDono))}</span>
       <span class="rendeu-ativo">${x.semDono > 0 ? `<button type="button" class="elo" data-distribuir="${esc(x.lugar.id)}">distribuir</button>` : ''}</span>
-    </div>`).join('')}`;
+    </div>`).join('')}</div>` : ''}`;
 }
 
 // ── um envelope ───────────────────────────────────────────────────────────
@@ -140,8 +199,7 @@ const NOME_DO_MOVIMENTO = {
 
 /**
  * O fechamento do projeto (R28): quanto custou, de onde saiu o dinheiro e
- * onde foi. Aparece desde o primeiro gasto — a reforma em andamento já mostra
- * quanto custou até agora (design/11 §8).
+ * onde foi. Aparece desde o primeiro gasto (design/11 §8).
  */
 function fechamento(v, r) {
   if (!r.custo) return '';
@@ -163,15 +221,17 @@ function doEnvelope(v, donos) {
   const r = donos.porEnvelope.get(v.id) ?? { total: 0, porLugar: new Map(), extrato: [], posto: 0, rendeu: 0, custo: 0 };
   const n = numerosDoEnvelope(v, r.total);
   const situacao = estadoDoEnvelope(v, r);
-  const numeros = [numero('tem', formatar(r.total))];
-  if (v.encerradoEm) numeros.push(numero('encerrado em', dataCheia(v.encerradoEm)));
-  if (n.alvo != null) numeros.push(numero(ehProjeto(v) ? `alvo · ${mesAno(v.alvoData)}` : 'alvo', formatar(n.alvo)));
-  // Encerrado não junta mais: falta e ritmo saem.
-  if (n.falta && !v.encerradoEm) numeros.push(numero('falta', formatar(n.falta)));
-  if (n.porMes && !v.encerradoEm) numeros.push(numero(`por mês · ${n.mesesRestantes} ${n.mesesRestantes === 1 ? 'mês' : 'meses'}`, formatar(n.porMes)));
-  if (n.deveriaTer != null && !n.completo && !v.encerradoEm) numeros.push(numero('no ritmo, deveria ter', formatar(n.deveriaTer), r.total >= n.deveriaTer ? 'em-dia' : ''));
-  if (n.completo && situacao === 'completo') numeros.push(numero('situação', 'completo ✓'));
-  if (r.rendeu) numeros.push(numero('rendeu', `${r.rendeu >= 0 ? '+' : '−'}${formatar(Math.abs(r.rendeu))}`));
+
+  // Uma linha só: a parte do alvo, o que falta, o ritmo, o rendimento.
+  const partes = [];
+  if (v.encerradoEm) partes.push(`encerrado em ${dataCheia(v.encerradoEm)}`);
+  if (n.alvo != null) partes.push(`${pct(Math.min(1, r.total / n.alvo))} de ${formatar(n.alvo)}${ehProjeto(v) ? ` até ${mesAno(v.alvoData)}` : ''}`);
+  if (!v.encerradoEm && n.falta) partes.push(`falta ${formatar(n.falta)}${n.porMes ? ` · ${formatar(n.porMes)} por mês` : ''}`);
+  if (!v.encerradoEm && n.deveriaTer != null && !n.completo) {
+    partes.push(r.total >= n.deveriaTer ? 'no ritmo ✓' : `<span class="dif-rel ruim">no ritmo, deveria ter ${formatar(n.deveriaTer)}</span>`);
+  }
+  if (n.completo && situacao === 'completo') partes.push('<span class="dif-rel bom">completo ✓</span>');
+  if (r.rendeu) partes.push(`<span class="dif-rel ${r.rendeu >= 0 ? 'bom' : 'ruim'}">${comSinal(r.rendeu)}</span> de rendimento`);
 
   const onde = [...r.porLugar.entries()].filter(([, val]) => val > 0).sort((a, b) => b[1] - a[1]);
   const ondeHTML = onde.length
@@ -181,52 +241,50 @@ function doEnvelope(v, donos) {
         <span class="valor-ativo">${formatar(val)}</span>
         <span class="rendeu-ativo">${r.total ? pct(val / r.total) : ''}</span>
       </div>`).join('')}`
-    : v.encerradoEm ? '' : '<p class="nota">Ainda sem dinheiro. Aporte do sem dono de um lugar, logo abaixo.</p>';
-
-  // Aportar: do sem dono de qualquer lugar que tenha.
-  const deOnde = [...donos.porLugar.values()].filter((x) => x.semDono > 0 && !x.lugar.arquivado)
-    .sort((a, b) => Number(b.lugar.tipo === 'fracao') - Number(a.lugar.tipo === 'fracao') || b.semDono - a.semDono);
-  const aportar = deOnde.length && !v.encerradoEm
-    ? `<p class="aportar-de fino">aportar do sem dono de: ${deOnde.map((x) => `<button type="button" class="elo" data-distribuir="${esc(x.lugar.id)}" data-para="${esc(v.id)}">${esc(x.lugar.nome)} ${formatar(x.semDono)}</button>`).join(' · ')}</p>`
     : '';
 
+  // Aportar: o botão abre a escolha do lugar de onde vem o dinheiro sem dono.
+  const deOnde = [...donos.porLugar.values()].filter((x) => x.semDono > 0 && !x.lugar.arquivado)
+    .sort((a, b) => Number(b.lugar.tipo === 'fracao') - Number(a.lugar.tipo === 'fracao') || b.semDono - a.semDono);
+  const escolherLugar = vista.aportarAberto && deOnde.length
+    ? `<div class="aportar-de">
+        <p class="miudo">aportar do sem dono de</p>
+        ${deOnde.map((x) => `<button type="button" class="linha-ativo linha-aportar" data-distribuir="${esc(x.lugar.id)}" data-para="${esc(v.id)}">
+          <span class="nome-ativo">${esc(x.lugar.nome)}</span><span class="valor-ativo">${formatar(x.semDono)}</span><span class="rendeu-ativo">›</span></button>`).join('')}
+      </div>`
+    : '';
+  const acoes = v.encerradoEm
+    ? ''
+    : `<div class="acoes-envelope">
+        ${deOnde.length ? `<button type="button" class="principal" data-env-aportar aria-expanded="${vista.aportarAberto}">aportar</button>` : ''}
+        <button type="button" data-pagar-env="${esc(v.id)}">pagar com ele</button>
+        ${r.total > 0 ? `<button type="button" class="elo" data-tirar="${esc(v.id)}">tirar</button>` : ''}
+      </div>${escolherLugar}`;
+
+  const linhasExtrato = vista.extratoInteiro ? r.extrato : r.extrato.slice(0, 5);
   const extrato = r.extrato.length
-    ? `<ol class="linhas-holerite operacoes-lista extrato-envelope">${r.extrato.map((x) => linhaDoExtrato(v, x)).join('')}</ol>`
-    : '<p class="nota">Nada ainda.</p>';
+    ? `<ol class="linhas-holerite operacoes-lista extrato-envelope">${linhasExtrato.map((x) => linhaDoExtrato(x)).join('')}</ol>
+      ${r.extrato.length > 5 ? `<p class="ver-tudo"><button type="button" class="elo" data-env-extrato>${vista.extratoInteiro ? 'ver só os últimos' : `ver tudo · ${r.extrato.length}`}</button></p>` : ''}`
+    : '<p class="nota">Nada ainda. Comece pelo "aportar".</p>';
 
   const fim = v.encerradoEm
     ? `<button type="button" class="elo" data-reabrir-env="${esc(v.id)}">reabrir</button>`
     : `<button type="button" class="elo" data-encerrar-env="${esc(v.id)}">encerrar</button>`;
   return `<div class="topo-conta"><button type="button" class="elo" data-env-editar="${esc(v.id)}">editar ${esc(v.nome)}</button>${fim}</div>
-    <div class="blocos"><div class="bloco largo investimento-resumo">
-      <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${esc(v.nome)} · ${ehProjeto(v) ? `projeto, de ${mesAno(v.inicio ?? hoje())} a ${mesAno(v.alvoData)}` : 'acumula'} · ${situacao}</p>
-      <div class="numeros-renda">${numeros.join('')}</div>
-      ${onde.length > 1 ? '<div id="g-onde-env" class="onde-env"></div>' : ''}
-      <div class="ativos">${ondeHTML}${fechamento(v, r)}</div>
-      ${aportar}
-      ${v.encerradoEm ? '' : `<div class="pe-bloco"><span class="fino">Tirar não mexe em conta nenhuma: o dinheiro fica onde está e volta ao sem dono, ou passa a outro envelope.</span>
-        <span class="acoes-investimento">${r.total > 0 ? `<button type="button" class="elo" data-tirar="${esc(v.id)}">tirar</button>` : ''}
-        <button type="button" class="principal" data-pagar-env="${esc(v.id)}">pagar com o envelope</button></span></div>`}
-    </div></div>
-    <div class="cabeca-lista"><h2>Extrato de ${esc(v.nome)}</h2></div>
+    <div class="numero-rel">
+      <p class="rotulo-numero">${esc(v.nome)} · ${ehProjeto(v) ? 'projeto' : 'acumula'} · ${esc(situacao)}</p>
+      <p class="valor-rel-grande">${formatar(r.total)}</p>
+      ${barraDoAlvo(r.total, n.alvo)}
+      <p class="nota-rel">${partes.join(' · ')}</p>
+    </div>
+    ${controlesDaEvolucao()}
+    ${acoes}
+    <div class="ativos">${ondeHTML}${fechamento(v, r)}</div>
+    <div class="cabeca-lista"><h2>Extrato</h2></div>
     ${extrato}`;
 }
 
-/** Onde está o dinheiro do envelope, em pizza — quando está em mais de um lugar. */
-function desenharOnde(donos) {
-  const raiz = $('g-onde-env');
-  if (!raiz || foco === 'geral') return;
-  const r = donos.porEnvelope.get(foco);
-  const onde = [...(r?.porLugar ?? new Map()).entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
-  pizza(raiz, {
-    fatias: onde.map(([id, v], i) => ({ nome: nomeCompleto(id), valor: v, cor: cor(i + 1) })),
-    formatar,
-    centro: formatar(r.total).replace(/,\d\d$/, ''),
-    subtitulo: 'onde está',
-  });
-}
-
-function linhaDoExtrato(v, x) {
+function linhaDoExtrato(x) {
   let texto;
   let sinal = '+';
   if (x.tipo === 'aporte') texto = `aporte · ${nomeDoLugar(app, x.lugar)}`;
@@ -259,10 +317,27 @@ function linhaDoExtrato(v, x) {
 
 $('b-novo-envelope').addEventListener('click', () => janelas.abrirFicha());
 
+// Cada período abre no agrupamento natural: anos longos por ano, o resto por mês.
+const tempoNatural = (p) => (p === '5anos' || p === 'tudo' ? 'ano' : 'mes');
+
 document.addEventListener('click', async (e) => {
   if (!ativa) return;
   const aba = e.target.closest('[data-env-aba]');
-  if (aba) { foco = aba.dataset.envAba; pintar(); scrollTo(0, 0); return; }
+  if (aba) {
+    foco = aba.dataset.envAba;
+    vista.aportarAberto = false;
+    vista.extratoInteiro = false;
+    pintar();
+    scrollTo(0, 0);
+    return;
+  }
+  const per = e.target.closest('[data-env-periodo]');
+  if (per) { vista.periodo = per.dataset.envPeriodo; vista.tempo = tempoNatural(vista.periodo); pintar(); return; }
+  const tempo = e.target.closest('[data-env-tempo]');
+  if (tempo) { vista.tempo = tempo.dataset.envTempo; pintar(); return; }
+  if (e.target.closest('[data-env-sem-dono]')) { vista.semDonoAberto = !vista.semDonoAberto; pintar(); return; }
+  if (e.target.closest('[data-env-aportar]')) { vista.aportarAberto = !vista.aportarAberto; pintar(); return; }
+  if (e.target.closest('[data-env-extrato]')) { vista.extratoInteiro = !vista.extratoInteiro; pintar(); return; }
   const editar = e.target.closest('[data-env-editar]');
   if (editar) { await janelas.abrirFicha(editar.dataset.envEditar); return; }
   const distribuir = e.target.closest('[data-distribuir]');
