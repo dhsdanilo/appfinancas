@@ -123,6 +123,40 @@ export function aPagarAgora(estado, cartaoId, dia = hoje()) {
     .reduce((t, c) => t + c.aPagar, 0);
 }
 
+/**
+ * As faturas de um cartão que vencem entre `de` e `ate`, com as compras
+ * recorrentes que ainda vão cair nelas. Inclui a fatura futura feita só de
+ * recorrentes (a assinatura de daqui a um ano), que `faturas` não conhece
+ * porque não tem compra lançada.
+ *
+ * [{ ...fatura, projetadas: [ocorrência], previsto: aPagar + projetadas, estimado }]
+ */
+export function faturasNoPeriodo(estado, cartaoId, de, ate, dia = hoje()) {
+  const lista = faturas(estado, cartaoId, dia);
+  if (!lista) return [];
+  // A compra recorrente de um mês cai na fatura que vence no seguinte: olhar
+  // desde o mês atual pega todas que vencem no período.
+  const previstas = ocorrenciasPrevistas(estado, inicioDoMes(dia), ate, dia)
+    .filter((o) => o.contaId === cartaoId && o.cicloFatura);
+  const porCiclo = new Map(lista.map((f) => [f.fechamento, { ...f, projetadas: [] }]));
+  for (const o of previstas) {
+    if (!porCiclo.has(o.cicloFatura)) {
+      porCiclo.set(o.cicloFatura, {
+        fechamento: o.cicloFatura, vencimento: o.dataVencimento, total: 0, pago: 0, aPagar: 0,
+        itens: [], situacao: 'futura', projetadas: [],
+      });
+    }
+    porCiclo.get(o.cicloFatura).projetadas.push(o);
+  }
+  return [...porCiclo.values()]
+    .filter((f) => f.vencimento >= de && f.vencimento <= ate)
+    .map((f) => {
+      const aVir = f.projetadas.reduce((t, o) => t + sinalDeSaida(o), 0);
+      return { ...f, previsto: f.aPagar + aVir, estimado: f.projetadas.some((o) => o.estimado) };
+    })
+    .sort((a, b) => (a.fechamento < b.fechamento ? -1 : 1));
+}
+
 // ── recorrências ──────────────────────────────────────────────────────────
 
 /**

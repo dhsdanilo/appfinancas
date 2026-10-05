@@ -39,7 +39,7 @@ import { temCiclo } from './core/cartao.js';
 import { extratoDoMes, resultadoDoMes, aEntrarNoMes, saldoNoDia } from './core/mes-da-conta.js';
 import { AREAS as ABAS } from './app/areas.js';
 import {
-  faturas, resumoDoCartao, saldoPrevisto, ocorrenciasPrevistas,
+  faturas, faturasNoPeriodo, resumoDoCartao, saldoPrevisto, ocorrenciasPrevistas,
 } from './core/previsto.js';
 import {
   hoje, inicioDoMes, fimDoMes, somarMeses, nomeDoMes, diaCurto, proximoMes,
@@ -1301,14 +1301,17 @@ function pintarLista(aba, contas) {
     }
     for (const cartao of Object.values(app.contas)) {
       if (cartao.tipo !== 'cartao' || !ids.has(cartao.pagaCom)) continue;
-      for (const f of faturas(app, cartao.id) ?? []) {
-        if (f.aPagar <= 0 || !noPeriodo(f.vencimento)) continue;
+      // A fatura a pagar com as compras recorrentes que ainda vão cair nela:
+      // a linha bate com a faixa, e a fatura só de recorrentes não some.
+      for (const f of faturasNoPeriodo(app, cartao.id, de, ate)) {
+        if (f.previsto <= 0) continue;
         linhas.push({
           id: `fatura:${cartao.id}:${f.fechamento}`,
           fatura: f,
           cartaoId: cartao.id,
           tipo: 'pagamento_fatura',
-          valor: f.aPagar,
+          valor: f.previsto,
+          estimado: f.estimado,
           contaId: cartao.pagaCom,
           contaDestinoId: cartao.id,
           dataCaixa: f.vencimento,
@@ -1415,16 +1418,18 @@ function pintarListaDeCartoes(cartoes) {
       continue;
     }
 
-    for (const f of faturas(app, c.id)) {
-      if (f.vencimento.slice(0, 7) !== vista.mes) continue;
-      const projetadas = previstas.filter((o) => o.contaId === c.id && o.cicloFatura === f.fechamento);
+    // A fatura que vence no mês da tela — inclusive a feita só de compras
+    // recorrentes, que ainda não tem compra lançada (a assinatura de daqui a
+    // um ano não pode sumir).
+    for (const f of faturasNoPeriodo(app, c.id, `${vista.mes}-01`, fimDoMes(`${vista.mes}-01`))) {
+      const projetadas = f.projetadas;
       total += f.total + projetadas.reduce((t, o) => t + sinalDeSaida(o), 0);
       const situacao =
         f.situacao === 'aberta' ? 'aberta' : f.situacao === 'futura' ? 'por vir' : f.aPagar > 0 ? 'fechada' : 'paga';
       html.push(`<li class="grupo">
         <span>${escapar(c.nome)} · fatura de ${escapar(nomeDoMes(vista.mes).split(' ')[0])}
           <span class="fino">fecha ${diaCurto(f.fechamento)} · vence ${diaCurto(f.vencimento)} · ${situacao}</span></span>
-        <span class="valor-grupo">${dinheiroHTML(f.total)}${f.pago && f.aPagar ? ` <span class="fino">falta ${dinheiroHTML(f.aPagar)}</span>` : ''}</span>
+        <span class="valor-grupo">${dinheiroHTML(f.total + projetadas.reduce((t, o) => t + sinalDeSaida(o), 0), { estimado: f.estimado })}${f.pago && f.aPagar ? ` <span class="fino">falta ${dinheiroHTML(f.aPagar)}</span>` : ''}</span>
       </li>`);
       const itens = ordenarPelaCompra([...f.itens, ...projetadas, ...pagamentos]);
       html.push(
