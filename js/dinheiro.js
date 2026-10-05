@@ -1873,12 +1873,25 @@ document.addEventListener('click', async (e) => {
   dialogoEdicao.showModal();
 });
 
-function abrirTransferencia() {
+async function abrirTransferencia() {
   transferencia.limpar();
   transferencia.usarData(dataDaVista());
-  transferencia.recarregar();
+  await transferencia.recarregar();
+  // A conta que está na tela vem escolhida: de onde sai — ou, numa conta de
+  // investimento, para onde vai, que é o aporte. Trocar continua livre.
+  const conta = app?.contas[contaEmFoco()];
+  if (conta) transferencia.usarContas(conta.tipo === 'investimento' ? { destino: conta.id } : { origem: conta.id });
   dialogoTransferencia.showModal();
   transferencia.focar();
+}
+
+/** A conta que está na tela: a da aba escolhida, ou a única da área. Nenhuma no Geral. */
+function contaEmFoco() {
+  if (!app || !AREA) return null;
+  if (vista.conta !== 'todas' && app.contas[vista.conta]) return vista.conta;
+  const aba = ABAS.find((a) => a.id === AREA);
+  const contas = aba ? contasDaAba(aba).filter((c) => !c.arquivada) : [];
+  return contas.length === 1 ? contas[0].id : null;
 }
 
 $('b-transferir').addEventListener('click', abrirTransferencia);

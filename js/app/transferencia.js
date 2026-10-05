@@ -429,6 +429,17 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
       pintarData();
     },
 
+    /**
+     * A conta que está na tela já vem escolhida — só como ponto de partida,
+     * os dois campos continuam livres (pedido dele, 05/10/2026).
+     */
+    usarContas({ origem: de = null, destino: para = null } = {}) {
+      if (de) el('origem').value = de;
+      if (para) el('destino').value = para;
+      pintarDonos(true);
+      pintarAcao();
+    },
+
     /** A data na tela agora: a da última transferência salva, depois de salvar. */
     dataAtual: () => data,
 
