@@ -294,6 +294,9 @@ button.linha.vencido { border-left: 3px solid var(--alerta); background: var(--a
   color: var(--alerta);
   font-size: var(--t-apoio);
 }
+/* O aviso da folha leva o botão de arrumar o mês ao lado da frase. */
+.bloco .aviso-folha { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--e2); }
+.bloco .aviso-folha .elo { color: inherit; }
 .bloco .pe-bloco {
   display: flex;
   justify-content: space-between;
@@ -816,6 +819,11 @@ body[data-pagina="investimentos"] .acoes-topo .atalho { display: none; }
   background: var(--alerta-fundo);
   color: var(--alerta);
 }
+/* O "previsto com a renda" vem logo depois do previsto e das entradas: o fio
+   o separa, mas quem empurra para a direita é só o primeiro destaque. */
+.numeros-caixa .previstos-faixa { margin-left: auto; display: flex; flex-wrap: wrap; gap: var(--e3) var(--e6); }
+.numeros-caixa .previstos-faixa .previsto-faixa { margin-left: 0; }
+@media (max-width: 600px) { .numeros-caixa .previstos-faixa { margin-left: 0; } }
 @media (max-width: 600px) {
   .numeros-caixa .previsto-faixa { margin-left: 0; padding-left: 0; border-left: 0; }
 }

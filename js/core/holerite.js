@@ -49,6 +49,43 @@ export function liquido(linhas) {
 }
 
 /**
+ * O que já foi lançado na folha no mês, em termos de líquido: o que saiu das
+ * linhas lançadas e o que entrou nela vindo de outra conta. O holerite fecha o
+ * mês inteiro, então o líquido novo é só o que falta para ela zerar.
+ */
+export function jaLancadoNoLiquido(estado, folhaId, mes) {
+  const ja = lancadosNoMes(estado, folhaId, mes);
+  return liquido(ja.filter((l) => l.contaId === folhaId))
+    + ja.filter((l) => l.contaDestinoId === folhaId).reduce((t, l) => t + l.valor, 0);
+}
+
+/**
+ * O líquido que a folha ainda vai mandar no `mes` (design/08 §4.2, D31): as
+ * linhas do contracheque que faltam lançar mais o que já foi lançado — a mesma
+ * conta da janela do contracheque. Cai no dia da primeira linha de entrada,
+ * na conta para onde o líquido vai. Null quando não há o que prever: folha sem
+ * destino, ou o contracheque do mês já lançado.
+ *
+ * { folhaId, contaId, data, valor, estimado }
+ */
+export function liquidoPrevisto(estado, folhaId, mes, dia = hoje()) {
+  const folha = estado.contas[folhaId];
+  if (!folha || folha.arquivada || !folha.liquidoPara) return null;
+  const previstas = linhasDoHolerite(estado, folhaId, mes, dia);
+  // Só a parcela do consignado sobrando não é contracheque por lançar.
+  if (!previstas.some((o) => !o.automatico)) return null;
+  const valor = liquido(previstas) + jaLancadoNoLiquido(estado, folhaId, mes);
+  if (valor <= 0) return null;
+  return {
+    folhaId,
+    contaId: folha.liquidoPara,
+    data: previstas[0].dataCompetencia,
+    valor,
+    estimado: previstas.some((o) => o.estimado),
+  };
+}
+
+/**
  * Renda bruta e líquida das folhas num conjunto de lançamentos (pedido dele,
  * 03/10/2026). Bruta: o que entrou. Líquida: o que sobra para cair na conta —
  * a bruta menos todo desconto e menos o que sai da folha para outra coisa que

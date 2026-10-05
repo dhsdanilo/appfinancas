@@ -13,7 +13,7 @@ import { lancados, visiveis, saldoReal, sinalDeSaida } from './lancamentos.js';
 import { ocorrenciasPrevistas, faturas, valorDaSerie } from './previsto.js';
 import { posicao, resumoDaConta, ativosDaConta, saldoAte, CLASSES, nomeDaClasse } from './investimentos.js';
 import { saldoDevedor, cronograma } from './divida.js';
-import { rendaDisponivel } from './holerite.js';
+import { rendaDisponivel, liquidoPrevisto } from './holerite.js';
 import { donosNoDia } from './envelopes.js';
 
 const CAIXA = new Set(['corrente', 'especie']);
@@ -272,6 +272,8 @@ export function projecaoDeSaldo(estado, dias = 90, dia = hoje()) {
   // A do cartão sai, no vencimento da fatura dela, da conta que paga o cartão.
   for (const o of ocorrenciasPrevistas(estado, dia, ate, dia)) {
     const conta = estado.contas[o.contaId];
+    // O que sai da folha para o caixa é o líquido, previsto logo abaixo.
+    if (conta?.tipo === 'folha') continue;
     if (o.estimado) estimado = true;
     if (conta?.tipo === 'cartao') {
       if (ids.has(conta.pagaCom)) lancar(o.dataCaixa, -sinalDeSaida(o), nomeDe(o));
@@ -279,6 +281,16 @@ export function projecaoDeSaldo(estado, dias = 90, dia = hoje()) {
     }
     if (ids.has(o.contaId)) lancar(o.dataCaixa, -sinalDeSaida(o), nomeDe(o));
     if (ids.has(o.contaDestinoId)) lancar(o.dataCaixa, o.valor, nomeDe(o));
+  }
+  // O salário: o líquido de cada folha que ainda vai cair no caixa (D31).
+  for (const folha of Object.values(estado.contas)) {
+    if (folha.tipo !== 'folha' || !ids.has(folha.liquidoPara)) continue;
+    for (const mes of mesesEntre(mesDe(dia), mesDe(ate))) {
+      const lp = liquidoPrevisto(estado, folha.id, mes, dia);
+      if (!lp) continue;
+      if (lp.estimado) estimado = true;
+      lancar(lp.data, lp.valor, `Salário ${folha.nome}`);
+    }
   }
   // As faturas que faltam pagar, no vencimento (a vencida, hoje).
   for (const c of Object.values(estado.contas)) {

@@ -12,7 +12,7 @@ import { novoId } from '../core/id.js';
 import { deTexto, formatar } from '../core/dinheiro.js';
 import { hoje, diaNoMes, nomeDoMes } from '../core/datas.js';
 import { nomeDaCategoria } from '../core/lancamentos.js';
-import { linhasDoHolerite, lancadosNoMes, liquido } from '../core/holerite.js';
+import { linhasDoHolerite, lancadosNoMes, liquido, jaLancadoNoLiquido } from '../core/holerite.js';
 import { opcoesDeConta } from './areas.js';
 
 const MARCACAO = `
@@ -150,9 +150,8 @@ export function criarHolerite({ janela, raiz, aoSalvar }) {
     // O que já foi lançado na folha neste mês conta no líquido — inclusive um
     // líquido já transferido: o holerite fecha a folha do mês inteira, então o
     // líquido novo é só o que falta para ela zerar.
-    const ja = lancadosNoMes(app, folha.id, mes);
-    jaLancados = ja;
-    jaLancado = liquido(ja.filter((l) => l.contaId === folha.id)) + ja.filter((l) => l.contaDestinoId === folha.id).reduce((t, l) => t + l.valor, 0);
+    jaLancados = lancadosNoMes(app, folha.id, mes);
+    jaLancado = jaLancadoNoLiquido(app, folha.id, mes);
 
     const [ano, m] = mes.split('-').map(Number);
     const dia = previstas[0] ? previstas[0].dataCompetencia : mes === hoje().slice(0, 7) ? hoje() : diaNoMes(ano, m, 1);

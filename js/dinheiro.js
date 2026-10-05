@@ -28,12 +28,13 @@ import { donosNoDia } from './core/envelopes.js';
 import { aoLancar } from './app/pagina.js';
 import { enderecoDa } from './app/rotas.js';
 import { BARRA, PRINCIPAL, DIALOGOS } from './app/marcacao-dinheiro.js';
-import { rendaDaFolha } from './core/holerite.js';
+import { rendaDaFolha, liquidoPrevisto } from './core/holerite.js';
 import {
   visiveis, porDataDecrescente, estadoDoLancamento, saldoReal, nomeDaCategoria,
   sinalDeSaida, ehTransferencia, dataVista, estornado, ehDeInvestimento,
 } from './core/lancamentos.js';
 import { temCiclo } from './core/cartao.js';
+import { extratoDoMes, resultadoDoMes, aEntrarNoMes, saldoNoDia } from './core/mes-da-conta.js';
 import { AREAS as ABAS } from './app/areas.js';
 import {
   faturas, resumoDoCartao, saldoPrevisto, ocorrenciasPrevistas,
@@ -419,17 +420,30 @@ function pintarPeriodo() {
 // ── resumos ───────────────────────────────────────────────────────────────
 
 /**
- * Em caixa: o saldo real e, aberto em linhas, o saldo previsto — o número
- * sozinho não é crível (08-telas §6). O previsto é sempre o de hoje até o fim
- * do mês corrente, qualquer que seja o período da lista.
- */
-/**
+ * Em caixa: a faixa segue o mês da tela (08 §4.2, D31). Mês passado é um
+ * extrato; o atual, o saldo real e o previsto abertos em linhas — o número
+ * sozinho não é crível (08 §6) — com o "previsto com a renda" ao lado; mês
+ * seguinte, só o que entra e sai nele. No intervalo de datas, como o atual.
+ *
  * Uma conta: o bloco dela. Geral (várias): só a soma — a conta específica se
  * vê na aba dela (pedido dele, 03/10/2026).
  */
 function pintarResumoDeCaixa(contas) {
+  const atual = hoje().slice(0, 7);
+  const mes = modoDaTela() === 'intervalo' ? atual : vista.mes;
+  const ids = new Set(contas.map((c) => c.id));
+  const nome = contas.length === 1 ? contas[0].nome : 'geral';
+  const conta = contas.length === 1 ? contas[0] : null;
+  if (mes !== atual) {
+    const bloco = mes < atual
+      ? blocoDoExtrato(nome, extratoDoMes(app, ids, mes), mes, conta)
+      : blocoDoMesSeguinte(nome, resultadoDoMes(app, ids, mes), mes);
+    $('resumo').innerHTML = `<div class="blocos">${bloco}</div>`;
+    return;
+  }
+  const aEntrar = aEntrarNoMes(app, ids);
   const previstos = contas.map((c) => ({ conta: c, p: saldoPrevisto(app, c.id) }));
-  const blocos = previstos.length === 1 ? [blocoDeCaixa(previstos[0].conta.nome, previstos[0].p, false, previstos[0].conta)] : [];
+  const blocos = previstos.length === 1 ? [blocoDeCaixa(previstos[0].conta.nome, previstos[0].p, false, previstos[0].conta, aEntrar)] : [];
 
   if (previstos.length > 1) {
     const soma = {
@@ -449,7 +463,7 @@ function pintarResumoDeCaixa(contas) {
       estimado: previstos.some((x) => x.p.estimado),
       previsto: previstos.reduce((t, x) => t + x.p.previsto, 0),
     };
-    blocos.unshift(blocoDeCaixa('geral', soma, true));
+    blocos.unshift(blocoDeCaixa('geral', soma, true, null, aEntrar));
   }
   $('resumo').innerHTML = `<div class="blocos">${blocos.join('')}</div>`;
 }
@@ -459,7 +473,7 @@ function pintarResumoDeCaixa(contas) {
  * 03/10/2026): o saldo real, cada coisa que vai sair até o fim do mês
  * separada pela origem, e o saldo previsto por último, em destaque.
  */
-function blocoDeCaixa(nome, p, total = false, conta = null) {
+function blocoDeCaixa(nome, p, total = false, conta = null, aEntrar = null) {
   const menos = (v) => `−${formatar(v)}`;
   const numeros = [numeroDaFaixa('saldo real', formatar(p.real))];
   for (const f of p.faturas) numeros.push(numeroDaFaixa(`fatura ${f.cartao.nome}`, menos(f.valor)));
@@ -471,13 +485,17 @@ function blocoDeCaixa(nome, p, total = false, conta = null) {
     numeros.push(numeroDaFaixa(`recorrentes no ${app.contas[cartaoId]?.nome ?? 'cartão'}`, `${til}${menos(valor)}`));
   }
   if (partes?.agendados > 0) numeros.push(numeroDaFaixa('agendados e vencidos', menos(partes.agendados)));
-  const temPrevisao = p.faturas.length || p.aSair > 0;
-  const previsto = temPrevisao
-    ? `<div class="numero-faixa previsto-faixa ${p.previsto < 0 ? 'negativo' : ''}">
-        <span class="rotulo-numero">saldo previsto</span>
-        <span class="valor-numero">${til}${p.previsto < 0 ? menos(-p.previsto) : formatar(p.previsto)}</span>
-      </div>`
+  const entra = aEntrar?.total > 0 ? aEntrar : null;
+  const temPrevisao = p.faturas.length || p.aSair > 0 || entra;
+  let previsto = temPrevisao
+    ? destaqueDaFaixa(`saldo previsto até ${diaCurto(p.ate)}`, p.previsto, p.estimado)
     : '';
+  // O que ainda vai entrar até o fim do mês, e o previsto com isso: o alívio
+  // ao lado do aperto, um sem esconder o outro (D31).
+  if (entra) {
+    previsto = `<div class="previstos-faixa">${previsto}${numerosDeEntrada(entra).join('')}${
+      destaqueDaFaixa('previsto com a renda', p.previsto + entra.total, p.estimado || entra.estimado, 'com-renda')}</div>`;
+  }
   // Conferir com o banco (ou a carteira) mora na própria conta (03 §8).
   const pe = conta
     ? `<div class="pe-bloco"><span class="fino">${conta.conferidaEm ? `conferida em ${diaCurto(conta.conferidaEm)}` : 'nunca conferida'}</span>
@@ -487,6 +505,65 @@ function blocoDeCaixa(nome, p, total = false, conta = null) {
     <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(nome)}</p>
     <div class="numeros-renda numeros-caixa">${numeros.join('')}${previsto}</div>
     ${pe}
+  </div>`;
+}
+
+/** O número que fecha a faixa, em destaque — vermelho quando negativo. */
+function destaqueDaFaixa(rotulo, valor, estimado = false, classe = '') {
+  const texto = `${estimado ? '~' : ''}${valor < 0 ? `−${formatar(-valor)}` : formatar(valor)}`;
+  return `<div class="numero-faixa previsto-faixa ${classe} ${valor < 0 ? 'negativo' : ''}">
+      <span class="rotulo-numero">${escapar(rotulo)}</span>
+      <span class="valor-numero">${escapar(texto)}</span>
+    </div>`;
+}
+
+/** As entradas previstas, uma por origem: o salário de cada folha, receitas, transferências. */
+function numerosDeEntrada(entra) {
+  const mais = (v, est = false) => `${est ? '~' : ''}+${formatar(v)}`;
+  const numeros = entra.liquidos.map((x) =>
+    numeroDaFaixa(`salário ${x.folha.nome} · ${diaCurto(x.data)}`, mais(x.valor, x.estimado)));
+  if (entra.receitas > 0) numeros.push(numeroDaFaixa('receitas', mais(entra.receitas, entra.estimado)));
+  if (entra.chegam > 0) numeros.push(numeroDaFaixa('chega de outras contas', mais(entra.chegam)));
+  return numeros;
+}
+
+/** Mês passado: um extrato — começo, entrou, saiu, e o saldo no fim (D31). */
+function blocoDoExtrato(nome, x, mes, conta) {
+  const de = `${mes}-01`;
+  const numeros = x.antesDoApp
+    ? [`<p class="fino">A conta entrou no app em ${escapar(dataCheia(x.antesDoApp))}: não há extrato de ${escapar(nomeDoMes(mes))}.</p>`]
+    : [
+        numeroDaFaixa(`saldo em ${diaCurto(de)}`, formatar(x.inicio)),
+        numeroDaFaixa('entrou', `+${formatar(x.entrou)}`),
+        numeroDaFaixa('saiu', `−${formatar(x.saiu)}`),
+        destaqueDaFaixa(`saldo em ${diaCurto(fimDoMes(de))}`, x.fim),
+      ];
+  return `<div class="bloco largo ${conta ? '' : 'total'}">
+    <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(`${nome} · ${nomeDoMes(mes).split(' ')[0]}`)}</p>
+    <div class="numeros-renda numeros-caixa">${numeros.join('')}</div>
+  </div>`;
+}
+
+/** Mês seguinte: sem o saldo de hoje, só o que entra e sai nele (D31). */
+function blocoDoMesSeguinte(nome, r, mes) {
+  const menos = (v, est = false) => `${est ? '~' : ''}−${formatar(v)}`;
+  const { entra, sai } = r;
+  const numeros = numerosDeEntrada(entra);
+  for (const f of sai.faturas) {
+    const vence = f.vencimento ? ` · vence ${diaCurto(f.vencimento)}` : '';
+    if (f.valor > 0) numeros.push(numeroDaFaixa(`fatura ${f.cartao.nome}${vence}`, menos(f.valor)));
+    if (f.recorrentes > 0) numeros.push(numeroDaFaixa(`recorrentes no ${f.cartao.nome}${f.valor > 0 ? '' : vence}`, menos(f.recorrentes, f.estimado)));
+  }
+  if (sai.recorrentes > 0) numeros.push(numeroDaFaixa('recorrentes', menos(sai.recorrentes, sai.estimado)));
+  if (sai.parcelas > 0) numeros.push(numeroDaFaixa('parcelas de dívida', menos(sai.parcelas)));
+  if (sai.agendados > 0) numeros.push(numeroDaFaixa('agendados', menos(sai.agendados)));
+  const mesNome = nomeDoMes(mes).split(' ')[0];
+  const corpo = numeros.length
+    ? numeros.join('') + destaqueDaFaixa(`resultado de ${mesNome}`, r.resultado, r.estimado)
+    : `<p class="fino">Nada previsto para ${escapar(nomeDoMes(mes))} ainda.</p>`;
+  return `<div class="bloco largo">
+    <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(`${nome} · ${mesNome}`)}</p>
+    <div class="numeros-renda numeros-caixa">${corpo}</div>
   </div>`;
 }
 
@@ -900,17 +977,14 @@ function pintarResumoDeSaldos(aba, contas) {
   }
   const blocos = contas.map((c) => {
     const saldo = saldoReal(app, c.id);
-    const aviso =
-      aba.id === 'folha' && saldo !== 0
-        ? '<p class="aviso-bloco">Depois do contracheque completo, a folha volta a zero. Diferente de zero é desconto esquecido.</p>'
-        : '';
     // Na folha: "EBTTIFSP · Outubro" e bruto, líquido e saldo atual lado a
     // lado, na largura toda — como a faixa das dívidas (pedido dele).
     if (aba.id === 'folha') {
+      const renda = rendaNoMes([c]);
       return `<div class="bloco largo">
-        <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(`${c.nome} · ${nomeDoMes(vista.mes).split(' ')[0]}`)}</p>
-        <div class="numeros-renda">${numerosDeRenda([c])}${numeroDaFaixa('saldo atual', formatar(saldo))}</div>
-        ${aviso}
+        <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(`${c.nome} · ${nomeDoMes(vista.mes).split(' ')[0]}${renda.titulo}`)}</p>
+        <div class="numeros-renda">${renda.numeros}${numeroDaFaixa('saldo atual', formatar(saldo))}</div>
+        ${avisoDaFolha([c])}
         ${peDaFolha(c)}
       </div>`;
     }
@@ -1048,24 +1122,63 @@ function blocoDeTotal(aba, contas) {
   </div>`;
 }
 
-/** A renda das folhas no mês da tela: bruta, e líquida (descontos e consignados fora). */
-function numerosDeRenda(folhas) {
+/**
+ * A renda das folhas no mês da tela: bruta, e líquida (descontos e consignados
+ * fora). Do mês atual em diante, o que falta lançar do contracheque entra
+ * como previsto (D31): o mês mostra o que vai ser, não só o que já foi.
+ * Mês passado é só o real.
+ */
+function rendaNoMes(folhas) {
   const ids = new Set(folhas.map((c) => c.id));
   const doMes = visiveis(app).filter((l) => ids.has(l.contaId) && l.dataCompetencia.slice(0, 7) === vista.mes);
-  const { bruta, descontos, emprestimos, liquida } = rendaDaFolha(app, doMes, ids);
-  return numeroDaFaixa('bruto', formatar(bruta)) +
-    numeroDaFaixa('descontos', formatar(descontos)) +
-    numeroDaFaixa('empréstimos', formatar(emprestimos)) +
-    numeroDaFaixa('líquido', formatar(liquida));
+  const previstas = vista.mes >= hoje().slice(0, 7)
+    ? folhas.flatMap((c) => linhasDoHolerite(app, c.id, vista.mes))
+    : [];
+  const { bruta, descontos, emprestimos, liquida } = rendaDaFolha(app, [...doMes, ...previstas], ids);
+  const til = previstas.some((o) => o.estimado) ? '~' : '';
+  const manuais = previstas.filter((o) => !o.automatico).length;
+  return {
+    titulo: !manuais ? '' : doMes.some((l) => !l.automatico) ? ' · parte prevista' : ' · previsto',
+    numeros: numeroDaFaixa('bruto', `${til}${formatar(bruta)}`) +
+      numeroDaFaixa('descontos', `${til}${formatar(descontos)}`) +
+      numeroDaFaixa('empréstimos', formatar(emprestimos)) +
+      numeroDaFaixa('líquido', `${til}${formatar(liquida)}`),
+  };
 }
 
-/** Geral da renda: a soma das fontes no mês, e quantas folhas ainda não fecharam. */
+/**
+ * Um aviso só: a folha que terminou o mês anterior com saldo (pedido dele,
+ * 05/10/2026). No meio do mês a folha anda fora do zero — a parcela do
+ * consignado cai antes do contracheque —, então o que importa é o mês que
+ * já fechou: o anterior ao da tela, ou ao de hoje, o que vier primeiro.
+ */
+function avisoDaFolha(folhas) {
+  const atual = hoje().slice(0, 7);
+  const mes = somarMeses(`${vista.mes < atual ? vista.mes : atual}-01`, -1).slice(0, 7);
+  const fim = fimDoMes(`${mes}-01`);
+  const sobras = folhas
+    .map((c) => ({ c, saldo: saldoNoDia(app, new Set([c.id]), fim) }))
+    .filter((x) => x.saldo !== 0 && (!x.c.dataInicial || x.c.dataInicial <= fim));
+  if (!sobras.length) return '';
+  const nomeMes = nomeDoMes(mes).split(' ')[0];
+  const quanto = (v) => (v < 0 ? `faltou ${formatar(-v)}` : `sobrou ${formatar(v)}`);
+  if (sobras.length === 1) {
+    const { c, saldo } = sobras[0];
+    return `<div class="aviso-bloco aviso-folha">
+      <span>${folhas.length > 1 ? `${escapar(c.nome)}: ` : ''}${quanto(saldo)} na folha no fim de ${escapar(nomeMes)} — o contracheque daquele mês não fechou em zero.</span>
+      <button type="button" class="elo" data-holerite="${escapar(c.id)}" data-mes="${escapar(mes)}">arrumar ${escapar(nomeMes)}</button>
+    </div>`;
+  }
+  return `<p class="aviso-bloco">${sobras.length} folhas não fecharam ${escapar(nomeMes)} em zero (${sobras.map((x) => escapar(x.c.nome)).join(', ')}): abra a aba de cada uma para arrumar.</p>`;
+}
+
+/** Geral da renda: a soma das fontes no mês, e o aviso das que não fecharam. */
 function blocoDasFolhas(folhas) {
-  const abertas = folhas.filter((c) => saldoReal(app, c.id) !== 0).length;
+  const renda = rendaNoMes(folhas);
   return `<div class="bloco total largo">
-    <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>geral · ${escapar(nomeDoMes(vista.mes).split(' ')[0])}</p>
-    <div class="numeros-renda">${numerosDeRenda(folhas)}${numeroDaFaixa('saldo atual', formatar(folhas.reduce((t, c) => t + saldoReal(app, c.id), 0)))}</div>
-    ${abertas ? `<p class="aviso-bloco">${abertas} folha${abertas > 1 ? 's' : ''} sem fechar: abra a aba de cada uma para lançar o contracheque.</p>` : ''}
+    <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>geral · ${escapar(nomeDoMes(vista.mes).split(' ')[0])}${escapar(renda.titulo)}</p>
+    <div class="numeros-renda">${renda.numeros}${numeroDaFaixa('saldo atual', formatar(folhas.reduce((t, c) => t + saldoReal(app, c.id), 0)))}</div>
+    ${avisoDaFolha(folhas)}
   </div>`;
 }
 
@@ -1095,6 +1208,29 @@ function pintarLista(aba, contas) {
   }
 
   if (aba.id === 'caixa') {
+    // O salário que a folha ainda vai mandar: a linha de onde sai o número
+    // da faixa (D31). Tocada, abre o contracheque daquele mês.
+    for (const folha of Object.values(app.contas)) {
+      if (folha.tipo !== 'folha' || !ids.has(folha.liquidoPara)) continue;
+      for (let mes = de.slice(0, 7); mes <= ate.slice(0, 7); mes = proximoMes(mes)) {
+        if (mes < hoje().slice(0, 7)) continue;
+        const lp = liquidoPrevisto(app, folha.id, mes);
+        if (!lp || !noPeriodo(lp.data)) continue;
+        linhas.push({
+          id: `liquido:${folha.id}:${mes}`,
+          liquido: { folhaId: folha.id, mes },
+          projetado: true,
+          tipo: 'transferencia',
+          valor: lp.valor,
+          estimado: lp.estimado,
+          contaId: folha.id,
+          contaDestinoId: lp.contaId,
+          dataCompetencia: lp.data,
+          dataCaixa: lp.data,
+          confirmado: false,
+        });
+      }
+    }
     for (const cartao of Object.values(app.contas)) {
       if (cartao.tipo !== 'cartao' || !ids.has(cartao.pagaCom)) continue;
       for (const f of faturas(app, cartao.id) ?? []) {
@@ -1301,6 +1437,9 @@ function linhaHTML(l, ids, saldoApos = null) {
   } else if (l.fatura) {
     oque = `Fatura ${destino?.nome ?? ''}`;
     onde = `${conta?.nome ?? '—'} · fecha ${diaCurto(l.fatura.fechamento)}`;
+  } else if (l.liquido) {
+    oque = `Salário ${conta?.nome ?? ''} · líquido`;
+    onde = `${conta?.nome ?? '—'} → ${destino?.nome ?? '—'} · toque para lançar o contracheque`;
   } else if (transferencia) {
     oque = nomeDaTransferencia(l, d, conta, destino);
     onde = `${conta?.nome ?? '—'} → ${destino?.nome ?? '—'}`;
@@ -1350,7 +1489,9 @@ function linhaHTML(l, ids, saldoApos = null) {
   // A parcela automática de uma dívida não é gravada: tocada, abre a
   // correção daquela parcela (design/10 §4.4).
   if (l.projetado || l.automatico) previstosNaTela.set(l.id, l);
-  const alvo = l.fatura
+  const alvo = l.liquido
+    ? `data-holerite="${escapar(l.liquido.folhaId)}" data-mes="${escapar(l.liquido.mes)}"`
+    : l.fatura
     ? `data-pagar="${escapar(l.cartaoId)}" data-valor="${l.valor}"`
     : l.projetado || l.automatico
       ? `data-previsto="${escapar(l.id)}"`
@@ -1588,7 +1729,7 @@ document.addEventListener('click', async (e) => {
 
   const doHolerite = e.target.closest('[data-holerite]');
   if (doHolerite) {
-    await holerite.abrir(doHolerite.dataset.holerite, vista.mes);
+    await holerite.abrir(doHolerite.dataset.holerite, doHolerite.dataset.mes ?? vista.mes);
     return;
   }
 
