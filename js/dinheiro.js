@@ -37,7 +37,7 @@ import {
 } from './core/lancamentos.js';
 import { temCiclo } from './core/cartao.js';
 import { provisaoDoCartao, temCofrinho } from './core/cofrinho.js';
-import { disponivelDe } from './core/repasse.js';
+import { disponivelDe, aReceber } from './core/repasse.js';
 import { extratoDoMes, resultadoDoMes, aEntrarNoMes, saldoNoDia } from './core/mes-da-conta.js';
 import { AREAS as ABAS } from './app/areas.js';
 import {
@@ -721,6 +721,15 @@ function faturaDoMes(c) {
   return { ...f, previsto0: f.total + aVir };
 }
 
+/** O que outras pessoas ainda vão repassar ao dono deste cartão (design/16). */
+function linhaAReceber(cartao) {
+  if (!cartao.titular) return '';
+  const lista = aReceber(app, cartao.titular);
+  if (!lista.length) return '';
+  const numeros = lista.map((x) => numeroDaFaixa(`a receber de ${app.pessoas?.[x.pessoa]?.nome ?? 'alguém'}`, formatar(x.aRepassar))).join('');
+  return `<div class="limite-cartao a-receber"><div class="numeros-renda">${numeros}</div></div>`;
+}
+
 /**
  * A provisão do cartão no cofrinho (design/11 §9): o que já está guardado, o
  * alvo — limite usado mais as previstas da fatura aberta — e uma barra. A barra
@@ -831,6 +840,7 @@ function blocoDosCartoes(cartoes) {
     <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(nome)}</p>
     ${linhaLimite}
     ${um ? linhaDaProvisao(um) : ''}
+    ${um ? linhaAReceber(um) : ''}
     ${linhaFatura}
     ${aviso}
     ${pe}

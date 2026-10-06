@@ -17,10 +17,10 @@ import { novoId } from '../core/id.js';
 import * as log from '../core/log.js';
 import * as estado from '../core/estado.js';
 import {
-  hoje, nasceConfirmado, nomeDaCategoria, correcao, detalhesDaCategoria, dataVista, estornado,
+  hoje, nasceConfirmado, nomeDaCategoria, correcao, detalhesDaCategoria, dataVista, estornado, saldoReal,
 } from '../core/lancamentos.js';
 import { somarDias, somarMeses, fimDoMes } from '../core/datas.js';
-import { compradoPorDaCompra } from '../core/repasse.js';
+import { compradoPorDaCompra, pessoaDoAparelho, disponivelDe } from '../core/repasse.js';
 import { temCiclo, cicloDaCompra } from '../core/cartao.js';
 import { MARCACAO_CAMPO_VALOR, ligarCampoValor } from './campo-valor.js';
 import { ligarZonaDePerigo } from './zona-perigo.js';
@@ -84,6 +84,12 @@ const P = {
 
 `,
   conta: `
+  <!-- Aparelho com dono: como foi pago. Crédito (cartão de outra pessoa, a repassar)
+       ou conta corrente (débito, Pix: nada a repassar) — design/16 §2.1. -->
+  <div class="pilulas tipo-pagamento" data-papel="tipo-pagamento" role="group" aria-label="Como foi pago" hidden>
+    <button type="button" data-modo="cartao" aria-pressed="false">cartão de crédito</button>
+    <button type="button" data-modo="conta" aria-pressed="false">conta corrente</button>
+  </div>
   <div class="linha-conta">
     <label class="escolha-conta" data-papel="escolha-conta">
       <span class="miudo"><span class="ponto-area" aria-hidden="true"></span>conta</span>
@@ -91,6 +97,7 @@ const P = {
     </label>
     <button type="button" class="elo" data-papel="b-refino" aria-expanded="false">detalhes</button>
   </div>
+  <p class="simulador-saldo" data-papel="simulador" hidden></p>
 
 `,
   descricao: `
@@ -303,6 +310,7 @@ export async function criarFormulario({
       if (app) pintarParcelas();
       if (app && custeadoPor) pintarEnvelope();
       pintarReajuste();
+      if (app) pintarSimulador();
     },
     aoConfirmar: async (e) => {
       if (!pronto()) { valor.desfocar(); return; }
@@ -453,10 +461,27 @@ export async function criarFormulario({
    * fila do mercado: só Em caixa e Cartões; renda, investimentos e dívidas
    * ficam no completo (D30).
    */
-  const contasDaEscolha = () =>
+  const contasDaEscolha = () => filtrarPorModo(
     rapido
       ? contasUtilizaveis().filter((c) => AREAS_DO_RAPIDO.includes(areaDaConta(c)))
-      : contasUtilizaveis();
+      : contasUtilizaveis()
+  );
+
+  /**
+   * Aparelho com dono, lançamento novo: "cartão de crédito" mostra só cartões;
+   * "conta corrente", só as contas de caixa dela (as de ninguém também). Sem dono
+   * ou na correção, nada muda.
+   */
+  let modoPagamento = null;
+  const comModo = () => Boolean(pessoaDoAparelho()) && !editando;
+  function filtrarPorModo(lista) {
+    if (!comModo() || !modoPagamento) return lista;
+    const dona = pessoaDoAparelho();
+    const filtrada = modoPagamento === 'cartao'
+      ? lista.filter((c) => c.tipo === 'cartao')
+      : lista.filter((c) => (c.tipo === 'corrente' || c.tipo === 'especie') && (!c.titular || c.titular === dona));
+    return filtrada.length ? filtrada : lista;
+  }
   const contaNaEscolha = (id) => contasDaEscolha().some((c) => c.id === id);
 
   /**
@@ -557,7 +582,38 @@ export async function criarFormulario({
     valor.pintar();
   }
 
+  /** Mostra os botões crédito × conta (e qual vale) quando o aparelho tem dono. */
+  function pintarModo() {
+    const bloco = el('tipo-pagamento');
+    bloco.hidden = !comModo();
+    if (!comModo()) { modoPagamento = null; return; }
+    const tipoDaConta = app?.contas[contaId]?.tipo;
+    if (!modoPagamento && tipoDaConta) modoPagamento = tipoDaConta === 'cartao' ? 'cartao' : 'conta';
+    for (const b of bloco.querySelectorAll('[data-modo]')) b.setAttribute('aria-pressed', String(b.dataset.modo === modoPagamento));
+  }
+
+  /**
+   * O simulador: quanto ela tem de verdade (saldo das contas dela menos o que
+   * ainda é de quem lhe emprestou o cartão) e quanto fica depois desta compra.
+   */
+  function pintarSimulador() {
+    const bloco = el('simulador');
+    const dona = pessoaDoAparelho();
+    const d = dona && app && !editando ? disponivelDe(app, dona, (id) => saldoReal(app, id)) : null;
+    if (!d || !d.contas) { bloco.hidden = true; return; }
+    const conta = app.contas[contaId];
+    const v = valor.centavos();
+    const baixa = tipo === 'despesa' && v > 0 && conta && (
+      conta.tipo === 'corrente' || conta.tipo === 'especie' || (conta.tipo === 'cartao' && conta.titular && conta.titular !== dona)
+    );
+    const depois = d.disponivel - (baixa ? v : 0);
+    bloco.hidden = false;
+    bloco.classList.toggle('negativo', depois < 0);
+    bloco.textContent = `disponível ${formatar(d.disponivel)}${baixa ? ` · ficam ${formatar(depois)}` : ''}${d.aRepassar > 0 ? ` (já sem os ${formatar(d.aRepassar)} a repassar)` : ''}`;
+  }
+
   function pintarConta() {
+    pintarModo();
     const contas = contasDaEscolha();
     el('conta').innerHTML = contas.length
       ? opcoesDeConta(contas, contaId)
@@ -1328,10 +1384,21 @@ export async function criarFormulario({
     pintarRefino();
   });
 
+  el('tipo-pagamento').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-modo]');
+    if (!b) return;
+    modoPagamento = b.dataset.modo;
+    const candidatas = contasDaEscolha();
+    if (!candidatas.some((c) => c.id === contaId)) contaId = candidatas[0]?.id ?? null;
+    contaTocada = true;
+    await recarregar();
+  });
+
   el('conta').addEventListener('change', () => {
     contaId = el('conta').value || null;
     contaTocada = true;
     pintarArea();
+    pintarSimulador();
     // Outra área, outras categorias (D26). A escolhida que não cabe aqui sai —
     // a não ser na correção, onde sumir com o dado pareceria perda.
     const escolhida = app.categorias[categoriaId];
@@ -1445,6 +1512,7 @@ export async function criarFormulario({
     pintarAtalhos();
     pintarDevolucao();
     pintarSerie();
+    pintarSimulador();
     valor.pintar();
   }
 
