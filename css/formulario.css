@@ -471,15 +471,19 @@ input[type="text"].observacao {
 .simulador-saldo {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  text-align: center;
   gap: var(--e2) var(--e5, var(--e4));
   margin: var(--e2) 0 var(--e3);
   padding: var(--e2) 0 var(--e3);
   border-bottom: 1px solid var(--borda);
   font-variant-numeric: tabular-nums;
 }
-.simulador-saldo .saldo-peca { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.simulador-saldo .saldo-peca { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
 .simulador-saldo .miudo { color: var(--tinta-fraca); font-size: var(--t-miudo); }
-.simulador-saldo strong { font-size: var(--t-secao, 1.15rem); font-weight: 600; white-space: nowrap; }
+.simulador-saldo strong { font-size: var(--t-secao, 1.15rem); font-weight: 400; white-space: nowrap; }
+.simulador-saldo .menor strong { font-size: var(--t-corpo); }
 .simulador-saldo .destaque strong { color: var(--positivo); }
 .simulador-saldo .negativo strong { color: var(--alerta); }
 .repasse-transf {

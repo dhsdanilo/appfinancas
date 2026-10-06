@@ -615,8 +615,8 @@ export async function criarFormulario({
       `<span class="saldo-peca ${classe}"><span class="miudo">${rotulo}</span><strong>${escapar(formatar(centavos))}</strong></span>`;
     bloco.hidden = false;
     bloco.innerHTML =
-      bloco3('real', d.saldo) +
       bloco3('disponível', d.disponivel, depois < 0 && !baixa ? 'negativo' : '') +
+      bloco3('real', d.saldo, 'menor') +
       (baixa ? bloco3('ficam', depois, depois < 0 ? 'negativo' : 'destaque') : '');
     bloco.title = d.aRepassar > 0 ? `O disponível já desconta ${formatar(d.aRepassar)} a repassar.` : '';
   }
