@@ -120,7 +120,10 @@ function guardarVista() {
 // ainda recebe compras (pedido dele, 03/10/2026). O mês das outras telas fica
 // guardado e volta quando se sai dela.
 let mesForaDosCartoes = null;
+let mesDaFaturaAberta = null;
 let abrirNaFaturaAberta = false;
+// Quem pediu "ir para esta conta": a próxima entrada na tela já cai nela.
+let destinoPedido = null;
 
 /** Cartões é sempre mês a mês: a fatura é mensal, um intervalo a cortaria. */
 const modoDaTela = () => (PAGINA === 'cartoes' ? 'mes' : vista.modo);
@@ -128,17 +131,48 @@ const modoDaTela = () => (PAGINA === 'cartoes' ? 'mes' : vista.modo);
 /** Entra numa tela de dinheiro: troca o foco e pinta. */
 function entrar(pagina) {
   if (PAGINA && PAGINA !== pagina) guardarVista();
+  // O mês acompanha entre as telas: Cartões só salta para a fatura aberta
+  // quando o mês da tela é o corrente; noutro mês, mostra a fatura dele.
   if (pagina === 'cartoes' && PAGINA !== 'cartoes') {
-    mesForaDosCartoes = vista.mes;
-    abrirNaFaturaAberta = true;
-  } else if (pagina !== 'cartoes' && PAGINA === 'cartoes' && mesForaDosCartoes) {
+    abrirNaFaturaAberta = vista.mes === hoje().slice(0, 7);
+    mesForaDosCartoes = abrirNaFaturaAberta ? vista.mes : null;
+    mesDaFaturaAberta = null;
+  } else if (pagina !== 'cartoes' && PAGINA === 'cartoes' && mesForaDosCartoes && vista.mes === mesDaFaturaAberta) {
+    // o mês só foi trocado pelo salto; se a pessoa navegou, vale o que ela fez
     vista.mes = mesForaDosCartoes;
   }
   PAGINA = pagina;
   AREA = AREA_DA_PAGINA[pagina] ?? null;
   Object.assign(vista, FOCO_PADRAO, focos[pagina] ?? lerGuardado(chaveDaTela(pagina)));
+  if (destinoPedido?.pagina === pagina) {
+    vista.conta = destinoPedido.conta;
+    abrirNaFaturaAberta = false;
+    mesForaDosCartoes = null;
+  }
+  destinoPedido = null;
   vista.aba = AREA ?? 'caixa';
   return pintar();
+}
+
+/** A tela onde mora uma conta: Contas, Cartões, Renda, Investimentos ou Dívidas. */
+const paginaDaConta = (conta) => PAGINA_DA_AREA[ABAS.find((a) => a.tipos.includes(conta?.tipo))?.id] ?? null;
+
+/**
+ * Vai para a conta, no mesmo período (o mês é um só entre as telas). Com `mes`,
+ * muda o mês antes — a fatura de Cartões é a daquele vencimento.
+ */
+function irParaConta(contaId, mes = null) {
+  const conta = app?.contas?.[contaId];
+  const pagina = paginaDaConta(conta);
+  if (!pagina) return;
+  if (mes) vista.mes = mes;
+  destinoPedido = { pagina, conta: contaId };
+  if (PAGINA === pagina) {
+    PAGINA = null; // entrar de novo, pelo mesmo caminho das outras telas
+    entrar(pagina);
+  } else {
+    location.hash = `#/${pagina}`;
+  }
 }
 
 function intervalo() {
@@ -189,6 +223,7 @@ function pintarArea() {
     const comCiclo = contas.find((c) => temCiclo(c));
     const aberta = comCiclo ? resumoDoCartao(app, comCiclo.id)?.aberta : null;
     vista.mes = aberta ? aberta.vencimento.slice(0, 7) : proximoMes(hoje().slice(0, 7));
+    mesDaFaturaAberta = vista.mes;
   }
   pintarSubabas(contas);
   pintarPeriodo();
@@ -485,13 +520,13 @@ function pintarResumoDeCaixa(contas) {
 function blocoDeCaixa(nome, p, total = false, conta = null, aEntrar = null) {
   const menos = (v) => `−${formatar(v)}`;
   const numeros = [numeroDaFaixa('saldo real', formatar(p.real))];
-  for (const f of p.faturas) numeros.push(numeroDaFaixa(`fatura ${f.cartao.nome}`, menos(f.valor)));
+  for (const f of p.faturas) numeros.push(numeroDaFaixa(`fatura ${f.cartao.nome}`, menos(f.valor), { conta: f.cartao.id, mes: vista.mes }));
   // O "a sair" aberto pela origem: assim o número bate com o que se vê.
   const partes = p.partes;
   const til = p.estimado ? '~' : '';
   if (partes?.recorrentes > 0) numeros.push(numeroDaFaixa(`recorrentes até ${diaCurto(p.ate)}`, `${til}${menos(partes.recorrentes)}`));
   for (const [cartaoId, valor] of partes?.cartoes ?? []) {
-    numeros.push(numeroDaFaixa(`recorrentes no ${app.contas[cartaoId]?.nome ?? 'cartão'}`, `${til}${menos(valor)}`));
+    numeros.push(numeroDaFaixa(`recorrentes no ${app.contas[cartaoId]?.nome ?? 'cartão'}`, `${til}${menos(valor)}`, { conta: cartaoId, mes: vista.mes }));
   }
   if (partes?.agendados > 0) numeros.push(numeroDaFaixa('agendados e vencidos', menos(partes.agendados)));
   const entra = aEntrar?.total > 0 ? aEntrar : null;
@@ -530,7 +565,7 @@ function destaqueDaFaixa(rotulo, valor, estimado = false, classe = '') {
 function numerosDeEntrada(entra) {
   const mais = (v, est = false) => `${est ? '~' : ''}+${formatar(v)}`;
   const numeros = entra.liquidos.map((x) =>
-    numeroDaFaixa(`salário ${x.folha.nome} · ${diaCurto(x.data)}`, mais(x.valor, x.estimado)));
+    numeroDaFaixa(`salário ${x.folha.nome} · ${diaCurto(x.data)}`, mais(x.valor, x.estimado), { conta: x.folha.id, mes: x.data.slice(0, 7) }));
   if (entra.receitas > 0) numeros.push(numeroDaFaixa('receitas', mais(entra.receitas, entra.estimado)));
   if (entra.chegam > 0) numeros.push(numeroDaFaixa('chega de outras contas', mais(entra.chegam)));
   return numeros;
@@ -560,8 +595,9 @@ function blocoDoMesSeguinte(nome, r, mes) {
   const numeros = numerosDeEntrada(entra);
   for (const f of sai.faturas) {
     const vence = f.vencimento ? ` · vence ${diaCurto(f.vencimento)}` : '';
-    if (f.valor > 0) numeros.push(numeroDaFaixa(`fatura ${f.cartao.nome}${vence}`, menos(f.valor)));
-    if (f.recorrentes > 0) numeros.push(numeroDaFaixa(`recorrentes no ${f.cartao.nome}${f.valor > 0 ? '' : vence}`, menos(f.recorrentes, f.estimado)));
+    const para = { conta: f.cartao.id, mes: f.vencimento?.slice(0, 7) ?? mes };
+    if (f.valor > 0) numeros.push(numeroDaFaixa(`fatura ${f.cartao.nome}${vence}`, menos(f.valor), para));
+    if (f.recorrentes > 0) numeros.push(numeroDaFaixa(`recorrentes no ${f.cartao.nome}${f.valor > 0 ? '' : vence}`, menos(f.recorrentes, f.estimado), para));
   }
   if (sai.recorrentes > 0) numeros.push(numeroDaFaixa('recorrentes', menos(sai.recorrentes, sai.estimado)));
   if (sai.parcelas > 0) numeros.push(numeroDaFaixa('parcelas de dívida', menos(sai.parcelas)));
@@ -592,7 +628,7 @@ function faturaDoMes(c) {
   const f = faturasNoPeriodo(app, c.id, `${vista.mes}-01`, fimDoMes(`${vista.mes}-01`))[0];
   if (!f) return null;
   const aVir = f.projetadas.reduce((t, o) => t + sinalDeSaida(o), 0);
-  return { ...f, previsto: f.total + aVir };
+  return { ...f, previsto0: f.total + aVir };
 }
 
 /**
@@ -642,24 +678,24 @@ function blocoDosCartoes(cartoes) {
   if (!fs.length) {
     linhaFatura = `<div class="numeros-renda">${numeroDaFaixa(`fatura de ${mesNome}`, 'sem compras')}</div>`;
   } else {
-    const total = fs.reduce((t, x) => t + x.f.total, 0);
+    // O total é o estimado (com as recorrentes que ainda vão cair); o já
+    // lançado aparece ao lado — o mesmo número na lista de baixo.
+    const lancado = fs.reduce((t, x) => t + x.f.total, 0);
+    const total = fs.reduce((t, x) => t + x.f.previsto0, 0);
     const pago = fs.reduce((t, x) => t + x.f.pago, 0);
     const aPagar = fs.reduce((t, x) => t + x.f.aPagar, 0);
-    const previsto = fs.reduce((t, x) => t + x.f.previsto, 0);
-    const estimado = fs.some((x) => x.f.estimado);
     const f = fs[0].f;
     const situacao = um
       ? f.situacao === 'aberta' ? 'aberta' : f.situacao === 'futura' ? 'por vir' : aPagar > 0 ? (f.vencimento < hoje() ? 'vencida' : 'fechada') : 'paga'
       : `${fs.length} fatura${fs.length > 1 ? 's' : ''}`;
     const partes = [numeroDaFaixa(`fatura de ${mesNome}`, situacao)];
     if (um) partes.push(numeroDaFaixa('fecha · vence', `${diaCurto(f.fechamento)} · ${diaCurto(f.vencimento)}`));
-    partes.push(numeroDaFaixa('total', formatar(total)));
+    const estimado = fs.some((x) => x.f.estimado);
+    partes.push(numeroDaFaixa('total', `${estimado ? '~' : ''}${formatar(total)}`));
+    if (total !== lancado) partes.push(numeroDaFaixa('já lançado', formatar(lancado)));
     if (f.situacao === 'fechada' || !um) {
       partes.push(numeroDaFaixa('pago', formatar(pago)));
       if (aPagar > 0 && pago > 0) partes.push(numeroDaFaixa('falta', formatar(aPagar)));
-    }
-    if (f.situacao !== 'fechada' && previsto !== total) {
-      partes.push(numeroDaFaixa('previsto', `${estimado ? '~' : ''}${formatar(previsto)}`));
     }
     linhaFatura = `<div class="numeros-renda fatura-do-mes ${situacao === 'vencida' ? 'vencida' : ''}">${partes.join('')}</div>`;
   }
@@ -762,8 +798,17 @@ function pintarDividas(contas) {
   guardarVista();
 }
 
-const numeroDaFaixa = (rotulo, valor) =>
-  `<div class="numero-faixa"><span class="rotulo-numero">${escapar(rotulo)}</span><span class="valor-numero">${escapar(valor)}</span></div>`;
+/**
+ * Um número da faixa. Com `para` ({ conta, mes }), o valor vira um link para a
+ * tela onde ele mora, no mesmo período (pedido dele, 05/10/2026).
+ */
+const numeroDaFaixa = (rotulo, valor, para = null) => {
+  const texto = escapar(valor);
+  const miolo = para && app?.contas?.[para.conta]
+    ? `<button type="button" class="valor-numero elo-numero" data-ir-conta="${escapar(para.conta)}"${para.mes ? ` data-ir-mes="${escapar(para.mes)}"` : ''} title="Abrir ${escapar(app.contas[para.conta].nome)}">${texto}</button>`
+    : `<span class="valor-numero">${texto}</span>`;
+  return `<div class="numero-faixa"><span class="rotulo-numero">${escapar(rotulo)}</span>${miolo}</div>`;
+};
 
 const dataCheia = (dia) => `${dia.slice(8, 10)}/${dia.slice(5, 7)}/${dia.slice(0, 4)}`;
 
@@ -1406,6 +1451,7 @@ function pintarListaDeCartoes(cartoes) {
   const previstas = ocorrenciasPrevistas(app, somarMeses(de, -2), ate);
   const html = [];
   let total = 0;
+  let lancado = 0;
   let pago = 0;
 
   for (const c of cartoes) {
@@ -1418,6 +1464,7 @@ function pintarListaDeCartoes(cartoes) {
         ...previstas.filter((o) => o.contaId === c.id && noPeriodo(o.dataCompetencia)),
       ];
       total += compras.reduce((t, l) => t + sinalDeSaida(l), 0);
+      lancado += compras.filter((l) => !l.projetado).reduce((t, l) => t + sinalDeSaida(l), 0);
       if (!compras.length && !pagamentos.length) continue;
       html.push(`<li class="grupo">${escapar(c.nome)}</li>`);
       html.push(...ordenarPelaCompra([...compras, ...pagamentos]).map((l) => linhaHTML(l, new Set([c.id]))));
@@ -1429,13 +1476,15 @@ function pintarListaDeCartoes(cartoes) {
     // um ano não pode sumir).
     for (const f of faturasNoPeriodo(app, c.id, `${vista.mes}-01`, fimDoMes(`${vista.mes}-01`))) {
       const projetadas = f.projetadas;
-      total += f.total + projetadas.reduce((t, o) => t + sinalDeSaida(o), 0);
+      const estimadoDaFatura = f.total + projetadas.reduce((t, o) => t + sinalDeSaida(o), 0);
+      total += estimadoDaFatura;
+      lancado += f.total;
       const situacao =
         f.situacao === 'aberta' ? 'aberta' : f.situacao === 'futura' ? 'por vir' : f.aPagar > 0 ? 'fechada' : 'paga';
       html.push(`<li class="grupo">
         <span>${escapar(c.nome)} · fatura de ${escapar(nomeDoMes(vista.mes).split(' ')[0])}
           <span class="fino">fecha ${diaCurto(f.fechamento)} · vence ${diaCurto(f.vencimento)} · ${situacao}</span></span>
-        <span class="valor-grupo">${dinheiroHTML(f.total + projetadas.reduce((t, o) => t + sinalDeSaida(o), 0), { estimado: f.estimado })}${f.pago && f.aPagar ? ` <span class="fino">falta ${dinheiroHTML(f.aPagar)}</span>` : ''}</span>
+        <span class="valor-grupo">${dinheiroHTML(estimadoDaFatura, { estimado: f.estimado })}${projetadas.length ? ` <span class="fino">lançado ${dinheiroHTML(f.total)}</span>` : ''}${f.pago && f.aPagar ? ` <span class="fino">falta ${dinheiroHTML(f.aPagar)}</span>` : ''}</span>
       </li>`);
       const itens = ordenarPelaCompra([...f.itens, ...projetadas, ...pagamentos]);
       html.push(
@@ -1451,7 +1500,7 @@ function pintarListaDeCartoes(cartoes) {
     : `<li class="vazio">Nenhuma fatura ${vista.modo === 'mes' ? `vence em ${nomeDoMes(vista.mes)}` : 'neste período'}.</li>`;
 
   const partes = [];
-  if (total) partes.push(`compras ${dinheiroHTML(total)}`);
+  if (total) partes.push(`compras ${dinheiroHTML(total)}${total !== lancado ? ` (já lançado ${dinheiroHTML(lancado)})` : ''}`);
   if (pago) partes.push(`pago ${dinheiroHTML(pago)}`);
   $('totais').innerHTML = partes.join(' · ');
 }
@@ -1583,7 +1632,13 @@ function linhaHTML(l, ids, saldoApos = null) {
     ? `<button type="button" class="lancar-rapido" data-lancar-previsto="${escapar(l.id)}" title="Lançar como previsto" aria-label="Lançar ${escapar(oque)} como previsto">✓</button>`
     : '';
 
-  return `<li class="${rapido ? 'com-rapido' : ''}"><button type="button" class="linha ${tom} ${l.tipo === 'pagamento_fatura' ? 'da-fatura' : ''} ${est === 'realizado' ? '' : est} ${saldoApos ? 'com-saldo' : ''}"
+  // A conta do outro lado, a um toque, no mesmo período (pedido dele, 05/10/2026).
+  const lado = ladoDaLinha(l, ids, investimento, transferencia);
+  const elo = lado
+    ? `<button type="button" class="ir-conta" data-ir-conta="${escapar(lado.conta)}" data-ir-mes="${escapar(lado.mes ?? '')}" title="Abrir ${escapar(app.contas[lado.conta].nome)}" aria-label="Abrir ${escapar(app.contas[lado.conta].nome)}">↗</button>`
+    : '';
+
+  return `<li class="${rapido || elo ? 'com-rapido' : ''}"><button type="button" class="linha ${tom} ${l.tipo === 'pagamento_fatura' ? 'da-fatura' : ''} ${est === 'realizado' ? '' : est} ${saldoApos ? 'com-saldo' : ''}"
       ${alvo} aria-label="${acao} ${escapar(nomeDoTom.toLowerCase())} de ${escapar(diaCurto(dia))}">
     <span class="marca" title="${nomeDoTom}" aria-hidden="true">${marca}</span>
     <span class="quando">${escapar(diaCurto(dia))}</span>
@@ -1593,7 +1648,28 @@ function linhaHTML(l, ids, saldoApos = null) {
     </span>
     <span class="quanto ${tom}">${dinheiroHTML(l.valor, { sinal, estimado: Boolean(l.estimado) })}</span>
     ${saldoApos ? saldo : ''}
-  </button>${rapido}</li>`;
+  </button>${elo}${rapido}</li>`;
+}
+
+/**
+ * Para onde vai o ↗ da linha: a conta do outro lado da transferência (do
+ * pagamento de fatura, da parcela, do aporte, do líquido da folha) ou a fatura
+ * do cartão. Compra, receita e despesa comuns não têm "outro lado".
+ */
+function ladoDaLinha(l, ids, investimento, transferencia) {
+  const existe = (id) => id && app.contas[id] && paginaDaConta(app.contas[id]);
+  if (l.fatura) return existe(l.cartaoId) ? { conta: l.cartaoId, mes: l.fatura.vencimento.slice(0, 7) } : null;
+  let alvo = null;
+  if (investimento) {
+    const doAtivo = app.ativos?.[l.ativoId]?.contaId;
+    alvo = ids?.has(doAtivo) ? l.contaId : doAtivo;
+  } else if (transferencia) {
+    const [a, b] = [l.contaId, l.contaDestinoId];
+    alvo = ids?.has(a) && !ids.has(b) ? b : ids?.has(b) && !ids.has(a) ? a : b;
+  }
+  if (!existe(alvo)) return null;
+  const cartao = app.contas[alvo].tipo === 'cartao';
+  return { conta: alvo, mes: cartao ? l.dataCaixa.slice(0, 7) : null };
 }
 
 /**
@@ -1735,6 +1811,12 @@ async function pagarFatura(cartaoId, centavos) {
 }
 
 document.addEventListener('click', async (e) => {
+  const ir = e.target.closest('[data-ir-conta]');
+  if (ir) {
+    irParaConta(ir.dataset.irConta, ir.dataset.irMes || null);
+    return;
+  }
+
   const pagar = e.target.closest('[data-pagar]');
   if (pagar) {
     await pagarFatura(pagar.dataset.pagar, Number(pagar.dataset.valor) || 0);

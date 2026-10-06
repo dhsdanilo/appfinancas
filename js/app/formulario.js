@@ -19,7 +19,7 @@ import * as estado from '../core/estado.js';
 import {
   hoje, nasceConfirmado, nomeDaCategoria, correcao, detalhesDaCategoria, dataVista, estornado,
 } from '../core/lancamentos.js';
-import { somarDias, somarMeses } from '../core/datas.js';
+import { somarDias, somarMeses, fimDoMes } from '../core/datas.js';
 import { temCiclo, cicloDaCompra } from '../core/cartao.js';
 import { MARCACAO_CAMPO_VALOR, ligarCampoValor } from './campo-valor.js';
 import { ligarZonaDePerigo } from './zona-perigo.js';
@@ -212,6 +212,8 @@ const P = {
   </label>
 
   <p class="devolucao" data-papel="devolucao" hidden></p>
+
+  <p class="serie-acoes" data-papel="serie" hidden></p>
 
   <div class="acoes" data-papel="acoes"></div>
 
@@ -1439,6 +1441,7 @@ export async function criarFormulario({
     perigo.mostrar(Boolean(editando));
     pintarAtalhos();
     pintarDevolucao();
+    pintarSerie();
     valor.pintar();
   }
 
@@ -1457,6 +1460,47 @@ export async function criarFormulario({
     el('linha-reajuste').hidden = !mostrar;
     if (!mostrar) el('reajuste').checked = false;
   }
+
+  /**
+   * Sair de uma recorrência sem passar por Planejamento (design/03 §4.2): na
+   * ocorrência prevista — "não veio este mês", "encerrar a partir daqui",
+   * apagar a série se nunca foi lançada — e no lançamento de uma série viva.
+   */
+  function pintarSerie() {
+    const faixa = el('serie');
+    const prevista = !editando && previstoDe ? previstoDe : null;
+    const serie = prevista
+      ? app?.recorrencias?.[prevista.recorrenciaId]
+      : editando ? serieViva(editando) : null;
+    faixa.hidden = !serie;
+    if (!serie) return;
+    const lancadas = Object.values(app.lancamentos).filter((l) => !l.removido && l.recorrenciaId === serie.id);
+    const botoes = [];
+    if (prevista) botoes.push('<button type="button" class="elo" data-serie="pular">não veio este mês</button>');
+    botoes.push(`<button type="button" class="elo" data-serie="encerrar">${prevista ? 'encerrar a partir daqui' : 'encerrar a série depois deste mês'}</button>`);
+    if (!lancadas.length) botoes.push('<button type="button" class="elo perigo" data-serie="apagar">apagar a série</button>');
+    faixa.innerHTML = `<span>${escapar(serie.nome ?? 'recorrência')} repete todo mês</span><span class="acoes-serie">${botoes.join('')}</span>`;
+  }
+
+  el('serie').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-serie]');
+    if (!b) return;
+    const prevista = !editando && previstoDe ? previstoDe : null;
+    const id = prevista ? prevista.recorrenciaId : editando?.recorrenciaId;
+    if (!id) return;
+    const mes = (prevista ?? editando).dataCompetencia.slice(0, 7);
+    if (b.dataset.serie === 'pular') {
+      await estado.aplicarEvento('recorrencia.pulada', { id, mes });
+    } else if (b.dataset.serie === 'encerrar') {
+      // O mês da ocorrência prevista já não conta; o do lançamento fica.
+      const fim = prevista ? fimDoMes(somarMeses(`${mes}-01`, -1)) : fimDoMes(`${mes}-01`);
+      await estado.aplicarEvento('recorrencia.alterada', { id, fim });
+    } else if (b.dataset.serie === 'apagar') {
+      await estado.aplicarEvento('recorrencia.removida', { id });
+    }
+    if (aoSalvar) await aoSalvar();
+    if (aoFechar) aoFechar();
+  });
 
   function pintarDevolucao() {
     const pode = Boolean(editando) && editando.tipo === 'despesa' && Boolean(aoDevolver);

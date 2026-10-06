@@ -736,6 +736,33 @@ body[data-pagina="dividas"] .bloco { min-width: 0; }
 }
 .lancar-rapido:hover { background: var(--acento-fundo); }
 
+/* O ↗ que leva à conta do outro lado, e o valor-link dos números da faixa. */
+.ir-conta {
+  flex: none;
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border: 1px solid var(--borda-forte);
+  border-radius: var(--raio-controle);
+  background: var(--superficie);
+  color: var(--tinta-fraca);
+  font-size: var(--t-corpo);
+}
+.ir-conta:hover { background: var(--acento-fundo); }
+.valor-numero.elo-numero {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  text-align: left;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.numeros-caixa .previsto-faixa .valor-numero.elo-numero { font-size: var(--t-secao); }
+
 /* O cartão na largura toda: o limite em cima (não muda com o mês), a fatura
    do mês embaixo (pedido dele, 03/10/2026). */
 .cartao-resumo .limite-cartao { display: flex; flex-direction: column; gap: var(--e2); padding-bottom: var(--e3); border-bottom: 1px solid var(--borda); }
