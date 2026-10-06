@@ -24,7 +24,7 @@ import { lancarOcorrencia } from './app/ocorrencia.js';
 import { criarJanelaDoAtivo } from './app/ativo.js';
 import { iniciarPaginaDoAtivo } from './app/ativo-detalhe.js';
 import { criarImportacao } from './app/importar.js';
-import { resumoDaConta, ativosDaConta, nomeDaClasse, CLASSES } from './core/investimentos.js';
+import { resumoDaConta, ativosDaConta, nomeDaClasse, CLASSES, serieDoAtivo } from './core/investimentos.js';
 import { donosNoDia, envelopesAtivos, numerosDoEnvelope } from './core/envelopes.js';
 import { avisosDoInicio } from './core/avisos.js';
 import { ultimaCopia } from './core/copia.js';
@@ -1490,39 +1490,65 @@ function divisao(donos, lugarId) {
   return partes.join(' · ');
 }
 
-/** Os ativos de uma conta, agrupados pela classe, cada um com valor e quanto rendeu. */
+/**
+ * Os ativos de uma conta como cards, agrupados pela classe: valor, quanto rendeu, uma linha
+ * do rendimento acumulado nos últimos 3 meses e de quem é o dinheiro (cada envelope é um
+ * link). O card abre a página do ativo; arquivados ficam recolhidos no fim da classe.
+ */
 function listaDeAtivos(r, donos = null) {
   if (!r.posicoes.length) return '';
   const grupos = CLASSES.map((cl) => ({ cl, ps: r.posicoes.filter((p) => p.ativo.classe === cl.id) }))
     .filter((g) => g.ps.length);
   return `<div class="ativos">${grupos.map((g) => {
     const vivos = g.ps.filter((p) => !p.ativo.arquivado);
+    const arquivados = g.ps.filter((p) => p.ativo.arquivado);
     const total = vivos.reduce((t, p) => t + p.valorAtual, 0);
     const aplicado = vivos.reduce((t, p) => t + p.aplicado, 0);
     const rendeu = vivos.reduce((t, p) => t + p.rendeu, 0);
-    return `<p class="classe-ativos"><span>${escapar(g.cl.nome)}</span><span>${formatar(total)}${aplicado ? ` · ${pctTexto(rendeu / aplicado)}` : ''}</span></p>
-      ${g.ps.map((p) => {
-        const a = p.ativo;
-        const sub = (p.porCotas
-          ? [
-            p.quantidade ? `${p.quantidade.toLocaleString('pt-BR', { maximumFractionDigits: 8 })} × ${p.cotacao ? formatar(p.cotacao.preco) : '—'}` : 'nenhuma na mão',
-            p.cotacao ? `cotação de ${diaCurto(p.cotacao.data)}` : 'sem cotação',
-            p.quantidade ? `médio ${formatar(Math.round(p.precoMedio))}` : '',
-            a.arquivado ? 'arquivado' : '',
-          ]
-          : [
-            a.vencimento ? `vence ${diaCurto(a.vencimento)}/${a.vencimento.slice(0, 4)}` : '',
-            p.avaliacao ? `valor de ${diaCurto(p.avaliacao.data)}` : 'sem valor informado',
-            a.arquivado ? 'arquivado' : '',
-          ]).filter(Boolean).join(' · ');
-        const deQuem = divisao(donos, a.id);
-        return `<button type="button" class="linha-ativo ${a.arquivado ? 'arquivado' : ''}" data-ativo-abrir="${escapar(a.id)}">
-          <span class="nome-ativo">${escapar(a.nome)}<span class="fino">${escapar(sub)}</span>${deQuem ? `<span class="fino divisao-envelopes">${escapar(deQuem)}</span>` : ''}</span>
-          <span class="valor-ativo">${p.estimado && p.valorAtual ? '~' : ''}${formatar(p.valorAtual)}</span>
-          <span class="rendeu-ativo ${p.rendeu > 0 ? 'positivo' : p.rendeu < 0 ? 'negativo' : ''}">${p.aplicado ? pctTexto(p.pct) : '—'}</span>
-        </button>`;
-      }).join('')}`;
+    return `<p class="classe-ativos"><span>${escapar(g.cl.nome)}</span><span>${formatar(total)}${aplicado ? ` · rendeu ${pctTexto(rendeu / aplicado)}` : ''}</span></p>
+      <div class="cards-ativos">${vivos.map((p) => cardDoAtivo(p, donos)).join('')}</div>
+      ${arquivados.length ? `<details class="ativos-arquivados"><summary>arquivados (${arquivados.length})</summary>
+        <div class="cards-ativos">${arquivados.map((p) => cardDoAtivo(p, donos)).join('')}</div></details>` : ''}`;
   }).join('')}</div>`;
+}
+
+/** A linha do rendimento acumulado (valor ÷ investido) dos últimos 3 meses, em SVG; '' sem pontos. */
+function linhaDoRendimento(p) {
+  const serie = serieDoAtivo(app, p.ativo.id, somarMeses(hoje(), -3))
+    .filter((s) => s.investido > 0)
+    .map((s) => s.valor / s.investido - 1);
+  if (serie.length < 2) return '';
+  const min = Math.min(...serie);
+  const max = Math.max(...serie);
+  const fundo = max - min || 1;
+  const pontos = serie.map((v, i) => `${((i / (serie.length - 1)) * 96).toFixed(1)},${(32 - ((v - min) / fundo) * 28).toFixed(1)}`).join(' ');
+  return `<svg class="mini-ativo ${p.rendeu < 0 ? 'negativo' : 'positivo'}" width="96" height="34" viewBox="0 0 96 34" aria-hidden="true"><polyline points="${pontos}" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+}
+
+function cardDoAtivo(p, donos) {
+  const a = p.ativo;
+  const sub = (p.porCotas
+    ? [
+      p.quantidade ? `${p.quantidade.toLocaleString('pt-BR', { maximumFractionDigits: 8 })} cotas` : 'nenhuma na mão',
+      p.quantidade ? `médio ${formatar(Math.round(p.precoMedio))}` : '',
+    ]
+    : [a.vencimento ? `vence ${diaCurto(a.vencimento)}/${a.vencimento.slice(0, 4)}` : '']).filter(Boolean).join(' · ');
+  const nota = p.cotacao ? `preço de ${diaCurto(p.cotacao.data)}` : p.avaliacao ? `valor de ${diaCurto(p.avaliacao.data)}` : p.valorAtual ? 'estimado pelos movimentos' : 'sem valor informado';
+  const lugar = donos?.porLugar.get(a.id);
+  const fatias = lugar && lugar.valor > 0
+    ? [...lugar.donos.entries()].filter(([id]) => app.envelopes[id]).sort((x, y) => y[1] - x[1])
+      .map(([id, v]) => `<a class="dono-ativo" href="#/envelopes/${escapar(id)}">${escapar(app.envelopes[id].nome)} ${Math.round((v / lugar.valor) * 100)}%</a>`)
+      .concat(Math.round((lugar.semDono / lugar.valor) * 100) >= 1 && lugar.donos.size ? [`<span class="dono-ativo sem-dono">sem dono ${Math.round((lugar.semDono / lugar.valor) * 100)}%</span>`] : [])
+    : [];
+  const selo = p.aplicado ? `<span class="selo-ativo ${p.rendeu > 0 ? 'positivo' : p.rendeu < 0 ? 'negativo' : ''}">${p.rendeu > 0 ? '+' : ''}${pctTexto(p.pct)}</span>` : '<span class="selo-ativo">—</span>';
+  return `<article class="card-ativo ${a.arquivado ? 'arquivado' : ''}">
+    <button type="button" class="corpo-card-ativo" data-ativo-abrir="${escapar(a.id)}">
+      <span class="topo-card-ativo"><span class="nome-card-ativo">${escapar(a.nome)}</span>${selo}</span>
+      <span class="fino">${escapar(sub)}</span>
+      <span class="base-card-ativo"><span><span class="valor-card-ativo">${p.estimado && p.valorAtual ? '~' : ''}${formatar(p.valorAtual)}</span><span class="fino">${escapar(nota)}</span></span>${linhaDoRendimento(p)}</span>
+    </button>
+    ${fatias.length ? `<div class="donos-card">${fatias.join('')}</div>` : ''}
+  </article>`;
 }
 
 /** Geral: a soma das contas e o dinheiro por classe. */
@@ -2138,6 +2164,7 @@ const janelaDoAtivo = criarJanelaDoAtivo({ aoSalvar: pintar });
 iniciarPaginaDoAtivo({
   aoRegistrar: (id) => janelaDoAtivo.abrir(id),
   aoEditar: (id) => janelaDoAtivo.editar(id),
+  aoCorrigir: (id, opId) => janelaDoAtivo.corrigir(id, opId),
 });
 
 const holerite = criarHolerite({

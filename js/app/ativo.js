@@ -702,6 +702,12 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
       el('nome').focus();
     },
 
+    /** A janela já na correção de uma operação (data, quantidade, preço…). */
+    async corrigir(ativoId, opId) {
+      await this.abrir(ativoId);
+      janela.querySelector(`[data-corrigir-op="${opId}"]`)?.click();
+    },
+
     /** A janela já na edição do ativo (nome, classe, cotação, vencimento). */
     async editar(ativoId) {
       await this.abrir(ativoId);

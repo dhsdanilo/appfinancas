@@ -41,7 +41,7 @@ function intervalo(periodo, outro) {
   return { de: somarMeses(ate, -{ '1m': 1, '3m': 3, '6m': 6, '12m': 12 }[periodo]), ate };
 }
 
-export function iniciarPaginaDoAtivo({ aoRegistrar, aoEditar } = {}) {
+export function iniciarPaginaDoAtivo({ aoRegistrar, aoEditar, aoCorrigir } = {}) {
   const raiz = document.getElementById('corpo-ativo');
   if (!raiz) return { pintar: () => {} };
   let ativa = false;
@@ -50,6 +50,7 @@ export function iniciarPaginaDoAtivo({ aoRegistrar, aoEditar } = {}) {
   let outro = { de: '', ate: '' };
   let modo = modoGuardado();
   let vista = 'valor';
+  let todosOsMovimentos = false;
 
   const numero = (rotulo, valor, nota = '', classe = '') =>
     `<div class="numero-det"><span class="rotulo-numero">${esc(rotulo)}</span><span class="valor-numero ${classe}">${valor}</span>${nota ? `<span class="fino">${esc(nota)}</span>` : ''}</div>`;
@@ -136,10 +137,14 @@ export function iniciarPaginaDoAtivo({ aoRegistrar, aoEditar } = {}) {
     const nomes = cotas ? NOME_DA_OP_COTAS : NOME_DA_OP;
     const ops = visiveis(app).filter((l) => l.ativoId === ativo.id && l.confirmado)
       .sort((a, b) => (a.dataCompetencia < b.dataCompetencia ? 1 : -1));
+    const mostradas = todosOsMovimentos ? ops : ops.slice(0, 5);
     const movimentos = ops.length
-      ? `<p class="miudo titulo-linhas">últimos movimentos</p><ul class="tabelinha">${ops.slice(0, 5).map((l) =>
-          linha(`${dataCompleta(l.dataCompetencia)} · ${nomes[l.tipo] ?? l.tipo}${l.quantidade ? ` <span class="fino">${quantos(Number(l.quantidade))} × ${formatar(l.preco ?? 0)}</span>` : ''}`, formatar(l.valor))).join('')}</ul>
-        ${ops.length > 5 ? `<button type="button" class="elo" data-det="b-ver-tudo">ver tudo (${ops.length})</button>` : ''}`
+      ? `<p class="miudo titulo-linhas">${todosOsMovimentos ? 'movimentos' : 'últimos movimentos'} <span class="fino">· toque para corrigir</span></p>
+        <ul class="tabelinha movimentos-det">${mostradas.map((l) =>
+          `<li><button type="button" class="movimento-det" data-det-op="${esc(l.id)}" aria-label="Corrigir ${esc(nomes[l.tipo] ?? l.tipo)} de ${esc(dataCompleta(l.dataCompetencia))}">
+            <span>${dataCompleta(l.dataCompetencia)} · ${nomes[l.tipo] ?? l.tipo}${l.quantidade ? ` <span class="fino">${quantos(Number(l.quantidade))} × ${formatar(l.preco ?? 0)}</span>` : ''}</span>
+            <span>${formatar(l.valor)} <span class="fino" aria-hidden="true">✎</span></span></button></li>`).join('')}</ul>
+        ${ops.length > 5 ? `<button type="button" class="elo" data-det="b-ver-tudo">${todosOsMovimentos ? 'mostrar só os últimos' : `ver todos (${ops.length})`}</button>` : ''}`
       : '';
 
     raiz.innerHTML = `<div class="pagina-ativo">
@@ -212,7 +217,10 @@ export function iniciarPaginaDoAtivo({ aoRegistrar, aoEditar } = {}) {
       await pintar();
       return;
     }
-    if (e.target.closest('[data-det="b-registrar"], [data-det="b-ver-tudo"]')) { if (aoRegistrar) await aoRegistrar(aberto); return; }
+    const op = e.target.closest('[data-det-op]');
+    if (op) { if (aoCorrigir) await aoCorrigir(aberto, op.dataset.detOp); return; }
+    if (e.target.closest('[data-det="b-ver-tudo"]')) { todosOsMovimentos = !todosOsMovimentos; await pintar(); return; }
+    if (e.target.closest('[data-det="b-registrar"]')) { if (aoRegistrar) await aoRegistrar(aberto); return; }
     if (e.target.closest('[data-det="b-editar"]')) { if (aoEditar) await aoEditar(aberto); }
   });
   raiz.addEventListener('change', async (e) => {
@@ -223,7 +231,7 @@ export function iniciarPaginaDoAtivo({ aoRegistrar, aoEditar } = {}) {
   document.addEventListener('app:tela', (e) => {
     ativa = e.detail.tela === 'ativo';
     if (!ativa) return;
-    if (e.detail.sub !== aberto) vista = 'valor';
+    if (e.detail.sub !== aberto) { vista = 'valor'; todosOsMovimentos = false; }
     aberto = e.detail.sub;
     pintar();
   });
