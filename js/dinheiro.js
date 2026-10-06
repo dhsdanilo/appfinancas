@@ -31,7 +31,9 @@ import { areas, cor as corDaSerie } from './app/graficos.js';
 import { aoLancar } from './app/pagina.js';
 import { enderecoDa } from './app/rotas.js';
 import { BARRA, PRINCIPAL, DIALOGOS, ICONES } from './app/marcacao-dinheiro.js';
-import { porOrdemDaConta, iniciaisDaConta, corDaConta } from './core/ordem.js';
+import { porOrdemDaConta, corDaConta } from './core/ordem.js';
+import { bolinhaDaConta } from './core/icones-conta.js';
+import { csvDosLancamentos } from './core/exportar.js';
 import { rendaDaFolha, liquidoPrevisto } from './core/holerite.js';
 import {
   visiveis, porDataDecrescente, estadoDoLancamento, saldoReal, nomeDaCategoria,
@@ -198,6 +200,8 @@ let app = null;
 // Os previstos que estão na tela, pelo id: tocar num deles abre exatamente o
 // que se viu, sem refazer a conta com outro intervalo.
 const previstosNaTela = new Map();
+// As linhas desenhadas agora, com o texto delas: é o que o Exportar leva para a planilha.
+const linhasNaTela = [];
 
 async function pintar() {
   if (!ativa) return;
@@ -205,6 +209,9 @@ async function pintar() {
   if (ultimaData && ultimaData.mes !== vista.mes) ultimaData = null;
   app = await estado.calcular();
   previstosNaTela.clear();
+  linhasNaTela.length = 0;
+  // No Início não há lista: nada a exportar.
+  $('b-exportar').hidden = PAGINA === 'inicio';
   // A fila do que precisa de você mora no Início (08-telas §6).
   if (PAGINA === 'inicio') fila?.pintar(app);
   else $('pendencias').hidden = true;
@@ -552,7 +559,7 @@ function pintarSubabas(contas) {
       const ativa = unica || c.id === vista.conta;
       const icone = c.id === 'todas'
         ? `<span class="ic ic-geral">${ICONES.geral}</span>`
-        : `<span class="ic" style="background:${corDaConta(c.nome)}">${escapar(iniciaisDaConta(c.nome))}</span>`;
+        : bolinhaDaConta(c);
       return `<button type="button" class="aba-conta" data-conta="${escapar(c.id)}" aria-pressed="${ativa}">${icone}<span class="nome">${escapar(c.nome)}</span></button>`;
     })
     .join('') + botaoNovaConta();
@@ -1930,6 +1937,16 @@ function linhaHTML(l, ids, saldoApos = null) {
     .map((e) => `<span class="etiqueta">${escapar(e)}</span>`)
     .join('');
   const dia = dataVista(l);
+  linhasNaTela.push({
+    data: dia,
+    tipo: nomeDoTom,
+    descricao: oque,
+    detalhes: onde,
+    etiquetas: (l.etiquetas ?? []).map((t) => app.etiquetas?.[t]?.nome).filter(Boolean),
+    parcela: l.parcela ? `${l.parcela.numero}/${l.parcela.total}` : '',
+    situacao: est === 'realizado' ? 'realizado' : l.projetado ? 'previsto' : est,
+    valor: sinal === '−' ? -l.valor : l.valor,
+  });
   const saldo = saldoApos?.has(l.id)
     ? `<span class="saldo-apos ${saldoApos.get(l.id) < 0 ? 'negativo' : ''}">${dinheiroHTML(saldoApos.get(l.id))}</span>`
     : '<span class="saldo-apos"></span>';
@@ -2339,6 +2356,20 @@ $('b-transferir').addEventListener('click', abrirTransferencia);
 // Importar extrato ou fatura (design/13 §3), já na conta da tela quando há uma.
 const importacao = criarImportacao({ aoSalvar: pintar });
 $('b-importar').addEventListener('click', () => importacao.abrir(contaDaVista()));
+// Exportar o que está na tela: a planilha dos lançamentos, no mês e nos filtros em que se está.
+$('b-exportar').addEventListener('click', () => {
+  if (!linhasNaTela.length) return;
+  const arquivo = new Blob([csvDosLancamentos(linhasNaTela)], { type: 'text/csv;charset=utf-8' });
+  const quando = modoDaTela() === 'mes' ? vista.mes : `${intervalo().de}_a_${intervalo().ate}`;
+  const ancora = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(arquivo),
+    download: `lancamentos-${PAGINA}-${quando}.csv`,
+  });
+  document.body.append(ancora);
+  ancora.click();
+  ancora.remove();
+  setTimeout(() => URL.revokeObjectURL(ancora.href), 10000);
+});
 $('b-fechar-edicao').addEventListener('click', () => dialogoEdicao.close());
 $('b-fechar-transferencia').addEventListener('click', () => dialogoTransferencia.close());
 

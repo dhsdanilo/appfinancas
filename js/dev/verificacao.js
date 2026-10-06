@@ -33,6 +33,8 @@ import * as relatorios from '../core/relatorios.js';
 import * as automaticas from '../core/automaticas.js';
 import * as importar from '../core/importar.js';
 import * as explorar from '../core/explorar.js';
+import * as exportar from '../core/exportar.js';
+import * as icones from '../core/icones-conta.js';
 
 const BANCO_DE_TESTE = 'appfinancas-teste';
 
@@ -2465,6 +2467,26 @@ caso('relatório', '★ flexível: soma ou cruza, devolução abate, renda à pa
 });
 
 // ── apoio ─────────────────────────────────────────────────────────────────
+
+caso('exportar', 'a planilha: BOM, ponto e vírgula, vírgula decimal, aspas e texto de banco protegido', async () => {
+  const t = exportar.csvDosLancamentos([
+    { data: '2026-10-05', tipo: 'Despesa', descricao: 'Mercado; "mês"', detalhes: 'Alimentação · Conta', etiquetas: ['casa', 'fixo'], parcela: '2/3', situacao: 'realizado', valor: -12345 },
+    { data: '2026-10-06', tipo: 'Receita', descricao: '=SOMA(A1)', detalhes: '', etiquetas: [], valor: 500000, situacao: 'previsto' },
+  ]);
+  igual(t.charCodeAt(0), 0xFEFF, 'começa com o BOM');
+  const linhas = t.slice(1).split('\r\n');
+  igual(linhas[0], 'Data;Tipo;Descrição;Detalhes;Etiquetas;Parcela;Situação;Valor', 'o cabeçalho');
+  igual(linhas[1], '05/10/2026;Despesa;"Mercado; ""mês""";Alimentação · Conta;casa, fixo;2/3;realizado;-123,45', 'a linha com aspas e sinal');
+  igual(linhas[2], "06/10/2026;Receita;'=SOMA(A1);;;;previsto;5000,00", 'a fórmula do texto não executa');
+  igual(exportar.valorDaPlanilha(5), '0,05', 'centavos sem sinal');
+});
+
+caso('exportar', 'o ícone da conta: desenho, banco, e a inicial quando não há escolha', async () => {
+  igual(icones.marcaDoIcone('b:caixa', 'X').fundo, '#0F6DB5', 'a marca do banco');
+  verdade(icones.marcaDoIcone('i:banco', 'X').html.startsWith('<svg'), 'o desenho genérico');
+  igual(icones.marcaDoIcone('', 'Banco Azul').html, 'BA', 'sem escolha: as iniciais');
+  igual(icones.marcaDoIcone('b:nao-existe', 'Moeda').html, 'M', 'código desconhecido cai nas iniciais');
+});
 
 async function limpar() {
   db.usarBanco(BANCO_DE_TESTE);

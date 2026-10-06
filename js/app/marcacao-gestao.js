@@ -259,6 +259,11 @@ export const EDITAR_CONTA = `
       <label for="ec-caixa">O dinheiro fica</label>
       <select id="ec-caixa" name="caixaEm" data-papel="caixa-em"></select>
     </div>
+    <!-- O ícone da aba: a inicial, um desenho ou a marca de um banco (preenchido por gestao.js). -->
+    <div class="campo largo escolha-icone-conta" id="ec-icone">
+      <span class="rotulo">Ícone</span>
+      <div class="grade-icones" id="ec-icone-grade"></div>
+    </div>
     <!-- A ordem das abas da área: as mais importantes na frente (pedido dele). -->
     <div class="campo largo ordem-conta" id="ec-ordem">
       <span class="rotulo">Ordem nas abas</span>

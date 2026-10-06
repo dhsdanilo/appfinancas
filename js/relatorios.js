@@ -98,7 +98,7 @@ async function pintar() {
   $('abas-relatorios').innerHTML = ABAS
     .map((a) => `<button type="button" class="aba-conta" data-rel-aba="${a.id}" aria-pressed="${a.id === tela.aba}"><span class="ic ic-geral">${ICONE_DA_ABA[a.id] ?? ICONES.geral}</span><span class="nome">${esc(a.nome)}</span></button>`).join('');
   $('periodo-relatorios').hidden = true;
-  $('corpo-relatorios').innerHTML = tela.aba === 'gastos' ? abaGastos() : abaPatrimonio();
+  $('corpo-relatorios').innerHTML = `<div class="exporta-rel"><button type="button" class="elo" data-rel-pdf title="Abre o diálogo de imprimir: escolha Salvar como PDF">Salvar em PDF</button></div>${tela.aba === 'gastos' ? abaGastos() : abaPatrimonio()}`;
   if (tela.aba === 'gastos') desenharGastos(); else desenharPatrimonio();
   guardar();
 }
@@ -604,6 +604,11 @@ document.addEventListener('keydown', (e) => {
   if (!ativa || e.key !== 'Enter' || !e.target.closest('[data-ex-nome]')) return;
   e.preventDefault();
   document.querySelector('[data-ex-confirmar]')?.click();
+});
+
+// O PDF é a tela como está, pelo diálogo de imprimir (o CSS de impressão esconde a moldura).
+document.addEventListener('click', (e) => {
+  if (ativa && e.target.closest('[data-rel-pdf]')) window.print();
 });
 
 document.addEventListener('app:tela', (e) => {

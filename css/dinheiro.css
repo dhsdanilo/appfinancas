@@ -1508,3 +1508,15 @@ body[data-pagina="inicio"] #b-exportar { display: none; }
   .linha-rel.com-cor .pct-rel { display: none; }
   .ferramentas-rel .direita-rel { width: 100%; }
 }
+
+/* Salvar em PDF (Relatórios): o botão fica no alto, e a impressão leva só o painel. */
+.exporta-rel { display: flex; justify-content: flex-end; margin: 0 0 var(--e2); }
+@media print {
+  body[data-pagina="relatorios"] { visibility: hidden; background: #fff; }
+  body[data-pagina="relatorios"] #painel-relatorios,
+  body[data-pagina="relatorios"] #painel-relatorios * { visibility: visible; }
+  body[data-pagina="relatorios"] #painel-relatorios { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none; border: 0; }
+  body[data-pagina="relatorios"] .exporta-rel,
+  body[data-pagina="relatorios"] .mais-filtro,
+  body[data-pagina="relatorios"] .vistas-rel { display: none; }
+}

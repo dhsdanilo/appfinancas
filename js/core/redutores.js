@@ -141,6 +141,8 @@ export const redutores = {
       'cofrinhoAtivoId',
       // A ordem das abas da área, escolhida por ele (js/core/ordem.js).
       'ordem',
+      // O ícone escolhido ("i:banco", "b:caixa"); sem ele, a inicial (js/core/icones-conta.js).
+      'icone',
       'risco',
       'liquidez',
       // O número da conta no arquivo do banco: a segunda importação já sabe qual é.

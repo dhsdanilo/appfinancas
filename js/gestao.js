@@ -32,6 +32,7 @@ import { situacao, saldoDevedor } from './core/divida.js';
 import { calendarioDePagamento } from './core/contrato.js';
 import { somarMeses, inicioDoMes } from './core/datas.js';
 import { porOrdemDaConta } from './core/ordem.js';
+import { escolhasDeIcone } from './core/icones-conta.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -977,6 +978,26 @@ $('b-excluir-sim')?.addEventListener('click', async () => {
 // ── editar uma conta: nome, saldo inicial, ciclo do cartão, arquivar, excluir ──
 
 let editandoConta = null;
+let iconeEscolhido = '';
+
+/** Desenha as escolhas de ícone e marca a atual. */
+function pintarEscolhaDeIcone(nome) {
+  const e = escolhasDeIcone(nome);
+  $('ec-icone-grade').innerHTML =
+    `<div class="linha-icones">${e.inicial}${e.desenhos}</div><p class="rotulo-icones">Bancos</p><div class="linha-icones">${e.bancos}</div>`;
+  for (const b of $('ec-icone-grade').querySelectorAll('[data-icone]')) {
+    b.setAttribute('aria-pressed', String(b.dataset.icone === iconeEscolhido));
+  }
+}
+
+$('ec-icone-grade')?.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-icone]');
+  if (!b) return;
+  iconeEscolhido = b.dataset.icone;
+  for (const x of $('ec-icone-grade').querySelectorAll('[data-icone]')) {
+    x.setAttribute('aria-pressed', String(x === b));
+  }
+});
 
 function abrirEditarConta(id) {
   const c = app.contas[id];
@@ -988,6 +1009,8 @@ function abrirEditarConta(id) {
   $('f-editar-conta').dataset.area = areaDaConta(c);
   $('titulo-editar-conta').textContent = NOME_DO_TIPO[c.tipo] ?? 'conta';
   f.nome.value = c.nome;
+  iconeEscolhido = c.icone ?? '';
+  pintarEscolhaDeIcone(c.nome);
   f.dono.value = (c.titular && app.pessoas[c.titular]?.nome) || '';
   $('ec-cartao').hidden = !cartao;
   if (cartao) {
@@ -1085,6 +1108,7 @@ $('f-editar-conta')?.addEventListener('submit', async (e) => {
 
   const mudou = {};
   if (nome !== c.nome) mudou.nome = nome;
+  if (iconeEscolhido !== (c.icone ?? '')) mudou.icone = iconeEscolhido;
   // O dono (titular): é por ele que o "a repassar" sabe de quem é cada conta e cartão.
   const dono = f.dono.value.trim();
   const titularAntes = (c.titular && app.pessoas[c.titular]?.nome) || '';
