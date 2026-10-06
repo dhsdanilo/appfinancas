@@ -495,7 +495,7 @@ function pintarResumoDeCaixa(contas) {
     .filter((c) => c.tipo === 'cartao' && temCofrinho(c) && ids.has(c.pagaCom))
     .map((c) => ({ c, prov: provisaoDoCartao(app, c.id) }))
     .filter((x) => x.prov)
-    .map((x) => miniProvisao(x.c, x.prov));
+    .map((x, _, todos) => miniProvisao(x.c, x.prov) + faturaAbertaDoCartao(x.c, todos.length > 1));
   // No Geral, a transferência entre duas destas contas não sai do conjunto.
   const doConjunto = contas.length > 1 ? ids : null;
   const previstos = contas.map((c) => ({ conta: c, p: saldoPrevisto(app, c.id, hoje(), doConjunto) }));
@@ -592,6 +592,18 @@ function blocoDeCaixa(nome, p, total = false, conta = null, aEntrar = null, prov
     <div class="numeros-renda numeros-caixa">${numeros.join('')}${previsto}</div>
     ${pe}
   </div>`;
+}
+
+/** O valor lançado da fatura aberta, para a olhada rápida na conta que paga o cartão. */
+function faturaAbertaDoCartao(cartao, comNome) {
+  const aberta = resumoDoCartao(app, cartao.id)?.aberta;
+  if (!aberta) return '';
+  return numeroDaFaixa(
+    comNome ? `fatura aberta ${cartao.nome}` : 'fatura aberta',
+    formatar(aberta.aPagar),
+    { conta: cartao.id, mes: aberta.vencimento.slice(0, 7), classe: 'cor-cartao' },
+    `Vence ${diaCurto(aberta.vencimento)}. O que já foi lançado nela.`
+  );
 }
 
 /** "4.000 de 4.170" com uma barra fininha: a provisão do cartão no cofrinho. */
