@@ -86,6 +86,18 @@ def acoes():
     return {'datas': dias, 'p': {t: [s.get(t) for s in series] for t in tickers}}
 
 
+def nome_do_titulo(tipo, venc):
+    """O nome que o Tesouro Direto usa. No Renda+ e no Educa+ o ano do nome é o do
+    primeiro pagamento, não o do vencimento: o Renda+ 2065 paga por 20 anos e vence
+    em 2084; o Educa+ 2030 paga por 5 anos e vence em 2034."""
+    ano = int(venc[:4])
+    if tipo == 'Tesouro Renda+ Aposentadoria Extra':
+        return f'{tipo} {ano - 19} · vence {ano}'
+    if tipo == 'Tesouro Educa+':
+        return f'{tipo} {ano - 4} · vence {ano}'
+    return f'{tipo} {ano}'
+
+
 def tesouro():
     texto = baixar(TESOURO).decode('utf-8', errors='replace')
     linhas = list(csv.DictReader(io.StringIO(texto), delimiter=';'))
@@ -110,7 +122,7 @@ def tesouro():
         if not valor:
             continue
         chave = f"{r['Tipo Titulo']}|{venc}"
-        nomes[chave] = f"{r['Tipo Titulo']} {venc[:4]}"
+        nomes[chave] = nome_do_titulo(r['Tipo Titulo'], venc)
         p.setdefault(chave, [None] * len(datas))[indice[base]] = valor
     return {'datas': datas, 'p': p, 'nomes': nomes}
 
