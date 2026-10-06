@@ -725,8 +725,10 @@ body[data-pagina="dividas"] .bloco { min-width: 0; }
 .lista > li.com-rapido > .linha { flex: 1; min-width: 0; }
 .lancar-rapido {
   flex: none;
-  width: 36px;
-  min-height: 36px;
+  width: 24px;
+  min-height: 24px;
+  height: 24px;
+  line-height: 1;
   padding: 0;
   border: 1px solid var(--borda-forte);
   border-radius: var(--raio-controle);
@@ -735,6 +737,7 @@ body[data-pagina="dividas"] .bloco { min-width: 0; }
   font-size: var(--t-corpo);
 }
 .lancar-rapido:hover { background: var(--acento-fundo); }
+.lancar-rapido.sem-ir { visibility: hidden; border: 0; }
 
 /* O ↗ que leva à conta do outro lado: pequeno, e a vaga fica reservada em toda
    linha para os valores não saírem do prumo. O valor-link dos números da faixa

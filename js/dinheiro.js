@@ -1765,9 +1765,18 @@ function linhaHTML(l, ids, saldoApos = null) {
 
   // A conta fixa (ou estimada) que já chegou: um toque lança como veio, sem
   // abrir o formulário — ele fica para quando algo mudou (pedido dele).
-  const rapido = l.projetado && l.recorrenciaId && !l.automatico && l.dataCompetencia <= hoje()
-    ? `<button type="button" class="lancar-rapido" data-lancar-previsto="${escapar(l.id)}" title="Lançar como previsto" aria-label="Lançar ${escapar(oque)} como previsto">✓</button>`
-    : '';
+  // Dar baixa (pedido dele, 06/10/2026): o previsto de uma recorrência — vencido ou
+  // futuro — vira lançamento e cai na conta; o agendado que já está gravado é
+  // confirmado. A vaga do botão existe em TODA linha, para os valores não saírem do prumo.
+  const baixaDoPrevisto = l.projetado && l.recorrenciaId && !l.automatico;
+  const baixaDoAgendado = !l.projetado && !l.automatico && !l.fatura && !l.liquido && !l.confirmado && !l.cicloFatura && l.tipo !== 'ajuste_caixa';
+  const cairHoje = (l.dataCaixa ?? l.dataCompetencia) > hoje();
+  const tituloDaBaixa = cairHoje ? 'Dar baixa hoje: cai na conta agora' : 'Dar baixa: cai na conta';
+  const rapido = baixaDoPrevisto
+    ? `<button type="button" class="lancar-rapido" data-lancar-previsto="${escapar(l.id)}" title="${tituloDaBaixa}" aria-label="Dar baixa em ${escapar(oque)}">✓</button>`
+    : baixaDoAgendado
+      ? `<button type="button" class="lancar-rapido" data-dar-baixa="${escapar(l.id)}" title="${tituloDaBaixa}" aria-label="Dar baixa em ${escapar(oque)}">✓</button>`
+      : '<span class="lancar-rapido sem-ir" aria-hidden="true"></span>';
 
   // A conta do outro lado, a um toque, no mesmo período (pedido dele, 05/10/2026).
   const lado = ladoDaLinha(l, ids, investimento, transferencia);
@@ -1993,7 +2002,21 @@ document.addEventListener('click', async (e) => {
     const o = previstosNaTela.get(rapido.dataset.lancarPrevisto);
     if (!o) return;
     rapido.disabled = true;
-    await lancarOcorrencia(o);
+    // Futuro: cai hoje, na competência dele; vencido: na data dele.
+    await lancarOcorrencia(o, { dataCaixa: o.dataCompetencia > hoje() ? hoje() : o.dataCompetencia });
+    return;
+  }
+  const baixa = e.target.closest('[data-dar-baixa]');
+  if (baixa) {
+    const l = app.lancamentos[baixa.dataset.darBaixa];
+    if (!l || l.removido || l.confirmado) return;
+    baixa.disabled = true;
+    // Agendado ou vencido que já está gravado: confirma. Futuro, cai hoje.
+    await estado.aplicarEvento('lancamento.alterado', {
+      id: l.id,
+      confirmado: true,
+      ...(l.dataCaixa > hoje() ? { dataCaixa: hoje() } : {}),
+    });
     return;
   }
   const cron = e.target.closest('[data-cronograma]');
