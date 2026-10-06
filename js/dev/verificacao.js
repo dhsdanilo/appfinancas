@@ -1140,9 +1140,9 @@ caso('previsto', 'saldo previsto = real − faturas − recorrentes e agendados'
 
   let e = await estado.calcular();
   let p = previsto.saldoPrevisto(e, 'k1', dia);
-  igual([p.real, p.faturas.map((f) => f.valor), p.aSair, p.previsto, p.ate],
-    [100000, [20000], 20000, 60000, '2027-03-31'],
-    'a fatura aberta pesa mesmo vencendo em abril; receita futura não entra');
+  igual([p.real, p.faturas.map((f) => f.valor), p.aSair, p.previsto, p.totalProximas, p.provisionado, p.ate],
+    [100000, [], 20000, 80000, 20000, 60000, '2027-03-31'],
+    'a fatura aberta vence em abril: é a próxima fatura, pesa só no provisionado; receita futura não entra');
 
   // Lançada a ocorrência do mês, ela deixa de ser prevista.
   await estado.aplicarEvento('lancamento.registrado', {
@@ -1850,7 +1850,7 @@ caso('previsão', 'auditoria: pagamento agendado para o mês seguinte não tira 
   await ev('recorrencia.criada', { id: 'rt', nome: 'para a carteira', tipo: 'transferencia', contaId: 'cc', contaDestinoId: 'esp', valor: 5000, dia: 20, inicio: '2026-10-20' });
   const e = await estado.calcular();
   const p = previsto.saldoPrevisto(e, 'cc', '2026-10-15');
-  igual(p.faturas.map((f) => f.valor), [10000], 'a fatura aberta pesa em outubro, mesmo com o pagamento agendado em novembro');
+  igual(p.proximas.map((f) => f.valor), [10000], 'a fatura aberta é a próxima fatura em outubro, mesmo com o pagamento agendado em novembro');
   igual(p.partes.recorrentes, 5000, 'sozinha, a corrente vê a transferência para a carteira sair');
   const noGeral = previsto.saldoPrevisto(e, 'cc', '2026-10-15', new Set(['cc', 'esp']));
   igual(noGeral.partes.recorrentes, 0, 'no Geral, corrente → carteira não sai do conjunto');

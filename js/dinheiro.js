@@ -302,6 +302,10 @@ function cartaoDoInicio(area, contas) {
     const estimado = ps.some((p) => p.estimado);
     linhas.push(linhaDeResumo('saldo real', dinheiroHTML(real), real < 0 ? 'negativo' : ''));
     linhas.push(linhaDeResumo(`previsto até ${diaCurto(ps[0].ate)}`, dinheiroHTML(previsto, { estimado }), previsto < 0 ? 'negativo' : ''));
+    if (ps.some((p) => p.totalProximas > 0)) {
+      const provisionado = ps.reduce((t, p) => t + p.provisionado, 0);
+      linhas.push(linhaDeResumo('saldo provisionado', dinheiroHTML(provisionado, { estimado }), provisionado < 0 ? 'negativo' : ''));
+    }
   }
   if (area.id === 'cartoes') {
     let aberta = 0;
@@ -506,6 +510,9 @@ function pintarResumoDeCaixa(contas) {
       ate: previstos[0].p.ate,
       estimado: previstos.some((x) => x.p.estimado),
       previsto: previstos.reduce((t, x) => t + x.p.previsto, 0),
+      proximas: previstos.flatMap((x) => x.p.proximas),
+      totalProximas: previstos.reduce((t, x) => t + x.p.totalProximas, 0),
+      provisionado: previstos.reduce((t, x) => t + x.p.provisionado, 0),
     };
     blocos.unshift(blocoDeCaixa('geral', soma, true, null, aEntrar));
   }
@@ -530,15 +537,30 @@ function blocoDeCaixa(nome, p, total = false, conta = null, aEntrar = null) {
   }
   if (partes?.agendados > 0) numeros.push(numeroDaFaixa('agendados e vencidos', menos(partes.agendados)));
   const entra = aEntrar?.total > 0 ? aEntrar : null;
-  const temPrevisao = p.faturas.length || p.aSair > 0 || entra;
+  const temPrevisao = p.faturas.length || p.aSair > 0 || p.totalProximas > 0 || entra;
   let previsto = temPrevisao
     ? destaqueDaFaixa(`saldo previsto até ${diaCurto(p.ate)}`, p.previsto, p.estimado)
     : '';
+  // A fatura que só sai no mês seguinte: à parte do saldo previsto, e o saldo
+  // com ela separada logo depois (pedido dele, 05/10/2026).
+  const proximas = (p.proximas ?? []).filter((x) => x.valor + x.recorrentes > 0);
+  if (proximas.length) {
+    const varias = proximas.length > 1;
+    const proximaFatura = proximas.map((x) => numeroDaFaixa(
+      varias ? `próxima fatura ${x.cartao.nome}` : 'próxima fatura',
+      `${x.estimado ? '~' : ''}${menos(x.valor + x.recorrentes)}`,
+      { conta: x.cartao.id, mes: x.vencimento?.slice(0, 7) ?? vista.mes },
+    )).join('');
+    previsto += proximaFatura + destaqueDaFaixa('saldo provisionado', p.provisionado, p.estimado || proximas.some((x) => x.estimado), 'provisionado');
+  }
+  const comProvisao = proximas.length > 0;
   // O que ainda vai entrar até o fim do mês, e o previsto com isso: o alívio
   // ao lado do aperto, um sem esconder o outro (D31).
   if (entra) {
     previsto = `<div class="previstos-faixa">${previsto}${numerosDeEntrada(entra).join('')}${
       destaqueDaFaixa('previsto com a renda', p.previsto + entra.total, p.estimado || entra.estimado, 'com-renda')}</div>`;
+  } else if (comProvisao) {
+    previsto = `<div class="previstos-faixa">${previsto}</div>`;
   }
   // Conferir com o banco (ou a carteira) mora na própria conta (03 §8).
   const pe = conta

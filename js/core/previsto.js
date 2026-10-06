@@ -282,9 +282,30 @@ export function saldoPrevisto(estado, contaId, dia = hoje(), ids = null) {
   // No Geral, a transferência para outra conta do mesmo conjunto não sai dele.
   const interna = (destinoId) => Boolean(ids?.has(destinoId));
 
-  const faturasDaConta = Object.values(estado.contas)
-    .filter((c) => c.tipo === 'cartao' && c.pagaCom === contaId)
-    .map((c) => ({ cartao: c, valor: aPagarAgora(estado, c.id, dia, { pagoAte: ate }) }))
+  // As faturas que vencem até o fim do mês saem da conta neste mês; a que
+  // vence no seguinte (a aberta) é a "próxima fatura", provisão à parte — não
+  // entra no saldo previsto, que ficaria irreal (05/10/2026).
+  const cartoesQuePaga = Object.values(estado.contas).filter((c) => c.tipo === 'cartao' && c.pagaCom === contaId);
+  const proximas = new Map();
+  const daProxima = (cartao) => {
+    if (!proximas.has(cartao.id)) proximas.set(cartao.id, { cartao, valor: 0, recorrentes: 0, vencimento: null, estimado: false });
+    return proximas.get(cartao.id);
+  };
+  const faturasDaConta = cartoesQuePaga
+    .map((c) => {
+      let valor = 0;
+      for (const f of faturas(estado, c.id, dia, { pagoAte: ate }) ?? []) {
+        if (f.situacao === 'futura' || f.aPagar <= 0) continue;
+        if (f.vencimento > ate) {
+          const x = daProxima(c);
+          x.valor += f.aPagar;
+          x.vencimento = f.vencimento;
+        } else {
+          valor += f.aPagar;
+        }
+      }
+      return { cartao: c, valor };
+    })
     .filter((f) => f.valor > 0);
 
   // Agendados e vencidos: o que foi lançado e ainda não saiu.
@@ -312,6 +333,15 @@ export function saldoPrevisto(estado, contaId, dia = hoje(), ids = null) {
     if (interna(o.contaDestinoId)) continue;
     const saida = sinalDeSaida(o);
     if (saida <= 0) continue;
+    // A compra recorrente do cartão que cai na fatura do mês seguinte é da
+    // próxima fatura, não deste mês.
+    if (o.contaId !== contaId && o.dataCaixa > ate) {
+      const x = daProxima(estado.contas[o.contaId]);
+      x.recorrentes += saida;
+      x.vencimento ??= o.dataCaixa;
+      if (o.estimado) x.estimado = true;
+      continue;
+    }
     aSair += saida;
     if (o.contaId === contaId) partes.recorrentes += saida;
     else partes.cartoes.set(o.contaId, (partes.cartoes.get(o.contaId) ?? 0) + saida);
@@ -319,9 +349,14 @@ export function saldoPrevisto(estado, contaId, dia = hoje(), ids = null) {
   }
 
   const totalFaturas = faturasDaConta.reduce((t, f) => t + f.valor, 0);
+  const listaProximas = [...proximas.values()].filter((x) => x.valor + x.recorrentes > 0);
+  const totalProximas = listaProximas.reduce((t, x) => t + x.valor + x.recorrentes, 0);
   return {
     real,
     faturas: faturasDaConta,
+    proximas: listaProximas,
+    totalProximas,
+    provisionado: real - totalFaturas - aSair - totalProximas,
     aSair,
     partes,
     ate,
