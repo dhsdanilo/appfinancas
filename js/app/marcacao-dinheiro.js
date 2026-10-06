@@ -44,8 +44,9 @@ export const PRINCIPAL = `
     </div>
 
     <div class="subabas" role="group" aria-label="Conta" id="subabas"></div>
-${ACOES}
 
+    <!-- O mês à esquerda e os botões à direita, na mesma linha (pedido dele, 06/10/2026). -->
+    <div class="linha-topo-painel">
     <div class="periodo" id="periodo">
       <button type="button" class="passo" id="p-antes" aria-label="Mês anterior">‹</button>
       <strong class="rotulo-periodo" id="p-rotulo"></strong>
@@ -56,6 +57,9 @@ ${ACOES}
         <span>até</span>
         <input type="date" id="p-ate" aria-label="Até o dia">
       </span>
+    </div>
+
+    ${ACOES}
     </div>
 
     <div class="resumo" id="resumo"></div>

@@ -255,7 +255,9 @@ body.abas-no-topo #sub-tela {
 
 /* Os quatro botões redondos, dentro da caixa, à direita: os dois principais
    maiores e na frente; importar e exportar menores atrás. */
-.acoes-redondas { display: flex; align-items: center; justify-content: flex-end; gap: var(--e3); padding: 0 0 var(--e3); }
+.linha-topo-painel { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--e2) var(--e3); padding: 0 0 var(--e4); }
+.linha-topo-painel .periodo { padding: 0; }
+.acoes-redondas { display: flex; align-items: center; justify-content: flex-end; gap: var(--e3); margin-left: auto; }
 .redondo {
   display: inline-flex;
   align-items: center;
