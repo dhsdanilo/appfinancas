@@ -1374,7 +1374,8 @@ function pintarLista(aba, contas) {
       const doMesAtual = modoDaTela() === 'mes' && vista.mes === hoje().slice(0, 7);
       const daConta = doMesAtual
         ? faturasNoPeriodo(app, cartao.id, '2000-01-01', somarMeses(ate, 2), hoje(), { pagoAte: ate })
-          .filter((f) => noPeriodo(f.vencimento) || (f.situacao !== 'futura' && f.aPagar > 0))
+          // A que vence no mês seguinte é a "próxima fatura": mora só no card.
+          .filter((f) => noPeriodo(f.vencimento) || (f.situacao !== 'futura' && f.aPagar > 0 && f.vencimento < de))
         : faturasNoPeriodo(app, cartao.id, de, ate);
       for (const f of daConta) {
         if (f.previsto <= 0) continue;
