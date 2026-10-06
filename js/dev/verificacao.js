@@ -19,6 +19,7 @@ import * as sincronia from '../core/sincronia.js';
 import { VERSAO_ESTADO } from '../core/redutores.js';
 import * as cartao from '../core/cartao.js';
 import * as previsto from '../core/previsto.js';
+import * as cofrinho from '../core/cofrinho.js';
 import * as datas from '../core/datas.js';
 import * as pendencias from '../core/pendencias.js';
 import { categoriaNaArea, areasParaConta } from '../app/areas.js';
@@ -1154,6 +1155,49 @@ caso('previsto', 'saldo previsto = real − faturas − recorrentes e agendados'
   igual(p.aSair, 20000, 'virou agendado: conta uma vez só, não duas');
   igual(previsto.ocorrenciasPrevistas(e, '2027-03-01', '2027-04-30', dia).map((o) => o.dataCaixa),
     ['2027-04-25'], 'e a próxima ocorrência é a de abril');
+});
+
+caso('previsto', '★ cofrinho do cartão: alvo = limite usado + previstas da fatura aberta; cai quando a fatura é paga', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const dia = '2027-03-10';
+  await estado.aplicarEvento('conta.criada', { id: 'k1', nome: 'Corrente', tipo: 'corrente', saldoInicial: 1000000 });
+  await estado.aplicarEvento('conta.criada', { id: 'cf', nome: 'Cofrinho', tipo: 'corrente', saldoInicial: 300000 });
+  await estado.aplicarEvento('conta.criada', {
+    id: 'c1', nome: 'Cartão', tipo: 'cartao', diaFechamento: 3, diaVencimento: 10, pagaCom: 'k1',
+  });
+  await estado.aplicarEvento('conta.alterada', { id: 'c1', cofrinhoId: 'cf' });
+  igual(cofrinho.provisaoDoCartao(await estado.calcular(), 'c1', dia)?.alvo, 0, 'sem dívida, o alvo é zero');
+  // Fatura que fechou em 03/03 (vence 10/03): 5.000; compra de 400 na aberta.
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'a', tipo: 'despesa', valor: 500000, contaId: 'c1', categoriaId: 'x',
+    dataCompetencia: '2027-02-20', dataCaixa: '2027-02-20', confirmado: true,
+  });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'b', tipo: 'despesa', valor: 40000, contaId: 'c1', categoriaId: 'x',
+    dataCompetencia: '2027-03-05', dataCaixa: '2027-03-05', confirmado: true,
+  });
+  // Streaming fixo que ainda não caiu na fatura aberta (dia 12 → fatura de 03/04).
+  await estado.aplicarEvento('recorrencia.criada', {
+    id: 'r1', nome: 'Streaming', tipo: 'despesa', contaId: 'c1', categoriaId: 'x',
+    tipoValor: 'fixa', valor: 3990, dia: 12, inicio: '2027-03-12',
+  });
+  let p = cofrinho.provisaoDoCartao(await estado.calcular(), 'c1', dia);
+  igual([p.limiteUsado, p.previstas, p.alvo, p.provisionado, p.falta], [540000, 3990, 543990, 300000, 243990],
+    'limite usado 5.400 + previstas 39,90; cofrinho com 3.000');
+  // Paga a fechada: transfere do cofrinho para a corrente e quita a fatura.
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'tr', tipo: 'transferencia', valor: 300000, contaId: 'cf', contaDestinoId: 'k1',
+    dataCompetencia: dia, dataCaixa: dia, confirmado: true,
+  });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'pg', tipo: 'pagamento_fatura', valor: 500000, contaId: 'k1', contaDestinoId: 'c1',
+    dataCompetencia: dia, dataCaixa: dia, confirmado: true,
+  });
+  p = cofrinho.provisaoDoCartao(await estado.calcular(), 'c1', dia);
+  igual([p.limiteUsado, p.alvo, p.provisionado], [40000, 43990, 0], 'paga a fechada: o alvo cai para o que sobrou no cartão');
+  await estado.aplicarEvento('conta.alterada', { id: 'c1', cofrinhoId: null });
+  igual(cofrinho.provisaoDoCartao(await estado.calcular(), 'c1', dia), null, 'sem vínculo, não há provisão');
 });
 
 caso('previsto', 'recorrência estimada projeta a média das últimas 3', () => {

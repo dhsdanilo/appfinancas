@@ -1001,6 +1001,7 @@ function abrirEditarConta(id) {
     f.limite.value = c.limite ? formatarSimples(c.limite).replace('R$ ', '') : '';
     pintarPagadoras();
     f.pagaCom.value = c.pagaCom ?? '';
+    f.cofrinho.value = c.cofrinhoId ?? '';
   }
   $('ec-campo-caixa').hidden = c.tipo !== 'investimento';
   if (c.tipo === 'investimento') {
@@ -1053,6 +1054,7 @@ $('f-editar-conta')?.addEventListener('submit', async (e) => {
       diaVencimento: Number(f.vencimento.value) || null,
       limite: deTexto(f.limite.value) || null,
       pagaCom: f.pagaCom.value || null,
+      cofrinhoId: f.cofrinho.value || null,
     };
     for (const [k, v] of Object.entries(novo)) if ((c[k] ?? null) !== v) mudou[k] = v;
   }
@@ -1151,6 +1153,16 @@ function pintarPagadoras() {
   for (const select of document.querySelectorAll('[data-papel="paga-com"]')) {
     const antes = select.value;
     select.innerHTML = opcoes;
+    select.value = antes;
+  }
+  // O cofrinho do cartão: qualquer conta onde o dinheiro fica guardado.
+  const cofrinhos = Object.values(app.contas)
+    .filter((c) => !c.arquivada && ['corrente', 'especie', 'investimento'].includes(c.tipo))
+    .sort(porNome);
+  for (const select of document.querySelectorAll('[data-papel="cofrinho"]')) {
+    const antes = select.value;
+    select.innerHTML = '<option value="">nenhum</option>' +
+      cofrinhos.map((c) => `<option value="${escapar(c.id)}">${escapar(c.nome)}</option>`).join('');
     select.value = antes;
   }
   // A parcela de uma dívida pode sair da corrente, do cartão ou da folha

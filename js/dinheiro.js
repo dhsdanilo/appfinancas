@@ -36,6 +36,7 @@ import {
   sinalDeSaida, ehTransferencia, dataVista, estornado, ehDeInvestimento,
 } from './core/lancamentos.js';
 import { temCiclo } from './core/cartao.js';
+import { provisaoDoCartao } from './core/cofrinho.js';
 import { extratoDoMes, resultadoDoMes, aEntrarNoMes, saldoNoDia } from './core/mes-da-conta.js';
 import { AREAS as ABAS } from './app/areas.js';
 import {
@@ -654,6 +655,28 @@ function faturaDoMes(c) {
 }
 
 /**
+ * A provisão do cartão no cofrinho (design/11 §9): o que já está guardado, o
+ * alvo — limite usado mais as previstas da fatura aberta — e uma barra. A barra
+ * já diz que falta; não há aviso escrito.
+ */
+function linhaDaProvisao(cartao) {
+  const p = provisaoDoCartao(app, cartao.id);
+  if (!p) return '';
+  const pct = p.alvo > 0 ? Math.min(100, Math.max(0, (p.provisionado / p.alvo) * 100)) : 100;
+  const til = p.estimado ? '~' : '';
+  const numeros = [
+    numeroDaFaixa(`provisionado em ${p.cofrinho.nome}`, formatar(p.provisionado)),
+    numeroDaFaixa('alvo', `${til}${formatar(p.alvo)}`),
+  ];
+  if (p.previstas) numeros.push(numeroDaFaixa('limite usado + previstas', `${formatar(p.limiteUsado)} + ${til}${formatar(p.previstas)}`));
+  numeros.push(numeroDaFaixa(p.falta > 0 ? 'falta' : 'sobra', `${til}${formatar(Math.abs(p.falta))}`));
+  return `<div class="limite-cartao provisao-cartao">
+      <div class="numeros-renda">${numeros.join('')}</div>
+      <div class="barra-limite barra-provisao" role="img" aria-label="${Math.round(pct)}% provisionado"><i style="width:${pct.toFixed(1)}%"></i></div>
+    </div>`;
+}
+
+/**
  * O cartão na largura toda, em duas linhas (pedido dele, 03/10/2026): em cima
  * o limite, que não muda com o mês — usado de total, com uma barra discreta;
  * embaixo a fatura que se está olhando. Com vários cartões, a aba Geral soma.
@@ -740,6 +763,7 @@ function blocoDosCartoes(cartoes) {
   return `<div class="bloco largo cartao-resumo">
     <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(nome)}</p>
     ${linhaLimite}
+    ${um ? linhaDaProvisao(um) : ''}
     ${linhaFatura}
     ${aviso}
     ${pe}

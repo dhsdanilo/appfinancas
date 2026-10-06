@@ -245,6 +245,10 @@ export const EDITAR_CONTA = `
         <label for="ec-paga-com">Paga com</label>
         <select id="ec-paga-com" name="pagaCom" data-papel="paga-com"></select>
       </div>
+      <div class="campo">
+        <label for="ec-cofrinho">Cofrinho do cartão</label>
+        <select id="ec-cofrinho" name="cofrinho" data-papel="cofrinho"></select>
+      </div>
     </div>
     <!-- Só em investimento: onde fica o dinheiro dela (design/10 §3.6). -->
     <div class="campo" id="ec-campo-caixa" hidden>
