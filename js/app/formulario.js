@@ -314,7 +314,6 @@ export async function criarFormulario({
       if (app) pintarParcelas();
       if (app && custeadoPor) pintarEnvelope();
       pintarReajuste();
-      if (app) pintarSimulador();
     },
     aoConfirmar: async (e) => {
       if (!pronto()) { valor.desfocar(); return; }
@@ -597,27 +596,20 @@ export async function criarFormulario({
   }
 
   /**
-   * O simulador: quanto ela tem de verdade (saldo das contas dela menos o que
-   * ainda é de quem lhe emprestou o cartão) e quanto fica depois desta compra.
+   * O que ela tem de verdade: o disponível (saldo das contas dela menos o que
+   * ainda é de quem lhe emprestou o cartão) e o real, logo abaixo do valor.
    */
   function pintarSimulador() {
     const bloco = el('simulador');
     const dona = pessoaDoAparelho();
     const d = dona && app && !editando ? disponivelDe(app, dona, (id) => saldoReal(app, id)) : null;
     if (!d || !d.contas) { bloco.hidden = true; return; }
-    const conta = app.contas[contaId];
-    const v = valor.centavos();
-    const baixa = tipo === 'despesa' && v > 0 && conta && (
-      conta.tipo === 'corrente' || conta.tipo === 'especie' || (conta.tipo === 'cartao' && conta.titular && conta.titular !== dona)
-    );
-    const depois = d.disponivel - (baixa ? v : 0);
     const bloco3 = (rotulo, centavos, classe = '') =>
       `<span class="saldo-peca ${classe}"><span class="miudo">${rotulo}</span><strong>${escapar(formatar(centavos))}</strong></span>`;
     bloco.hidden = false;
     bloco.innerHTML =
-      bloco3('disponível', d.disponivel, depois < 0 && !baixa ? 'negativo' : '') +
-      bloco3('real', d.saldo, 'menor') +
-      (baixa ? bloco3('ficam', depois, depois < 0 ? 'negativo' : 'destaque') : '');
+      bloco3('disponível', d.disponivel, d.disponivel < 0 ? 'negativo' : 'disponivel') +
+      bloco3('real', d.saldo, 'menor');
     bloco.title = d.aRepassar > 0 ? `O disponível já desconta ${formatar(d.aRepassar)} a repassar.` : '';
   }
 
