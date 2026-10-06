@@ -242,8 +242,15 @@ body.abas-no-topo #sub-tela {
 .subabas .aba-conta[aria-pressed="true"] .ic { width: 38px; height: 38px; font-size: var(--t-apoio); }
 .subabas .nova-conta {
   flex: none;
+  box-sizing: border-box;
   width: 38px;
+  min-width: 38px;
   height: 38px;
+  min-height: 38px;
+  aspect-ratio: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 0;
   border: 1px dashed var(--borda-forte);
   border-radius: 50%;
