@@ -1304,16 +1304,6 @@ button.linha-rel:hover { background: var(--acento-fundo); }
 .barra-alvo { display: block; height: 8px; margin: var(--e1) 0; border-radius: 4px; background: var(--borda); overflow: hidden; }
 .barra-alvo.fina { height: 5px; }
 .barra-alvo i { display: block; height: 100%; border-radius: inherit; background: var(--area); }
-.lista-envelopes { display: flex; flex-direction: column; margin: var(--e3) 0; }
-.linha-envelope {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--e3); align-items: baseline;
-  width: 100%; min-height: 0; padding: var(--e3) 0; border: 0; border-bottom: 1px solid var(--borda); border-radius: 0;
-  background: none; color: var(--tinta); text-align: left; font: inherit;
-}
-.linha-envelope:hover { background: var(--fundo-hover, transparent); }
-.linha-envelope .nome-envelope { font-weight: 600; min-width: 0; }
-.linha-envelope .valor-envelope { font-variant-numeric: tabular-nums; }
-.linha-envelope .barra-alvo { grid-column: 1 / -1; }
 .frase-envelope { grid-column: 1 / -1; color: var(--tinta-fraca); font-size: var(--t-miudo); }
 .frase-envelope.ruim { color: var(--alerta); }
 .frase-envelope.bom { color: var(--positivo); }
@@ -1358,3 +1348,68 @@ button.linha-rel:hover { background: var(--acento-fundo); }
 .cartao-caixa .saldo-provisionado { display: flex; flex-direction: column; gap: 2px; }
 .cartao-caixa .saldo-provisionado strong { font-size: var(--t-secao); font-weight: 400; color: var(--positivo); }
 .cartao-caixa .saldo-provisionado.negativo strong { color: var(--alerta); }
+
+/* ── o painel dos envelopes (06/10/2026) ─────────────────────────────────── */
+.painel-de-envelopes { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: var(--e4); margin: var(--e2) 0 var(--e4); }
+.card-envelope {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--e2);
+  padding: var(--e4);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-cartao);
+  background: var(--fundo);
+  color: var(--tinta);
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+.card-envelope:hover { border-color: var(--borda-forte); }
+.card-envelope .topo-card-envelope { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--e3); }
+.card-envelope .titulo-card-envelope { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.card-envelope .nome-envelope { font-weight: 600; font-size: var(--t-corpo); overflow-wrap: anywhere; }
+.card-envelope .estado-envelope { color: var(--tinta-fraca); font-size: var(--t-miudo); }
+.card-envelope .estado-envelope.ruim { color: var(--alerta); }
+.card-envelope .estado-envelope.bom { color: var(--positivo); }
+.card-envelope .anel-envelope { flex: none; }
+.card-envelope .valor-card-envelope { font-size: var(--t-tela); line-height: 1.2; }
+.card-envelope .alvo-card-envelope { color: var(--tinta-fraca); font-size: var(--t-apoio); }
+.card-envelope .mini-linha-envelope { width: 100%; height: 34px; margin-top: var(--e2); }
+.card-novo-envelope {
+  align-items: center;
+  justify-content: center;
+  min-height: 150px;
+  border-style: dashed;
+  border-color: var(--borda-forte);
+  background: transparent;
+  color: var(--tinta-fraca);
+}
+.card-novo-envelope .mais-novo-envelope { width: 28px; height: 28px; }
+.card-novo-envelope:hover { color: var(--tinta); border-color: var(--area, var(--acento)); }
+
+/* O "mais" das abas dos envelopes: a lista presa à tela, para a rolagem das abas não cortar. */
+.aba-mais { flex: none; display: flex; align-items: center; margin-bottom: var(--e1); }
+.aba-mais .botao-mais {
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--superficie);
+  color: var(--tinta-fraca);
+  font-size: var(--t-apoio);
+}
+.aba-mais .contagem-mais { display: inline-block; margin: 0 2px; padding: 0 var(--e2); border-radius: var(--raio-pilula); background: var(--fundo); font-size: var(--t-miudo); }
+.aba-mais .menu-mais {
+  position: fixed;
+  z-index: 30;
+  width: 240px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: var(--e2);
+  border: 1px solid var(--borda-forte);
+  border-radius: var(--raio-cartao);
+  background: var(--superficie);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.aba-mais .item-mais { display: flex; align-items: center; gap: var(--e3); width: 100%; padding: var(--e2) var(--e3); border: 0; border-radius: var(--raio-controle); background: transparent; color: var(--tinta); text-align: left; font-size: var(--t-apoio); }
+.aba-mais .item-mais:hover { background: var(--area-fundo, var(--acento-fundo)); }
+.aba-mais .item-mais .ic { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 10px; font-weight: 600; }

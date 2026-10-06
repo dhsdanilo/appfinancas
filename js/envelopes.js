@@ -9,7 +9,7 @@ import * as estado from './core/estado.js';
 import { formatar } from './core/dinheiro.js';
 import { hoje, diaCurto, nomeDoMes } from './core/datas.js';
 import {
-  envelopesAtivos, ehProjeto, donosNoDia, numerosDoEnvelope, nomeDoLugar, estadoDoEnvelope, evolucaoDosEnvelopes,
+  envelopesAtivos, ehProjeto, donosNoDia, numerosDoEnvelope, nomeDoLugar, estadoDoEnvelope, evolucaoDosEnvelopes, seriesDosEnvelopes,
 } from './core/envelopes.js';
 import { nomeDaCategoria } from './core/lancamentos.js';
 import { periodo as periodoDe, PERIODOS } from './core/explorar.js';
@@ -43,6 +43,61 @@ const janelas = criarJanelasDeEnvelope({ aoSalvar: () => pintar() });
 const uso = criarJanelasDeUso({ aoSalvar: () => pintar() });
 
 /** O lugar com o nome que se reconhece: "CDB · Banco", "Corrente". */
+/**
+ * As abas que não cabem na linha vão para um "mais ▾" com a lista (06/10/2026).
+ * Ficam sempre à vista: a aba "Envelopes" e a do envelope aberto.
+ */
+function ajustarAbas() {
+  const raiz = $('subabas-envelopes');
+  raiz.querySelector('.aba-mais')?.remove();
+  const abas = [...raiz.querySelectorAll('.aba-conta')];
+  for (const a of abas) a.hidden = false;
+  const largura = raiz.clientWidth;
+  if (!largura) return;
+  const nova = raiz.querySelector('.nova-conta');
+  const gap = 6;
+  const largs = new Map(abas.map((a) => [a, a.getBoundingClientRect().width]));
+  const total = [...largs.values()].reduce((t, w) => t + w + gap, 0) + (nova?.getBoundingClientRect().width ?? 0);
+  if (total <= largura) return;
+
+  // Cabem: as fixas, e depois as outras na ordem, deixando espaço do "mais" e do "+".
+  const fixas = new Set(abas.filter((a) => a.dataset.envAba === 'geral' || a.getAttribute('aria-pressed') === 'true'));
+  let usado = (nova?.getBoundingClientRect().width ?? 0) + 120 + gap * 2;
+  for (const a of fixas) usado += largs.get(a) + gap;
+  const aVista = new Set(fixas);
+  for (const a of abas) {
+    if (aVista.has(a)) continue;
+    if (usado + largs.get(a) + gap > largura) continue;
+    usado += largs.get(a) + gap;
+    aVista.add(a);
+  }
+  const escondidas = abas.filter((a) => !aVista.has(a));
+  if (!escondidas.length) return;
+  for (const a of escondidas) a.hidden = true;
+  const itens = escondidas.map((a) => `<button type="button" class="item-mais" data-env-aba="${esc(a.dataset.envAba)}">${a.querySelector('.ic')?.outerHTML ?? ''}<span>${esc(a.querySelector('.nome')?.textContent ?? '')}</span></button>`).join('');
+  const mais = document.createElement('div');
+  mais.className = 'aba-mais';
+  mais.innerHTML = `<button type="button" class="botao-mais" aria-expanded="false">mais <span class="contagem-mais">+${escondidas.length}</span> ▾</button>
+    <div class="menu-mais" hidden>${itens}</div>`;
+  if (nova) raiz.insertBefore(mais, nova); else raiz.append(mais);
+}
+
+/** Abre ou fecha a lista do "mais", presa à tela para não ser cortada pela rolagem das abas. */
+function alternarMais(abrir) {
+  const mais = document.querySelector('#subabas-envelopes .aba-mais');
+  if (!mais) return;
+  const menu = mais.querySelector('.menu-mais');
+  const botao = mais.querySelector('.botao-mais');
+  const vaiAbrir = abrir ?? menu.hidden;
+  menu.hidden = !vaiAbrir;
+  botao.setAttribute('aria-expanded', String(vaiAbrir));
+  if (vaiAbrir) {
+    const r = botao.getBoundingClientRect();
+    menu.style.top = `${Math.round(r.bottom + 6)}px`;
+    menu.style.left = `${Math.round(Math.min(r.left, innerWidth - 250))}px`;
+  }
+}
+
 function nomeCompleto(lugarId) {
   const a = app.ativos?.[lugarId];
   return a ? `${a.nome} · ${app.contas[a.contaId]?.nome ?? ''}` : nomeDoLugar(app, lugarId);
@@ -70,6 +125,7 @@ async function pintar() {
       return `<button type="button" class="aba-conta" data-env-aba="${esc(v.id)}" aria-pressed="${v.id === foco}">${icone}<span class="nome">${esc(v.nome)}</span></button>`;
     })
     .join('') + `<button type="button" class="nova-conta" data-novo-envelope title="Novo envelope" aria-label="Novo envelope">${ICONES.mais}</button>`;
+  ajustarAbas();
 
   const donos = donosNoDia(app);
   if (!lista.length && foco === 'geral') {
@@ -79,7 +135,8 @@ async function pintar() {
     return;
   }
   const ids = foco === 'geral' ? lista.map((v) => v.id) : [foco];
-  evolucao = evolucaoDosEnvelopes(app, ids, periodoDe(app, vista.periodo).meses, vista.tempo);
+  // O gráfico grande é do envelope aberto; o painel geral tem só o mini gráfico de cada card.
+  evolucao = foco === 'geral' ? [] : evolucaoDosEnvelopes(app, ids, periodoDe(app, vista.periodo).meses, vista.tempo);
   $('corpo-envelopes').innerHTML = foco === 'geral' ? geral(lista, donos) : doEnvelope(app.envelopes[foco], donos);
   desenharEvolucao();
   if (foco !== 'geral') desenharOnde(donos);
@@ -154,32 +211,70 @@ function desenharEvolucao() {
 
 // ── Geral ─────────────────────────────────────────────────────────────────
 
+/** O anel de progresso do card: a parte do alvo já guardada, na cor do envelope. */
+function anel(p, cor) {
+  const c = 2 * Math.PI * 26;
+  return `<svg class="anel-envelope" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="${pct(p)} do alvo">
+      <circle cx="32" cy="32" r="26" fill="none" stroke="var(--borda)" stroke-width="7"/>
+      <circle cx="32" cy="32" r="26" fill="none" stroke="${cor}" stroke-width="7" stroke-linecap="round"
+        stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${(c * (1 - p)).toFixed(1)}" transform="rotate(-90 32 32)"/>
+      <text x="32" y="36" text-anchor="middle" font-size="13" fill="var(--tinta)">${pct(p)}</text>
+    </svg>`;
+}
+
+/** A linha mini da evolução do envelope nos últimos meses, na cor dele. */
+function miniLinha(valores, cor) {
+  if (valores.length < 2) return '';
+  const max = Math.max(...valores);
+  const min = Math.min(...valores);
+  const faixa = max - min || 1;
+  const pontos = valores
+    .map((v, k) => `${((k / (valores.length - 1)) * 200).toFixed(1)},${(max === min ? 17 : 30 - ((v - min) / faixa) * 26).toFixed(1)}`)
+    .join(' ');
+  return `<svg class="mini-linha-envelope" viewBox="0 0 200 34" preserveAspectRatio="none" aria-hidden="true">
+      <polyline points="${pontos}" fill="none" stroke="${cor}" stroke-width="2" vector-effect="non-scaling-stroke"/>
+    </svg>`;
+}
+
+/**
+ * O painel dos envelopes (pedido dele, 06/10/2026): um card por envelope, sem o
+ * total geral — quem quer o total vai a Investimentos. Cada card: nome e estado,
+ * anel de progresso (só com alvo), o guardado, o alvo e a linha dos últimos meses.
+ * Os atrasados vêm primeiro; o encerrado e o arquivado ficam no "mais".
+ */
 function geral(lista, donos) {
-  const guardado = lista.reduce((t, v) => t + (donos.porEnvelope.get(v.id)?.total ?? 0), 0);
-  const aportado = lista.reduce((t, v) => t + (donos.porEnvelope.get(v.id)?.posto ?? 0), 0);
   const lugares = [...donos.porLugar.values()].filter((x) => !x.lugar.arquivado || x.semDono);
   const furos = lugares.filter((x) => x.semDono < 0);
+  const series = seriesDosEnvelopes(app, lista.map((v) => v.id), periodoDe(app, '12').meses);
 
-  const linhas = lista.map((v) => {
+  const cartoes = lista.map((v) => {
     const r = donos.porEnvelope.get(v.id) ?? { total: 0 };
     const n = numerosDoEnvelope(v, r.total);
     const f = frase(v, r, n);
-    return `<button type="button" class="linha-envelope" data-env-aba="${esc(v.id)}">
-      <span class="nome-envelope">${esc(v.nome)}</span>
-      <span class="valor-envelope">${formatar(r.total)}</span>
-      ${barraDoAlvo(r.total, n.alvo, true)}
-      ${f.texto ? `<span class="frase-envelope ${f.classe}">${esc(f.texto)}</span>` : ''}
-    </button>`;
-  }).join('');
+    const atrasado = n.deveriaTer != null && r.total < n.deveriaTer;
+    const cor = corDaConta(v.nome);
+    const estado = f.texto || (n.alvo ? '' : 'sem alvo');
+    return { atrasado, html: `<button type="button" class="card-envelope" data-env-aba="${esc(v.id)}">
+      <span class="topo-card-envelope">
+        <span class="titulo-card-envelope">
+          <span class="nome-envelope">${esc(v.nome)}</span>
+          <span class="estado-envelope ${f.classe}">${esc(estado)}</span>
+        </span>
+        ${n.alvo ? anel(Math.max(0, Math.min(1, r.total / n.alvo)), cor) : ''}
+      </span>
+      <span class="valor-card-envelope">${formatar(r.total)}</span>
+      ${n.alvo ? `<span class="alvo-card-envelope">de ${formatar(n.alvo)}${ehProjeto(v) && v.alvoData ? ` até ${mesAno(v.alvoData)}` : ''}</span>` : ''}
+      ${miniLinha(series.get(v.id) ?? [], cor)}
+    </button>` };
+  }).sort((a, b) => Number(b.atrasado) - Number(a.atrasado));
 
-  return `<div class="numero-rel">
-      <p class="rotulo-numero">guardado nos envelopes</p>
-      <p class="valor-rel-grande">${formatar(guardado)}</p>
-      <p class="nota-rel">${formatar(aportado)} aportados · <span class="dif-rel ${guardado - aportado >= 0 ? 'bom' : 'ruim'}">${comSinal(guardado - aportado)}</span> de rendimento</p>
-    </div>
-    ${furos.length ? `<p class="aviso-bloco">${furos.map((x) => `${esc(nomeCompleto(x.lugar.id))} tem ${formatar(x.valor)}, e os envelopes dizem ter ${formatar(x.valor - x.semDono)} ali`).join('; ')}: gastou-se dinheiro de envelope sem dizer de qual. Tire do envelope o que foi gasto.</p>` : ''}
-    ${controlesDaEvolucao()}
-    <div class="lista-envelopes">${linhas}</div>
+  const novo = `<button type="button" class="card-envelope card-novo-envelope" data-novo-envelope>
+      <span class="mais-novo-envelope" aria-hidden="true">${ICONES.mais}</span>
+      <span>Novo envelope</span>
+    </button>`;
+
+  return `${furos.length ? `<p class="aviso-bloco">${furos.map((x) => `${esc(nomeCompleto(x.lugar.id))} tem ${formatar(x.valor)}, e os envelopes dizem ter ${formatar(x.valor - x.semDono)} ali`).join('; ')}: gastou-se dinheiro de envelope sem dizer de qual. Tire do envelope o que foi gasto.</p>` : ''}
+    <div class="painel-de-envelopes">${cartoes.map((c) => c.html).join('')}${novo}</div>
     ${semDonoHTML(lugares, donos.semDono)}`;
 }
 
@@ -357,6 +452,10 @@ const tempoNatural = (p) => (p === '5anos' || p === 'tudo' ? 'ano' : 'mes');
 
 document.addEventListener('click', async (e) => {
   if (!ativa) return;
+  const botaoMais = e.target.closest('.botao-mais');
+  if (botaoMais) { alternarMais(); return; }
+  // Qualquer outro toque fecha a lista; escolher um envelope dela segue o caminho normal.
+  alternarMais(false);
   const aba = e.target.closest('[data-env-aba]');
   if (aba) {
     foco = aba.dataset.envAba;
@@ -391,6 +490,13 @@ document.addEventListener('click', async (e) => {
     await estado.aplicarEvento('envelope.alocacaoRemovida', { id: desfazer.dataset.desfazerAlocacao });
     await pintar();
   }
+});
+
+let reajuste = null;
+addEventListener('resize', () => {
+  if (!ativa) return;
+  clearTimeout(reajuste);
+  reajuste = setTimeout(ajustarAbas, 120);
 });
 
 document.addEventListener('app:tela', (e) => {

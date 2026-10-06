@@ -413,6 +413,20 @@ export function evolucaoDosEnvelopes(estado, ids, meses, tempo = 'mes', dia = ho
     });
 }
 
+/**
+ * O total de cada envelope no fim de cada mês, para o mini gráfico do card:
+ * Map(id → [total…]). `donosNoDia` custa caro, então roda uma vez por ponto, não
+ * por envelope.
+ */
+export function seriesDosEnvelopes(estado, ids, meses, dia = hoje()) {
+  const pontos = meses.map((m) => {
+    const fim = fimDoMes(`${m}-01`);
+    return fim >= dia ? dia : fim;
+  });
+  const porPonto = pontos.map((d) => donosNoDia(estado, d).porEnvelope);
+  return new Map(ids.map((id) => [id, porPonto.map((m) => m.get(id)?.total ?? 0)]));
+}
+
 // ── os números de um envelope (§1) ──────────────────────────────────────────
 
 const mesesInclusivos = (de, ate) =>
