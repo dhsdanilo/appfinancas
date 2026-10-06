@@ -736,32 +736,39 @@ body[data-pagina="dividas"] .bloco { min-width: 0; }
 }
 .lancar-rapido:hover { background: var(--acento-fundo); }
 
-/* O ↗ que leva à conta do outro lado, e o valor-link dos números da faixa. */
+/* O ↗ que leva à conta do outro lado: pequeno, e a vaga fica reservada em toda
+   linha para os valores não saírem do prumo. O valor-link dos números da faixa
+   é igual aos outros, só clicável. */
 .ir-conta {
   flex: none;
-  width: 36px;
-  min-height: 36px;
+  width: 24px;
+  min-height: 24px;
+  height: 24px;
   padding: 0;
   border: 1px solid var(--borda-forte);
   border-radius: var(--raio-controle);
   background: var(--superficie);
   color: var(--tinta-fraca);
-  font-size: var(--t-corpo);
+  font-size: var(--t-apoio);
+  line-height: 1;
 }
 .ir-conta:hover { background: var(--acento-fundo); }
+.ir-conta.sem-ir { visibility: hidden; border: 0; }
 .valor-numero.elo-numero {
+  display: block;
+  min-height: 0;
+  margin: 0;
   padding: 0;
   border: 0;
   background: none;
   font: inherit;
   font-weight: 600;
+  line-height: inherit;
   color: inherit;
   text-align: left;
-  text-decoration: underline dotted;
-  text-underline-offset: 3px;
   cursor: pointer;
 }
-.numeros-caixa .previsto-faixa .valor-numero.elo-numero { font-size: var(--t-secao); }
+.valor-numero.elo-numero:hover { color: var(--acento); }
 
 /* O cartão na largura toda: o limite em cima (não muda com o mês), a fatura
    do mês embaixo (pedido dele, 03/10/2026). */

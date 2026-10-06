@@ -1563,7 +1563,8 @@ function linhaHTML(l, ids, saldoApos = null) {
     onde = conta?.nome ?? 'antes do app';
     if (l.quantidade) onde += ` · ${Number(l.quantidade).toLocaleString('pt-BR', { maximumFractionDigits: 8 })} × ${formatar(l.preco ?? 0)}`;
   } else if (l.fatura) {
-    oque = `Fatura ${destino?.nome ?? ''}`;
+    // Ainda aberta, é provisão para o mês do vencimento: diz que é prevista.
+    oque = `${l.fatura.situacao === 'fechada' ? 'Fatura' : 'Fatura prevista'} ${destino?.nome ?? ''}`;
     onde = `${conta?.nome ?? '—'} · fecha ${diaCurto(l.fatura.fechamento)}`;
   } else if (l.liquido) {
     oque = `Salário ${conta?.nome ?? ''} · líquido`;
@@ -1636,9 +1637,9 @@ function linhaHTML(l, ids, saldoApos = null) {
   const lado = ladoDaLinha(l, ids, investimento, transferencia);
   const elo = lado
     ? `<button type="button" class="ir-conta" data-ir-conta="${escapar(lado.conta)}" data-ir-mes="${escapar(lado.mes ?? '')}" title="Abrir ${escapar(app.contas[lado.conta].nome)}" aria-label="Abrir ${escapar(app.contas[lado.conta].nome)}">↗</button>`
-    : '';
+    : '<span class="ir-conta sem-ir" aria-hidden="true"></span>';
 
-  return `<li class="${rapido || elo ? 'com-rapido' : ''}"><button type="button" class="linha ${tom} ${l.tipo === 'pagamento_fatura' ? 'da-fatura' : ''} ${est === 'realizado' ? '' : est} ${saldoApos ? 'com-saldo' : ''}"
+  return `<li class="com-rapido"><button type="button" class="linha ${tom} ${l.tipo === 'pagamento_fatura' ? 'da-fatura' : ''} ${est === 'realizado' ? '' : est} ${saldoApos ? 'com-saldo' : ''}"
       ${alvo} aria-label="${acao} ${escapar(nomeDoTom.toLowerCase())} de ${escapar(diaCurto(dia))}">
     <span class="marca" title="${nomeDoTom}" aria-hidden="true">${marca}</span>
     <span class="quando">${escapar(diaCurto(dia))}</span>
