@@ -764,35 +764,79 @@ function faturaDoMes(c) {
   return { ...f, previsto0: f.total + aVir };
 }
 
-/** O que outras pessoas ainda vão repassar ao dono deste cartão (design/16). */
-function linhaAReceber(cartao) {
-  if (!cartao.titular) return '';
-  const lista = aReceber(app, cartao.titular);
-  if (!lista.length) return '';
-  const numeros = lista.map((x) => numeroDaFaixa(`a receber de ${app.pessoas?.[x.pessoa]?.nome ?? 'alguém'}`, formatar(x.aRepassar))).join('');
-  return `<div class="limite-cartao a-receber"><div class="numeros-renda">${numeros}</div></div>`;
-}
-
 /**
- * A provisão do cartão no cofrinho (design/11 §9): o que já está guardado, o
- * alvo — limite usado mais as previstas da fatura aberta — e uma barra. A barra
- * já diz que falta; não há aviso escrito.
+ * O card de UM cartão, enxuto (pedido dele, 06/10/2026): a fatura em destaque
+ * com o botão de pagar; o limite numa linha com barra; o cofrinho numa linha com
+ * barra e, embaixo em letra pequena, o que falta e o que ainda vão repassar.
+ * Detalhes (limite usado + previstas) só no mouse.
  */
-function linhaDaProvisao(cartao) {
-  const p = provisaoDoCartao(app, cartao.id);
-  if (!p) return '';
-  const pct = p.alvo > 0 ? Math.min(100, Math.max(0, (p.provisionado / p.alvo) * 100)) : 100;
-  const til = p.estimado ? '~' : '';
-  const numeros = [
-    numeroDaFaixa(`provisionado em ${p.cofrinho.nome}`, formatar(p.provisionado)),
-    numeroDaFaixa('alvo', `${til}${formatar(p.alvo)}`),
-  ];
-  if (p.previstas) numeros.push(numeroDaFaixa('limite usado + previstas', `${formatar(p.limiteUsado)} + ${til}${formatar(p.previstas)}`));
-  numeros.push(numeroDaFaixa(p.falta > 0 ? 'falta' : 'sobra', `${til}${formatar(Math.abs(p.falta))}`));
-  return `<div class="limite-cartao provisao-cartao">
-      <div class="numeros-renda">${numeros.join('')}</div>
-      <div class="barra-limite barra-provisao" role="img" aria-label="${Math.round(pct)}% provisionado"><i style="width:${pct.toFixed(1)}%"></i></div>
+function blocoLeveDoCartao(c) {
+  const f = faturaDoMes(c);
+  const mesNome = nomeDoMes(vista.mes).split(' ')[0];
+  const pagadora = app.contas[c.pagaCom];
+  const cab = `<div class="cab-cartao">
+      <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(c.nome)}</p>
+      <span class="fino">${pagadora ? `paga com ${escapar(pagadora.nome)}` : `<button type="button" class="elo" data-editar-conta="${escapar(c.id)}">defina o “paga com”</button>`}</span>
     </div>`;
+
+  // A fatura do mês da tela, o estimado grande e o já lançado ao lado.
+  let fatura;
+  if (!f) {
+    fatura = `<div class="fatura-destaque"><div><div class="rotulo-numero">fatura de ${escapar(mesNome)}</div><div class="valor-grande">sem compras</div></div></div>`;
+  } else {
+    const situacao = f.situacao === 'aberta' ? 'aberta' : f.situacao === 'futura' ? 'por vir' : f.aPagar > 0 ? (f.vencimento < hoje() ? 'vencida' : 'fechada') : 'paga';
+    const til = f.estimado ? '~' : '';
+    const detalhes = [`fecha ${diaCurto(f.fechamento)} · vence ${diaCurto(f.vencimento)}`];
+    if (f.previsto0 !== f.total) detalhes.push(`já lançado ${formatar(f.total)}`);
+    if (f.situacao === 'fechada' && f.pago) detalhes.push(`pago ${formatar(f.pago)}${f.aPagar > 0 ? ` · falta ${formatar(f.aPagar)}` : ''}`);
+    const paga = f.aPagar > 0 && f.situacao !== 'futura'
+      ? `<button type="button" class="principal" data-pagar="${escapar(c.id)}" data-valor="${f.aPagar}">Pagar fatura</button>` : '';
+    fatura = `<div class="fatura-destaque ${situacao === 'vencida' ? 'vencida' : ''}">
+        <div>
+          <div class="rotulo-numero">fatura de ${escapar(mesNome)} · ${situacao}</div>
+          <div class="valor-grande">${til}${formatar(f.previsto0)}</div>
+          <div class="fino">${detalhes.join(' · ')}</div>
+        </div>
+        ${paga}
+      </div>`;
+  }
+
+  // O limite, numa linha e uma barra.
+  const usado = resumoDoCartao(app, c.id)?.divida ?? 0;
+  const limite = c.limite ?? 0;
+  const pctLimite = limite > 0 ? Math.min(100, Math.max(0, (usado / limite) * 100)) : 0;
+  const limiteHTML = limite > 0
+    ? `<div class="linha-barra">
+        <div class="rotulo-barra"><span>limite</span><span>${formatar(usado)} de ${formatar(limite)} · livre ${formatar(limite - usado)}</span></div>
+        <div class="barra-limite ${pctLimite >= 90 ? 'alto' : ''}" role="img" aria-label="${Math.round(pctLimite)}% do limite usado"><i style="width:${pctLimite.toFixed(1)}%"></i></div>
+      </div>`
+    : `<div class="linha-barra"><div class="rotulo-barra"><span>limite usado</span><span>${formatar(usado)}</span></div></div>`;
+
+  // O cofrinho (design/11 §9) e o que ainda vão repassar ao dono do cartão (design/16).
+  const receber = c.titular ? aReceber(app, c.titular) : [];
+  const deveRepassar = receber.map((x) => `${escapar(app.pessoas?.[x.pessoa]?.nome ?? 'alguém')} ainda deve repassar ${formatar(x.aRepassar)}`).join(' · ');
+  const p = provisaoDoCartao(app, c.id);
+  let cofrinho = '';
+  if (p) {
+    const til = p.estimado ? '~' : '';
+    const pct = p.alvo > 0 ? Math.min(100, Math.max(0, (p.provisionado / p.alvo) * 100)) : 100;
+    const composicao = `limite usado ${formatar(p.limiteUsado)}${p.previstas ? ` + previstas ${til}${formatar(p.previstas)}` : ''}`;
+    const miudo = [`${p.falta > 0 ? 'falta' : 'sobra'} ${til}${formatar(Math.abs(p.falta))}`, deveRepassar].filter(Boolean).join(' · ');
+    cofrinho = `<div class="linha-barra provisao-cartao">
+        <div class="rotulo-barra"><span title="${escapar(p.cofrinho.nome)}">cofrinho</span><span title="${escapar(composicao)}">${formatar(p.provisionado)} de ${til}${formatar(p.alvo)}</span></div>
+        <div class="barra-limite barra-provisao" role="img" aria-label="${Math.round(pct)}% provisionado"><i style="width:${pct.toFixed(1)}%"></i></div>
+        <div class="fino">${miudo}</div>
+      </div>`;
+  } else if (deveRepassar) {
+    cofrinho = `<div class="linha-barra"><div class="fino">${deveRepassar}</div></div>`;
+  }
+
+  return `<div class="bloco largo cartao-resumo cartao-leve">
+    ${cab}
+    ${fatura}
+    ${limiteHTML}
+    ${cofrinho}
+  </div>`;
 }
 
 /**
@@ -814,6 +858,8 @@ function blocoDosCartoes(cartoes) {
       <div class="numeros-renda">${numeroDaFaixa('em aberto', formatar(-saldoReal(app, um.id)))}</div>
     </div>`;
   }
+
+  if (um) return blocoLeveDoCartao(um);
 
   // Linha 1: o limite.
   let usado = 0;
@@ -882,8 +928,6 @@ function blocoDosCartoes(cartoes) {
   return `<div class="bloco largo cartao-resumo">
     <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(nome)}</p>
     ${linhaLimite}
-    ${um ? linhaDaProvisao(um) : ''}
-    ${um ? linhaAReceber(um) : ''}
     ${linhaFatura}
     ${aviso}
     ${pe}

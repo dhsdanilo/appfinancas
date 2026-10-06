@@ -880,7 +880,18 @@ body[data-pagina="dividas"] .bloco { min-width: 0; }
 .cartao-resumo .fatura-do-mes.vencida .valor-numero { color: var(--alerta); }
 /* A provisão no cofrinho: a barra enche na cor do cartão, e a linha vai logo
    abaixo do limite, com a mesma divisória. */
-.cartao-resumo .provisao-cartao { padding-top: var(--e3); }
+/* O card enxuto de um cartão (06/10/2026). */
+.cartao-leve { display: flex; flex-direction: column; gap: var(--e4); }
+.cartao-leve .cab-cartao { display: flex; justify-content: space-between; align-items: center; gap: var(--e3); }
+.cartao-leve .cab-cartao .nome-bloco { margin: 0; }
+.cartao-leve .fatura-destaque { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--e3); flex-wrap: wrap; }
+.cartao-leve .fatura-destaque.vencida .valor-grande { color: var(--alerta); }
+.cartao-leve .valor-grande { font-size: var(--t-tela); line-height: 1.2; font-variant-numeric: tabular-nums; }
+.cartao-leve .fino { color: var(--tinta-fraca); font-size: var(--t-miudo); margin-top: 2px; }
+.cartao-leve .linha-barra { display: flex; flex-direction: column; gap: var(--e2); padding-top: var(--e3); border-top: 1px solid var(--borda); }
+.cartao-leve .rotulo-barra { display: flex; justify-content: space-between; gap: var(--e3); flex-wrap: wrap; color: var(--tinta-fraca); font-size: var(--t-apoio); font-variant-numeric: tabular-nums; }
+.cartao-leve .rotulo-barra span:last-child { color: var(--tinta); }
+.cartao-leve .linha-barra .fino { margin-top: 0; }
 .barra-provisao i { background: var(--area-cartoes); }
 .mini-provisao .barra-limite { display: block; height: 4px; margin-top: 2px; }
 .mini-provisao .barra-limite i { background: var(--area-cartoes); }
