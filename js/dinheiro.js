@@ -594,7 +594,7 @@ function blocoDoMesSeguinte(nome, r, mes) {
   const { entra, sai } = r;
   const numeros = numerosDeEntrada(entra);
   for (const f of sai.faturas) {
-    const vence = f.vencimento ? ` · vence ${diaCurto(f.vencimento)}${f.provisao ? ' (provisão)' : ''}` : '';
+    const vence = f.vencimento ? ` · vence ${diaCurto(f.vencimento)}` : '';
     const para = { conta: f.cartao.id, mes: f.vencimento?.slice(0, 7) ?? mes };
     if (f.valor > 0) numeros.push(numeroDaFaixa(`fatura ${f.cartao.nome}${vence}`, menos(f.valor), para));
     if (f.recorrentes > 0) numeros.push(numeroDaFaixa(`recorrentes no ${f.cartao.nome}${f.valor > 0 ? '' : vence}`, menos(f.recorrentes, f.estimado), para));
@@ -1353,9 +1353,7 @@ function pintarLista(aba, contas) {
       const daConta = doMesAtual
         ? faturasNoPeriodo(app, cartao.id, '2000-01-01', somarMeses(ate, 2), hoje(), { pagoAte: ate })
           .filter((f) => noPeriodo(f.vencimento) || (f.situacao !== 'futura' && f.aPagar > 0))
-        // Noutro mês, a fatura do mês seguinte já aparece, provisionada, como
-        // no mês atual.
-        : faturasNoPeriodo(app, cartao.id, de, modoDaTela() === 'mes' ? fimDoMes(somarMeses(de, 1)) : ate);
+        : faturasNoPeriodo(app, cartao.id, de, ate);
       for (const f of daConta) {
         if (f.previsto <= 0) continue;
         linhas.push({

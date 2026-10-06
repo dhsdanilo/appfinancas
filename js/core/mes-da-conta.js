@@ -9,7 +9,7 @@
 // `ids` é o conjunto de contas da aba: numa só, ou todas no Geral — onde a
 // transferência entre elas não é entrada nem saída.
 
-import { hoje, inicioDoMes, fimDoMes, proximoMes, somarDias, somarMeses } from './datas.js';
+import { hoje, inicioDoMes, fimDoMes, proximoMes, somarDias } from './datas.js';
 import { visiveis, sinalDeSaida } from './lancamentos.js';
 import { ocorrenciasPrevistas, faturas } from './previsto.js';
 import { liquidoPrevisto } from './holerite.js';
@@ -139,9 +139,6 @@ export function entradasPrevistas(estado, ids, de, ate, dia = hoje()) {
 export function saidasDoMes(estado, ids, mes, dia = hoje()) {
   const de = `${mes}-01`;
   const ate = fimDoMes(de);
-  // A fatura do mês seguinte já é provisionada neste (o mês atual faz o mesmo):
-  // cada mês mostra a que vence nele e a que vence no próximo.
-  const ateFatura = fimDoMes(somarMeses(de, 1));
   const porCartao = new Map();
   let recorrentes = 0;
   let parcelas = 0;
@@ -149,32 +146,31 @@ export function saidasDoMes(estado, ids, mes, dia = hoje()) {
   let estimado = false;
 
   const cartoes = Object.values(estado.contas).filter((c) => c.tipo === 'cartao' && ids.has(c.pagaCom));
-  // Uma entrada por cartão e por mês de vencimento.
-  const daFatura = (cartao, vencimento) => {
-    const chave = `${cartao.id}:${vencimento.slice(0, 7)}`;
-    if (!porCartao.has(chave)) porCartao.set(chave, { cartao, valor: 0, recorrentes: 0, vencimento, estimado: false, provisao: vencimento > ate });
-    return porCartao.get(chave);
+  const daFatura = (cartao) => {
+    if (!porCartao.has(cartao.id)) porCartao.set(cartao.id, { cartao, valor: 0, recorrentes: 0, vencimento: null, estimado: false });
+    return porCartao.get(cartao.id);
   };
   for (const c of cartoes) {
     for (const f of faturas(estado, c.id, dia) ?? []) {
-      if (f.aPagar <= 0 || f.vencimento < de || f.vencimento > ateFatura) continue;
-      const x = daFatura(c, f.vencimento);
+      if (f.aPagar <= 0 || f.vencimento < de || f.vencimento > ate) continue;
+      const x = daFatura(c);
       x.valor += f.aPagar;
+      x.vencimento = f.vencimento;
     }
   }
 
   // Desde o mês atual: a compra recorrente de um mês cai na fatura que vence
   // no seguinte, e é pelo vencimento que ela pesa aqui.
-  for (const o of ocorrenciasPrevistas(estado, inicioDoMes(dia), ateFatura, dia)) {
-    if (o.dataCaixa < de || o.dataCaixa > ateFatura) continue;
+  for (const o of ocorrenciasPrevistas(estado, inicioDoMes(dia), ate, dia)) {
+    if (o.dataCaixa < de || o.dataCaixa > ate) continue;
     const cartao = estado.contas[o.contaId];
-    if (cartao?.tipo !== 'cartao' && o.dataCaixa > ate) continue;
     if (cartao?.tipo === 'cartao') {
       if (!ids.has(cartao.pagaCom)) continue;
       // À parte da fatura: a fatura é o que já está nela (a linha do
       // extrato); a recorrente do cartão ainda vai entrar.
-      const x = daFatura(cartao, o.dataCaixa);
+      const x = daFatura(cartao);
       x.recorrentes += sinalDeSaida(o);
+      x.vencimento ??= o.dataCaixa;
       if (o.estimado) x.estimado = estimado = true;
       continue;
     }
@@ -193,8 +189,7 @@ export function saidasDoMes(estado, ids, mes, dia = hoje()) {
     if (saida > 0) agendados += saida;
   }
 
-  const lista = [...porCartao.values()].filter((x) => x.valor > 0 || x.recorrentes > 0)
-    .sort((x, y) => (x.vencimento < y.vencimento ? -1 : 1));
+  const lista = [...porCartao.values()].filter((x) => x.valor > 0 || x.recorrentes > 0);
   const total = lista.reduce((t, x) => t + x.valor + x.recorrentes, 0) + recorrentes + parcelas + agendados;
   return { faturas: lista, recorrentes, parcelas, agendados, total, estimado };
 }
