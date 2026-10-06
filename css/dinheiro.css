@@ -769,6 +769,8 @@ body[data-pagina="dividas"] .bloco { min-width: 0; }
   cursor: pointer;
 }
 .valor-numero.elo-numero:hover { color: var(--acento); }
+/* A próxima fatura veste a cor do cartão de crédito. */
+.numero-faixa.cor-cartao .valor-numero { color: var(--area-cartoes); }
 
 /* O cartão na largura toda: o limite em cima (não muda com o mês), a fatura
    do mês embaixo (pedido dele, 03/10/2026). */

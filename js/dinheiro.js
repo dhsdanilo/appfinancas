@@ -549,7 +549,7 @@ function blocoDeCaixa(nome, p, total = false, conta = null, aEntrar = null) {
     const proximaFatura = proximas.map((x) => numeroDaFaixa(
       varias ? `próxima fatura ${x.cartao.nome}` : 'próxima fatura',
       `${x.estimado ? '~' : ''}${menos(x.valor + x.recorrentes)}`,
-      { conta: x.cartao.id, mes: x.vencimento?.slice(0, 7) ?? vista.mes },
+      { conta: x.cartao.id, mes: x.vencimento?.slice(0, 7) ?? vista.mes, classe: 'cor-cartao' },
     )).join('');
     previsto += proximaFatura + destaqueDaFaixa('saldo provisionado', p.provisionado, p.estimado || proximas.some((x) => x.estimado), 'provisionado');
   }
@@ -829,7 +829,7 @@ const numeroDaFaixa = (rotulo, valor, para = null) => {
   const miolo = para && app?.contas?.[para.conta]
     ? `<button type="button" class="valor-numero elo-numero" data-ir-conta="${escapar(para.conta)}"${para.mes ? ` data-ir-mes="${escapar(para.mes)}"` : ''} title="Abrir ${escapar(app.contas[para.conta].nome)}">${texto}</button>`
     : `<span class="valor-numero">${texto}</span>`;
-  return `<div class="numero-faixa"><span class="rotulo-numero">${escapar(rotulo)}</span>${miolo}</div>`;
+  return `<div class="numero-faixa ${para?.classe ?? ''}"><span class="rotulo-numero">${escapar(rotulo)}</span>${miolo}</div>`;
 };
 
 const dataCheia = (dia) => `${dia.slice(8, 10)}/${dia.slice(5, 7)}/${dia.slice(0, 4)}`;
