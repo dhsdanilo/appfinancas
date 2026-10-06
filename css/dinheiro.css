@@ -1547,3 +1547,8 @@ body[data-pagina="inicio"] #b-exportar { display: none; }
 .tabelinha li { display: flex; justify-content: space-between; gap: var(--e3); padding: var(--e1) 0; border-bottom: 1px solid var(--borda); font-size: var(--t-apoio); }
 .tabelinha li .positivo { color: var(--positivo); }
 .tabelinha li .negativo { color: var(--alerta); }
+
+/* A prévia de restaurar uma cópia. */
+.tabelinha-copia { width: 100%; border-collapse: collapse; font-size: var(--t-apoio); margin: var(--e2) 0; }
+.tabelinha-copia td { padding: var(--e1) 0; border-bottom: 1px solid var(--borda); }
+.tabelinha-copia td:last-child { text-align: right; }

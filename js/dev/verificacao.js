@@ -35,6 +35,8 @@ import * as importar from '../core/importar.js';
 import * as explorar from '../core/explorar.js';
 import * as exportar from '../core/exportar.js';
 import * as ir from '../core/ir-venda.js';
+import * as copia from '../core/copia.js';
+import * as avisos from '../core/avisos.js';
 import * as icones from '../core/icones-conta.js';
 
 const BANCO_DE_TESTE = 'appfinancas-teste';
@@ -2523,6 +2525,47 @@ caso('investimento', 'a linha do tempo do ativo: um ponto por dia com movimento,
   igual([s[3].investido, s[3].valor, s[3].preco], [700000, 840000, 4200], 'no fim: 200 × R$ 42,00 contra R$ 7.000 pagos');
   igual(investimentos.serieDoAtivo(e, 'petr', '2025-03-10', '2025-04-05').map((x) => x.data)[0], '2025-03-10', 'o período corta o começo');
   igual(investimentos.serieDoAtivo(e, 'nada', '2000-01-01'), [], 'ativo que não existe');
+});
+
+caso('cópia', 'a cópia de segurança: cifrada, frase errada não abre, restaurar só acrescenta', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const ev = (t, d) => estado.aplicarEvento(t, d);
+  await ev('conta.criada', { id: 'cc', nome: 'Corrente', tipo: 'corrente', saldoInicial: 100000 });
+  await ev('lancamento.registrado', { id: 'l1', tipo: 'despesa', contaId: 'cc', valor: 5000, dataCompetencia: '2026-10-01', dataCaixa: '2026-10-01', confirmado: true });
+  const { texto, registros } = await copia.criarCopia('uma frase boa', { marcar: false });
+  verdade(registros >= 2, 'levou os registros');
+  verdade(!texto.includes('Corrente') && !texto.includes('despesa'), 'o arquivo não tem nada em claro');
+
+  const falha = async (fn) => { try { await fn(); return null; } catch (e) { return e.message; } };
+  igual(await falha(() => copia.lerCopia(texto, 'outra frase qualquer')), 'Frase errada.', 'frase errada não abre');
+  igual(await falha(() => copia.lerCopia('{"a":1}', 'x')), 'Este arquivo não é uma cópia do app.', 'arquivo que não é cópia');
+  verdade((await falha(() => copia.criarCopia('curta', { marcar: false })))?.includes('pelo menos'), 'frase curta demais');
+
+  const { eventos } = await copia.lerCopia(texto, 'uma frase boa');
+  igual(eventos.length, registros, 'tudo volta na leitura');
+  const igualAoAtual = await copia.conferirCopia(eventos);
+  igual([igualAoAtual.jaTem, igualAoAtual.novos.length], [registros, 0], 'no mesmo aparelho não há nada novo');
+
+  await limpar();
+  const vazio = await copia.conferirCopia(eventos);
+  igual(vazio.novos.length, registros, 'num aparelho vazio, tudo é novo');
+  igual(await copia.restaurarCopia(vazio.novos), registros, 'restaurou todos');
+  igual(await copia.restaurarCopia((await copia.conferirCopia(eventos)).novos), 0, 'restaurar de novo não acrescenta nada');
+  const e = await estado.calcular();
+  igual([Object.keys(e.contas), e.lancamentos.l1?.valor], [['cc'], 5000], 'o app volta com as contas e os lançamentos');
+});
+
+caso('cópia', 'o aviso de cópia: nunca, antiga, recente, e sem aviso quando não se sabe', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', { id: 'cc', nome: 'Corrente', tipo: 'corrente', saldoInicial: 0 });
+  const e = await estado.calcular();
+  const titulos = (u) => avisos.avisosDoInicio(e, '2026-10-06', { ultimaCopia: u }).map((a) => a.titulo).filter((t) => /cópia/.test(t));
+  igual(titulos(null), ['Nenhuma cópia de segurança guardada'], 'nunca guardou');
+  igual(titulos('2026-09-01'), ['Última cópia de segurança há 35 dias'], 'antiga');
+  igual(titulos('2026-10-01'), [], 'recente: sem aviso');
+  igual(titulos(undefined), [], 'sem a informação: sem aviso');
 });
 
 async function limpar() {

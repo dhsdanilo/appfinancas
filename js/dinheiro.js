@@ -27,6 +27,7 @@ import { criarImportacao } from './app/importar.js';
 import { resumoDaConta, ativosDaConta, nomeDaClasse, CLASSES } from './core/investimentos.js';
 import { donosNoDia, envelopesAtivos, numerosDoEnvelope } from './core/envelopes.js';
 import { avisosDoInicio } from './core/avisos.js';
+import { ultimaCopia } from './core/copia.js';
 import { mesDosInvestimentos, rendimentoNoPeriodo } from './core/relatorios.js';
 import { areas, cor as corDaSerie } from './app/graficos.js';
 import { aoLancar } from './app/pagina.js';
@@ -320,7 +321,7 @@ const ICONE_DO_AVISO = { ruim: '!', atencao: '◷', info: 'i' };
 
 /** A faixa de avisos: até quatro, os que mais pedem atenção primeiro. */
 function avisosHTML() {
-  const lista = avisosDoInicio(app);
+  const lista = avisosDoInicio(app, hoje(), { ultimaCopia: ultimaCopia() });
   if (!lista.length) return '';
   const cartoes = lista.slice(0, 4).map((a, k) => {
     const alvo = a.para.conta ? `data-ir-conta="${escapar(a.para.conta)}"${a.para.mes ? ` data-ir-mes="${escapar(a.para.mes)}"` : ''}`

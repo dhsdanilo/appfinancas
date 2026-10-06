@@ -11,6 +11,7 @@ import { agora as sincronizarAgora } from './app/sincronia-viva.js';
 import * as cotacoes from './core/cotacoes.js';
 import * as estadoDoApp from './core/estado.js';
 import { pessoaDoAparelho, definirPessoaDoAparelho } from './core/repasse.js';
+import { ligarCopia } from './app/copia.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -180,3 +181,4 @@ async function pintarDonoDoAparelho() {
 }
 document.getElementById('ap-pessoa')?.addEventListener('change', (e) => definirPessoaDoAparelho(e.target.value || null));
 document.addEventListener('app:tela', (e) => { if (e.detail.tela === 'configuracoes') pintarDonoDoAparelho(); });
+ligarCopia();

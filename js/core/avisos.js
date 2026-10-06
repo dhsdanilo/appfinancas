@@ -16,7 +16,11 @@ import { aReceber } from './repasse.js';
 const ORDEM = { ruim: 0, atencao: 1, info: 2 };
 const dias = (de, ate) => Math.round((Date.parse(ate) - Date.parse(de)) / 86400000);
 
-export function avisosDoInicio(estado, dia = hoje()) {
+/**
+ * `ultimaCopia`: o dia da última cópia de segurança deste aparelho (null = nunca), ou
+ * undefined para não avisar disso (os testes e as telas que não sabem).
+ */
+export function avisosDoInicio(estado, dia = hoje(), { ultimaCopia } = {}) {
   const lista = [];
 
   for (const c of Object.values(estado.contas)) {
@@ -81,6 +85,19 @@ export function avisosDoInicio(estado, dia = hoje()) {
         titulo: `${estado.pessoas[x.pessoa]?.nome ?? 'Alguém'} ainda deve repassar`,
         detalhe: formatar(x.aRepassar),
         para: { tela: 'cartoes' },
+      });
+    }
+  }
+
+  // Só cobra quem já tem o que perder: com contas cadastradas e sem cópia há mais de 14 dias.
+  if (ultimaCopia !== undefined && Object.keys(estado.contas).length) {
+    const faz = ultimaCopia ? dias(ultimaCopia, dia) : null;
+    if (faz === null || faz > 14) {
+      lista.push({
+        nivel: faz === null || faz > 30 ? 'atencao' : 'info',
+        titulo: faz === null ? 'Nenhuma cópia de segurança guardada' : `Última cópia de segurança há ${faz} dias`,
+        detalhe: 'guardar agora',
+        para: { tela: 'configuracoes/avancado' },
       });
     }
   }

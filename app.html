@@ -321,6 +321,19 @@
     (para o "a repassar"). Fica só neste aparelho.
   </p>
 
+<p class="titulo-bloco">cópia de segurança</p>
+<p class="nota">
+  Um arquivo com todos os seus registros, cifrado com uma frase que você escolhe. Guarde fora do GitHub
+  (o computador, um pen drive). Para restaurar em outro endereço ou aparelho vazio, precisa do arquivo
+  <strong>e da frase</strong>: sem ela, ninguém abre, nem eu.
+</p>
+<p class="nota" id="cp-ultima"></p>
+<div class="campo acao">
+  <button type="button" id="cp-guardar">Guardar cópia agora</button>
+  <button type="button" id="cp-restaurar">Restaurar de um arquivo…</button>
+  <input type="file" id="cp-arquivo" accept=".fin,application/json" hidden>
+</div>
+
   <p class="titulo-bloco">ferramentas de obra</p>
   <p class="nota">
     A <a href="verificacao.html">verificação</a> roda a suíte que prova que o alicerce aguenta, mostra
@@ -332,6 +345,29 @@
 </div>
 
 </div>
+
+<dialog id="dialogo-copia" class="dialogo-ciclo" aria-labelledby="titulo-copia">
+  <form class="formulario" id="f-copia" method="dialog">
+    <p class="titulo-bloco" id="titulo-copia">Cópia de segurança</p>
+    <p class="nota" id="cp-texto"></p>
+    <div class="campo largo">
+      <label for="cp-frase">Frase de segurança</label>
+      <input type="password" id="cp-frase" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="campo largo" id="cp-campo-confirma">
+      <label for="cp-confirma">Repita a frase</label>
+      <input type="password" id="cp-confirma" autocomplete="off" spellcheck="false">
+    </div>
+    <div id="cp-previa" hidden></div>
+    <p class="aviso erro" id="cp-aviso" hidden></p>
+    <div class="campo acao">
+      <button type="submit" class="principal" id="cp-ok" value="ok">Continuar</button>
+    </div>
+    <div class="campo acao">
+      <button type="submit" value="cancelar" formnovalidate>Cancelar</button>
+    </div>
+  </form>
+</dialog>
 
 <dialog id="dialogo-recorrencia" class="dialogo-ciclo" aria-labelledby="titulo-recorrencia">
   <form class="formulario" id="f-recorrencia">
