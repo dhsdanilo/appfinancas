@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Gera cotacoes.json: o fechamento dos últimos pregões da B3 (ações, FIIs, ETFs)
-e o preço de venda dos títulos do Tesouro Direto.
+e o preço de venda dos títulos do Tesouro Direto (o da manhã, do arquivo aberto, e o de fim
+do dia, lido do site do Tesouro depois das 18h, que o substitui e fica guardado em `fechamento`).
 
 Só biblioteca padrão; sem chave, sem login. As fontes são os arquivos públicos da
 própria B3 e do Tesouro Transparente. O arquivo é igual para todo mundo — não
@@ -13,10 +14,13 @@ import csv
 import io
 import json
 import sys
+import unicodedata
 import urllib.request
 from datetime import date, datetime, timedelta, timezone
 
 PREGOES = 10  # quantos pregões guardar: cobre uma semana sem sincronizar
+BRT = timezone(timedelta(hours=-3))
+FECHA_O_PREGAO = 18 * 60 + 10  # o Tesouro Direto fecha às 18h; dez minutos de folga
 B3 = 'https://arquivos.b3.com.br/api/'
 TESOURO = ('https://www.tesourotransparente.gov.br/ckan/dataset/df56aa42-484a-4a59-8184-7676580c81e3/'
            'resource/796d2059-14e9-44e3-80c9-2d9e30b405c1/download/PrecoTaxaTesouroDireto.csv')
@@ -98,7 +102,37 @@ def nome_do_titulo(tipo, venc):
     return f'{tipo} {ano}'
 
 
-def tesouro():
+# O preço de resgate que o próprio site do Tesouro mostra durante o pregão: o mesmo que o
+# banco usa. Depois das 18h é o último preço do dia. O arquivo aberto (TESOURO) só tem o da
+# manhã, então este o substitui nos dias em que foi guardado.
+TESOURO_VIVO = 'https://www.tesourodireto.com.br/o/c/rentabilidades/?pageSize=200'
+
+
+def sem_acento(texto):
+    return unicodedata.normalize('NFKD', texto).encode('ascii', 'ignore').decode().lower()
+
+
+def fechamento_do_tesouro(chaves, itens, agora=None):
+    """{chave: centavos} do preço de resgate de agora, só depois que o pregão fechou em dia
+    útil (de manhã o site ainda mostra o de ontem). `chaves` são as do arquivo ("Tipo|AAAA-MM-DD")."""
+    agora = agora or datetime.now(BRT)
+    if agora.weekday() >= 5 or agora.hour * 60 + agora.minute < FECHA_O_PREGAO:
+        return {}
+    achados = {}
+    for x in itens:
+        preco = centavos(str(x.get('unitaryRedemptionValue') or '').replace('.', ','))
+        venc = (x.get('maturityDate') or '')[:10]
+        nome = sem_acento(x.get('treasuryBondName') or '')
+        if not preco or not venc:
+            continue
+        # O tipo mais longo que começa o nome: "IPCA+ com Juros Semestrais" antes de "IPCA+".
+        candidatos = [k for k in chaves if k.split('|')[1] == venc and nome.startswith(sem_acento(k.split('|')[0]))]
+        if candidatos:
+            achados[max(candidatos, key=len)] = preco
+    return achados
+
+
+def tesouro(antigo=None):
     texto = baixar(TESOURO).decode('utf-8', errors='replace')
     linhas = list(csv.DictReader(io.StringIO(texto), delimiter=';'))
 
@@ -124,14 +158,39 @@ def tesouro():
         chave = f"{r['Tipo Titulo']}|{venc}"
         nomes[chave] = nome_do_titulo(r['Tipo Titulo'], venc)
         p.setdefault(chave, [None] * len(datas))[indice[base]] = valor
-    return {'datas': datas, 'p': p, 'nomes': nomes}
+
+    # Os preços de fim de dia: os que já estavam guardados e o de hoje, se o pregão fechou.
+    fechamentos = {k: dict(v) for k, v in ((antigo or {}).get('fechamento') or {}).items()}
+    hoje_brt = datetime.now(BRT).date().isoformat()
+    try:
+        vivos = fechamento_do_tesouro(list(p), json.loads(baixar(TESOURO_VIVO))['items'])
+    except Exception as erro:  # noqa: BLE001 — sem o preço de fim de dia, vale o da manhã
+        print('tesouro ao vivo indisponível:', erro)
+        vivos = {}
+    for chave, preco in vivos.items():
+        fechamentos.setdefault(chave, {})[hoje_brt] = preco
+    # O dia de fim de dia pode ainda não estar no arquivo aberto (ele chega depois): entra
+    # assim mesmo, e quando chegar o preço de fechamento continua mandando sobre o da manhã.
+    por_dia = {k: dict(zip(datas, serie)) for k, serie in p.items()}
+    for chave, dias in fechamentos.items():
+        if chave in por_dia:
+            por_dia[chave].update(dias)
+    datas = sorted({d for m in por_dia.values() for d in m} | set(datas))[-PREGOES:]
+    p = {k: [m.get(d) for d in datas] for k, m in por_dia.items()}
+    fechamentos = {k: {d: v for d, v in dias.items() if d in datas} for k, dias in fechamentos.items()}
+    return {'datas': datas, 'p': p, 'nomes': nomes, 'fechamento': {k: v for k, v in fechamentos.items() if v}}
 
 
 def main():
+    try:
+        with open('cotacoes.json', encoding='utf-8') as f:
+            antigo = json.load(f).get('tesouro')
+    except (OSError, ValueError):
+        antigo = None
     saida = {
         'gerado': datetime.now(timezone.utc).isoformat(timespec='seconds'),
         'acoes': acoes(),
-        'tesouro': tesouro(),
+        'tesouro': tesouro(antigo),
     }
     if not saida['acoes']['datas'] or not saida['tesouro']['datas']:
         sys.exit('sem dados: não sobrescrevo o arquivo antigo')
