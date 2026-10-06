@@ -294,7 +294,7 @@ $('b-cancelar-reajuste').addEventListener('click', () => $('dialogo-reajuste').c
 
 estado.aoAplicar(() => pintar());
 document.addEventListener('app:tela', (e) => {
-  if (e.detail.tela === 'planejamento') pintar();
+  if (e.detail.tela === 'configuracoes') pintar();
 });
 await pintar();
 

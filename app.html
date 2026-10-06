@@ -61,27 +61,6 @@
   </section>
 </div>
 
-<!-- ── planejamento ───────────────────────────────────────────────────── -->
-<div data-grupo="planejamento" hidden>
-<main>
-
-<!-- Recorrências: cadastradas uma vez, no andar de cima (design/03 §4). -->
-<section class="cartao" id="painel-recorrencias">
-  <div class="cabeca-secao">
-    <h2>Recorrências</h2>
-    <button type="button" class="principal" id="b-nova-recorrencia">Nova recorrência</button>
-  </div>
-  <p class="nota">
-    O que volta sozinho: aluguel, plano de saúde, energia, o salário, a transferência pra
-    reserva. Cada ocorrência aparece no extrato como prevista, e lançar pela linha prevista
-    amarra o lançamento à série.
-  </p>
-  <ul class="itens" id="lista-recorrencias"></ul>
-</section>
-
-</main>
-</div>
-
 <!-- ── configurações ──────────────────────────────────────────────────── -->
 <div data-grupo="configuracoes" hidden>
 <div class="abas" role="tablist" aria-label="Seções das configurações" id="abas-config">
@@ -93,6 +72,9 @@
   </button>
   <button type="button" role="tab" id="aba-detalhes" data-aba="detalhes" aria-controls="painel-detalhes" aria-selected="false" tabindex="-1">
     Descrições <span class="contador" data-contador="detalhes"></span>
+  </button>
+  <button type="button" role="tab" id="aba-recorrencias" data-aba="recorrencias" aria-controls="painel-recorrencias" aria-selected="false" tabindex="-1">
+    Recorrências
   </button>
   <button type="button" role="tab" id="aba-regras" data-aba="regras" aria-controls="painel-regras" aria-selected="false" tabindex="-1">
     Regras <span class="contador" id="contador-regras"></span>
@@ -309,6 +291,20 @@
 </div>
 
 <!-- ── avançado ───────────────────────────────────────────────────────── -->
+<!-- ── recorrências (design/03 §4) ───────────────────────────────────── -->
+<section class="cartao painel" role="tabpanel" id="painel-recorrencias" aria-labelledby="aba-recorrencias" data-painel="recorrencias" hidden>
+  <div class="cabeca-secao">
+    <h2>Recorrências</h2>
+    <button type="button" class="principal" id="b-nova-recorrencia">Nova recorrência</button>
+  </div>
+  <p class="nota">
+    O que volta sozinho: aluguel, plano de saúde, energia, o salário, a transferência pra
+    reserva. Cada ocorrência aparece no extrato como prevista, e lançar pela linha prevista
+    amarra o lançamento à série.
+  </p>
+  <ul class="itens" id="lista-recorrencias"></ul>
+</section>
+
 <section class="cartao painel" role="tabpanel" id="painel-avancado" aria-labelledby="aba-avancado" data-painel="avancado" hidden>
   <p class="titulo-bloco">este aparelho</p>
   <div class="campo">

@@ -16,7 +16,6 @@ const TELAS = {
   dividas: { grupo: 'dinheiro', titulo: 'Dívidas', sub: 'Cada empréstimo, o que falta e quanto custa.' },
   envelopes: { grupo: 'envelopes', titulo: 'Envelopes', sub: 'O dinheiro guardado, e de quem ele é.' },
   relatorios: { grupo: 'relatorios', titulo: 'Relatórios', sub: 'Em que foi, quando aperta, para onde vai e se estamos melhorando.' },
-  planejamento: { grupo: 'planejamento', titulo: 'Planejamento', sub: 'O que volta todo mês, e o que muda de valor.' },
   configuracoes: {
     grupo: 'configuracoes',
     titulo: 'Configurações',
@@ -45,6 +44,9 @@ export function iniciarRotas() {
   let atual = null;
 
   function ir() {
+    // O Planejamento virou a aba Recorrências das Configurações (06/10/2026): o
+    // endereço antigo, e o do atalho de quem o tinha guardado, leva para lá.
+    if (location.hash.startsWith('#/planejamento')) history.replaceState(null, '', '#/configuracoes/recorrencias');
     const rota = lerRota();
     if (!rota) return;
     const def = TELAS[rota.tela];
