@@ -29,7 +29,8 @@ import { mesDosInvestimentos, rendimentoNoPeriodo } from './core/relatorios.js';
 import { areas, cor as corDaSerie } from './app/graficos.js';
 import { aoLancar } from './app/pagina.js';
 import { enderecoDa } from './app/rotas.js';
-import { BARRA, PRINCIPAL, DIALOGOS } from './app/marcacao-dinheiro.js';
+import { BARRA, PRINCIPAL, DIALOGOS, ICONES } from './app/marcacao-dinheiro.js';
+import { porOrdemDaConta, iniciaisDaConta, corDaConta } from './core/ordem.js';
 import { rendaDaFolha, liquidoPrevisto } from './core/holerite.js';
 import {
   visiveis, porDataDecrescente, estadoDoLancamento, saldoReal, nomeDaCategoria,
@@ -437,18 +438,36 @@ function contasDaAba(aba) {
   return Object.values(app.contas)
     .filter((c) => aba.tipos.includes(c.tipo))
     .filter((c) => !c.arquivada || (c.tipo === 'cartao' && (resumoDoCartao(app, c.id)?.divida ?? 0) > 0))
-    .sort((a, b) => (a.nome.toLocaleLowerCase('pt-BR') < b.nome.toLocaleLowerCase('pt-BR') ? -1 : 1));
+    .sort(porOrdemDaConta);
 }
 
+const NOVO_DA_AREA = {
+  caixa: 'Nova conta', cartoes: 'Novo cartão', folha: 'Nova fonte de renda',
+  investimentos: 'Novo investimento', dividas: 'Novo empréstimo',
+};
+
+/** O "+" tracejado no fim das abas: cria uma conta (ou cartão, fonte, investimento, empréstimo). */
+const botaoNovaConta = () =>
+  `<button type="button" class="nova-conta" data-nova-conta title="${escapar(NOVO_DA_AREA[AREA] ?? 'Nova conta')}" aria-label="${escapar(NOVO_DA_AREA[AREA] ?? 'Nova conta')}">${ICONES.mais}</button>`;
+
+/**
+ * As abas das contas (design: ênfase nelas, ícone redondo de cada uma, a ativa
+ * maior) e, no fim, o "+" de nova conta. "Geral" só com duas ou mais; com uma
+ * só, ela é a aba — ainda assim ao lado do "+".
+ */
 function pintarSubabas(contas) {
-  // Com uma conta só, "Geral" e ela são a mesma coisa: a aba sairia de
-  // enfeite — a tela mostra direto a conta (pedido dele, 03/10/2026).
-  $('subabas').hidden = contas.length < 2;
-  $('subabas').innerHTML = [{ id: 'todas', nome: 'Geral' }, ...contas]
-    .map(
-      (c) => `<button type="button" data-conta="${escapar(c.id)}" aria-pressed="${c.id === vista.conta}">${escapar(c.nome)}</button>`
-    )
-    .join('');
+  const unica = contas.length === 1;
+  const abas = contas.length > 1 ? [{ id: 'todas', nome: 'Geral' }, ...contas] : contas;
+  $('subabas').hidden = false;
+  $('subabas').innerHTML = abas
+    .map((c) => {
+      const ativa = unica || c.id === vista.conta;
+      const icone = c.id === 'todas'
+        ? `<span class="ic ic-geral">${ICONES.geral}</span>`
+        : `<span class="ic" style="background:${corDaConta(c.nome)}">${escapar(iniciaisDaConta(c.nome))}</span>`;
+      return `<button type="button" class="aba-conta" data-conta="${escapar(c.id)}" aria-pressed="${ativa}">${icone}<span class="nome">${escapar(c.nome)}</span></button>`;
+    })
+    .join('') + botaoNovaConta();
 }
 
 function pintarPeriodo() {
@@ -898,6 +917,9 @@ let amortizando = null;
 
 function pintarDividas(contas) {
   for (const parte of ['subabas', 'periodo', 'parte-lista', 'filtros']) $(parte).hidden = true;
+  // Em Dívidas as abas não existem, mas o "+" de novo empréstimo sim.
+  $('subabas').hidden = false;
+  $('subabas').innerHTML = botaoNovaConta();
   const arquivadas = Object.values(app.contas).filter((c) => c.tipo === 'divida' && c.arquivada);
   if (!contas.length && !arquivadas.length) {
     $('resumo').innerHTML = `<p class="vazio">${escapar(VAZIO_DA_AREA.dividas)}</p>`;
@@ -2167,7 +2189,7 @@ async function abrir() {
   }
   // Em Dívidas não se lança: o "+" e o N criam um empréstimo.
   if (AREA === 'dividas') {
-    $('b-nova-conta')?.click();
+    document.querySelector('[data-nova-conta]')?.click();
     return;
   }
   // Em Investimentos não há gasto nem receita: o "+" e o N aportam.

@@ -31,6 +31,7 @@ import { salvarContrato, fotografar, excluirDivida } from './app/contrato.js';
 import { situacao, saldoDevedor } from './core/divida.js';
 import { calendarioDePagamento } from './core/contrato.js';
 import { somarMeses, inicioDoMes } from './core/datas.js';
+import { porOrdemDaConta } from './core/ordem.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -62,7 +63,6 @@ function montarArea(area) {
   AREA_GESTAO = area;
   confirmando = null;
   fundindo = null;
-  $('b-nova-conta')?.remove();
   // A lista "Suas contas" de baixo saiu de todas as áreas (pedido dele,
   // 03/10/2026): cada conta se edita pelo "editar" do canto de cima, e cada
   // contrato de dívida pelo "corrigir" dele. Fica só o botão de criar.
@@ -89,13 +89,7 @@ function montarArea(area) {
   $('f-conta').elements.data.closest('.campo').hidden = area === 'folha' || area === 'dividas';
   $('b-criar-conta').textContent = t.criar;
 
-  // O botão de criar mora na barra da tela, ao lado de lançar e transferir.
-  document.querySelector('.acoes-topo')?.insertAdjacentHTML(
-    'beforeend',
-    // Em Dívidas é a única ação da tela: lançar e transferir não existem lá.
-    `<button type="button" id="b-nova-conta" ${area === 'dividas' ? 'class="principal"' : ''}>${t.novo}</button>`
-  );
-  $('b-nova-conta').addEventListener('click', abrirNovaConta);
+  // O botão de criar é o "+" no fim das abas (js/dinheiro.js); aqui só o clique.
   if (app) pintar();
 }
 
@@ -1021,9 +1015,51 @@ function abrirEditarConta(id) {
     : '<strong>O saldo inicial é o marco zero</strong>: mudar ele muda todo saldo calculado dali pra frente.';
   $('aviso-editar-conta').hidden = true;
   pintarFimDaConta();
+  pintarOrdemDaConta();
   $('dialogo-editar-conta').showModal();
   f.nome.focus();
 }
+
+/** As contas ativas da mesma área da conta, na ordem das abas. */
+function irmasDaArea(c) {
+  const area = AREAS.find((a) => a.tipos.includes(c.tipo));
+  return Object.values(app.contas).filter((x) => area?.tipos.includes(x.tipo) && !x.arquivada).sort(porOrdemDaConta);
+}
+
+/** Habilita ‹ e › conforme a conta esteja no começo, no meio ou no fim da fila. */
+function pintarOrdemDaConta() {
+  const c = app.contas[editandoConta];
+  const lista = c ? irmasDaArea(c) : [];
+  const i = lista.findIndex((x) => x.id === editandoConta);
+  $('ec-ordem').hidden = lista.length < 2 || i < 0;
+  $('b-mover-antes').disabled = i <= 0;
+  $('b-mover-depois').disabled = i < 0 || i >= lista.length - 1;
+}
+
+/** Troca a conta com a vizinha e grava a ordem de todas (1, 2, 3…): a fila fica sem buracos. */
+async function moverConta(delta) {
+  const c = app.contas[editandoConta];
+  if (!c) return;
+  const lista = irmasDaArea(c);
+  const i = lista.findIndex((x) => x.id === c.id);
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= lista.length) return;
+  [lista[i], lista[j]] = [lista[j], lista[i]];
+  for (const [k, x] of lista.entries()) {
+    if (x.ordem !== k + 1) await estado.aplicarEvento('conta.alterada', { id: x.id, ordem: k + 1 });
+  }
+  await recarregar();
+  pintarOrdemDaConta();
+}
+
+for (const b of document.querySelectorAll('#ec-ordem [data-mover]')) {
+  b.addEventListener('click', () => moverConta(Number(b.dataset.mover)));
+}
+
+// O "+" no fim das abas (js/dinheiro.js) cria uma conta da área em que se está.
+document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-nova-conta]') && AREA_GESTAO) abrirNovaConta();
+});
 
 function avisoDaEdicao(texto) {
   $('aviso-editar-conta').textContent = texto;

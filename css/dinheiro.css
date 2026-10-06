@@ -107,7 +107,7 @@ button.linha.vencido { border-left: 3px solid var(--alerta); background: var(--a
 
 /* As ações da tela ficam abaixo do cabeçalho, não dentro dele: o topo é
    navegação e identidade, e misturar os dois faz o olho procurar duas vezes. */
-.barra-acoes { padding-top: var(--e2); }
+.barra-acoes { padding-top: 0; }
 
 /* ── cor onde ela informa ───────────────────────────────────────────────── */
 /* A paleta é pequena de propósito: se tudo é colorido, nada se lê. Então cor
@@ -188,22 +188,77 @@ button.linha.vencido { border-left: 3px solid var(--alerta); background: var(--a
   scrollbar-width: none;
 }
 .subabas[hidden] { display: none; }
-.subabas button {
+.subabas { align-items: center; }
+/* A aba de cada conta: ícone redondo com a inicial e o nome. A ativa é maior e
+   leva a cor da área — o foco é nas contas, não nos botões (pedido dele, 06/10/2026). */
+.subabas .aba-conta {
   flex: none;
-  min-height: 34px;
-  padding: 0 var(--e3);
+  display: flex;
+  align-items: center;
+  gap: var(--e2);
+  min-height: 40px;
+  padding: 3px var(--e3) 3px 3px;
   border: 1px solid var(--borda);
   border-radius: var(--raio-pilula);
-  background: var(--superficie);
+  background: transparent;
   color: var(--tinta-fraca);
   font-size: var(--t-apoio);
 }
-.subabas button[aria-pressed="true"] {
-  border-color: var(--area, var(--acento));
-  background: var(--area-fundo, var(--acento-fundo));
-  color: var(--tinta);
+.subabas .aba-conta .ic {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--tinta-fraca);
+  color: #fff;
+  font-size: var(--t-miudo);
   font-weight: 600;
 }
+.subabas .aba-conta .ic-geral svg { width: 16px; height: 16px; }
+.subabas .aba-conta[aria-pressed="true"] {
+  min-height: 46px;
+  padding-right: var(--e4);
+  border: 2px solid var(--area, var(--acento));
+  background: var(--superficie);
+  color: var(--tinta);
+  font-size: var(--t-corpo);
+  font-weight: 600;
+}
+.subabas .aba-conta[aria-pressed="true"] .ic { width: 38px; height: 38px; font-size: var(--t-apoio); }
+.subabas .nova-conta {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px dashed var(--borda-forte);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--tinta-fraca);
+}
+.subabas .nova-conta svg { width: 18px; height: 18px; }
+.subabas .nova-conta:hover { color: var(--tinta); border-color: var(--area, var(--acento)); }
+
+/* Os quatro botões redondos, dentro da caixa, à direita: os dois principais
+   maiores e na frente; importar e exportar menores atrás. */
+.acoes-redondas { display: flex; align-items: center; justify-content: flex-end; gap: var(--e3); padding: 0 0 var(--e3); }
+.redondo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--area, var(--acento));
+  color: var(--fundo);
+  cursor: pointer;
+}
+.redondo:hover { filter: brightness(1.08); }
+.redondo.grande { width: 52px; height: 52px; }
+.redondo.grande svg { width: 26px; height: 26px; }
+.redondo.pequeno { width: 34px; height: 34px; }
+.redondo.pequeno svg { width: 16px; height: 16px; }
 
 .periodo {
   display: flex;

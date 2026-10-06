@@ -2,15 +2,31 @@
 // das janelas que todas usam. Uma vez aqui, em vez de repetida em sete páginas:
 // janela copiada é janela que diverge no terceiro ajuste.
 
-export const BARRA = `
-  <div class="barra-acoes" id="barra-acoes">
-    <div class="acoes-topo">
-      <button type="button" class="principal" id="b-novo">Novo lançamento</button>
-      <button type="button" id="b-transferir">Transferir</button>
-      <button type="button" id="b-importar">Importar extrato</button>
-      <span class="atalho"><kbd>N</kbd> lança · <kbd>T</kbd> transfere</span>
+// Os botões de ação são redondos, na cor da área, e moram DENTRO da caixa das
+// contas, alinhados à direita: os dois que mais se usa na frente e maiores
+// (pedido dele, 06/10/2026). O N e o T continuam no teclado e aparecem ao passar o mouse.
+const ICONE = (caminho) =>
+  `<svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${caminho}</svg>`;
+
+export const ICONES = {
+  mais: ICONE('<path d="M12 5v14M5 12h14"/>'),
+  transferir: ICONE('<path d="M7 4v16M7 4 4 7M7 4l3 3M17 20V4M17 20l-3-3M17 20l3-3"/>'),
+  importar: ICONE('<path d="M12 16V4M12 4 8 8M12 4l4 4M4 20h16"/>'),
+  exportar: ICONE('<path d="M12 4v12M12 16l-4-4M12 16l4-4M4 20h16"/>'),
+  geral: ICONE('<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/>'),
+};
+
+// Já não há barra solta acima da caixa: ela mora dentro do painel (PRINCIPAL).
+export const BARRA = '';
+
+const ACOES = `
+    <div class="barra-acoes acoes-redondas" id="barra-acoes">
+      <button type="button" class="redondo grande" id="b-novo" title="Novo lançamento (N)" aria-label="Novo lançamento">${ICONES.mais}</button>
+      <button type="button" class="redondo grande" id="b-transferir" title="Transferir (T)" aria-label="Transferir">${ICONES.transferir}</button>
+      <button type="button" class="redondo pequeno" id="b-importar" title="Importar extrato" aria-label="Importar extrato">${ICONES.importar}</button>
+      <button type="button" class="redondo pequeno" id="b-exportar" title="Exportar (em breve)" aria-label="Exportar">${ICONES.exportar}</button>
     </div>
-  </div>`;
+`;
 
 export const PRINCIPAL = `
   <!-- A fila de pendências (R16): a única parte do app que cobra — e cobra
@@ -28,6 +44,7 @@ export const PRINCIPAL = `
     </div>
 
     <div class="subabas" role="group" aria-label="Conta" id="subabas"></div>
+${ACOES}
 
     <div class="periodo" id="periodo">
       <button type="button" class="passo" id="p-antes" aria-label="Mês anterior">‹</button>

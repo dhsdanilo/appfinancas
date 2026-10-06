@@ -259,6 +259,14 @@ export const EDITAR_CONTA = `
       <label for="ec-caixa">O dinheiro fica</label>
       <select id="ec-caixa" name="caixaEm" data-papel="caixa-em"></select>
     </div>
+    <!-- A ordem das abas da área: as mais importantes na frente (pedido dele). -->
+    <div class="campo largo ordem-conta" id="ec-ordem">
+      <span class="rotulo">Ordem nas abas</span>
+      <span class="botoes-ordem">
+        <button type="button" id="b-mover-antes" data-mover="-1">‹ mais para a frente</button>
+        <button type="button" id="b-mover-depois" data-mover="1">mais para trás ›</button>
+      </span>
+    </div>
     <div class="campo" id="ec-campo-saldo">
       <label for="ec-saldo" id="ec-rotulo-saldo">Saldo inicial</label>
       <input type="text" id="ec-saldo" name="saldo" inputmode="decimal" autocomplete="off" placeholder="0,00">
