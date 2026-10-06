@@ -9,7 +9,7 @@ import { visiveis } from '../core/lancamentos.js';
 import { nomeDaClasse, posicao, serieDoAtivo, rendimentoDoAtivo } from '../core/investimentos.js';
 import { liquidoDaVenda } from '../core/ir-venda.js';
 import { donosNoDia } from '../core/envelopes.js';
-import { areas, cor } from './graficos.js';
+import { areas, pizza, cor, COR_NEUTRA } from './graficos.js';
 import { graficoDeLinha } from './grafico.js';
 
 const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -124,13 +124,14 @@ export function iniciarPaginaDoAtivo({ aoRegistrar, aoEditar, aoCorrigir } = {})
     } else if (p.proventos) {
       blocos.push(`<div><p class="miudo titulo-linhas">proventos</p><ul class="tabelinha">${linha('recebidos', formatar(p.proventos))}</ul></div>`);
     }
-    // De quem é o dinheiro: cada envelope com a sua parte, a um toque do envelope.
+    // De quem é o dinheiro: uma pizza pequena, e cada envelope da lista é um link para ele.
     const lugar = donosNoDia(app).porLugar.get(ativo.id);
+    let fatiasDonos = [];
     if (lugar && lugar.valor > 0 && (lugar.donos.size || lugar.semDono > 0)) {
-      const partes = [...lugar.donos.entries()].filter(([id]) => app.envelopes[id]).sort((a, b) => b[1] - a[1]);
-      blocos.push(`<div><p class="miudo titulo-linhas">de quem é este dinheiro</p><ul class="tabelinha donos-det">${partes.map(([id, v]) =>
-        `<li><a href="#/envelopes/${esc(id)}" class="elo-envelope">${esc(app.envelopes[id].nome)}</a><span>${formatar(v)} <span class="fino">${Math.round((v / lugar.valor) * 100)}%</span></span></li>`).join('')}
-        ${lugar.semDono > 0 ? linha('<span class="fino">sem dono</span>', `${formatar(lugar.semDono)} <span class="fino">${Math.round((lugar.semDono / lugar.valor) * 100)}%</span>`) : ''}</ul></div>`);
+      fatiasDonos = [...lugar.donos.entries()].filter(([id]) => app.envelopes[id]).sort((a, b) => b[1] - a[1])
+        .map(([id, v], i) => ({ nome: app.envelopes[id].nome, valor: v, cor: cor(i + 1), href: `#/envelopes/${id}` }));
+      if (lugar.semDono > 0) fatiasDonos.push({ nome: 'sem dono', valor: lugar.semDono, cor: COR_NEUTRA });
+      blocos.push('<div><p class="miudo titulo-linhas">de quem é este dinheiro</p><div data-det="donos"></div></div>');
     }
 
     // Os últimos movimentos: só as operações; a lista completa e a correção ficam na janela de alteração.
@@ -165,6 +166,8 @@ export function iniciarPaginaDoAtivo({ aoRegistrar, aoEditar, aoCorrigir } = {})
       <div>${movimentos}</div>
     </div>`;
     desenhar(serieDoAtivo(app, ativo.id, de, ate));
+    const raizDonos = raiz.querySelector('[data-det="donos"]');
+    if (raizDonos) pizza(raizDonos, { fatias: fatiasDonos, formatar, centro: formatar(lugar.valor).replace(/,\d\d$/, ''), subtitulo: 'de quem é' });
   }
 
   function desenhar(serie) {

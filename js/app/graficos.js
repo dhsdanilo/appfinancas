@@ -264,7 +264,7 @@ export function pizza(raiz, { fatias, formatar, centro = '', subtitulo = '' }) {
     const dica = `<strong>${esc(formatar(f.valor))}</strong><span>${esc(f.nome)} · ${Math.round((f.valor / total) * 100)}%</span>`;
     return `<path class="fatia" d="${d}" fill="${f.cor}" data-dica="${esc(dica)}" tabindex="0"/>`;
   }).join('');
-  const itens = lista.map((f) => `<li><i style="background:${f.cor}"></i><span class="nome-fatia">${esc(f.nome)}</span>
+  const itens = lista.map((f) => `<li><i style="background:${f.cor}"></i>${f.href ? `<a class="nome-fatia" href="${esc(f.href)}">${esc(f.nome)}</a>` : `<span class="nome-fatia">${esc(f.nome)}</span>`}
       <span class="valor-fatia">${esc(formatar(f.valor))}</span><span class="parte-fatia">${Math.round((f.valor / total) * 100)}%</span></li>`).join('');
   raiz.innerHTML = `<div class="pizza"><div class="grafico grafico-pizza">
       <svg viewBox="0 0 180 180" role="img" aria-label="Gráfico de pizza">${arcos}

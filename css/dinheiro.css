@@ -1593,3 +1593,7 @@ a.dono-ativo:hover { text-decoration: underline; }
 .movimentos-det li { padding: 0; }
 .movimento-det { display: flex; justify-content: space-between; gap: var(--e3); width: 100%; min-height: 40px; padding: var(--e1) 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; align-items: center; }
 .movimento-det:hover { background: var(--acento-fundo); }
+
+/* Os donos do dinheiro na página do ativo: o nome na lista da pizza é link para o envelope. */
+.lista-pizza a.nome-fatia { color: var(--tinta); text-decoration: underline; text-decoration-color: var(--borda); }
+.lista-pizza a.nome-fatia:hover { text-decoration-color: var(--acento); }
