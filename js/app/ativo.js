@@ -14,6 +14,7 @@ import { visiveis } from '../core/lancamentos.js';
 import { CLASSES, CLASSES_POR_COTAS, nomeDaClasse, posicao, contaDoDinheiro, contaDaOperacao } from '../core/investimentos.js';
 import { lugarDaConta, envelopesAtivos } from '../core/envelopes.js';
 import { provisaoDoCartao } from '../core/cofrinho.js';
+import * as cotacoes from '../core/cotacoes.js';
 import { ligarDonos, criarJanelasDeEnvelope } from './envelope.js';
 
 const MARCACAO = `
@@ -38,6 +39,23 @@ const MARCACAO = `
         </select></label>
       <label class="campo-simples"><span class="miudo">vencimento · opcional</span>
         <input type="date" data-ativo="vencimento"></label>
+
+      <!-- Cotação automática: só ativo por cotas. O preço de fechamento entra a cada
+           sincronização, como se fosse informado à mão (js/core/cotacoes.js). -->
+      <div class="cotacao-ativo" data-ativo="cotacao-bloco" hidden>
+        <label class="campo-simples"><span class="miudo">cotação automática</span>
+          <select data-ativo="cotacao-fonte">
+            <option value="">manual</option>
+            <option value="b3">ação, FII ou ETF (B3)</option>
+            <option value="tesouro">título do Tesouro Direto</option>
+          </select></label>
+        <label class="campo-simples" data-ativo="cotacao-campo-b3" hidden><span class="miudo">código</span>
+          <input type="text" data-ativo="cotacao-codigo" list="ativo-codigos-b3" autocomplete="off" autocapitalize="characters" placeholder="PETR4">
+          <datalist id="ativo-codigos-b3"></datalist></label>
+        <label class="campo-simples" data-ativo="cotacao-campo-tesouro" hidden><span class="miudo">título</span>
+          <select data-ativo="cotacao-titulo"></select></label>
+        <p class="nota" data-ativo="cotacao-pista"></p>
+      </div>
 
       <!-- Como começou: a primeira aplicação (ou compra). Se for de antes de
            a conta do dinheiro entrar no app, não sai de conta nenhuma. -->
@@ -297,7 +315,7 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
   async function salvarFicha() {
     const nome = el('nome').value.trim();
     if (!nome) { el('nome').focus(); return; }
-    const dados = { nome, classe: el('classe').value, unidade: el('unidade').value, vencimento: el('vencimento').value || null };
+    const dados = { nome, classe: el('classe').value, unidade: el('unidade').value, vencimento: el('vencimento').value || null, cotacao: lerCotacao() };
     if (ativo) {
       await estado.aplicarEvento('ativo.alterado', { id: ativo.id, ...dados });
     } else {
@@ -324,9 +342,74 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
       }
     }
     editandoFicha = false;
+    // Vinculou (ou trocou o papel): já busca o histórico, sem esperar a sincronização.
+    if (dados.cotacao) await cotacoes.atualizar({ forcar: true }).catch(() => {});
     await recarregar();
     if (aoSalvar) await aoSalvar();
     focarPrimeiro();
+  }
+
+  /** O vínculo escolhido na ficha: { fonte, chave } ou null (manual). */
+  function lerCotacao() {
+    if (el('unidade').value !== 'cotas') return null;
+    const fonte = el('cotacao-fonte').value;
+    if (fonte === 'b3') {
+      const chave = el('cotacao-codigo').value.trim().toUpperCase();
+      return chave ? { fonte, chave } : null;
+    }
+    if (fonte === 'tesouro') {
+      const chave = el('cotacao-titulo').value;
+      return chave ? { fonte, chave } : null;
+    }
+    return null;
+  }
+
+  /** Põe na ficha o vínculo que o ativo tem (ou nenhum) e a pinta. */
+  function porCotacaoNaFicha(vinculo) {
+    el('cotacao-fonte').value = vinculo?.fonte ?? '';
+    el('cotacao-codigo').value = vinculo?.fonte === 'b3' ? vinculo.chave : '';
+    // O select do Tesouro enche quando as cotações chegam; o valor espera.
+    el('cotacao-titulo').innerHTML = vinculo?.fonte === 'tesouro'
+      ? `<option value="${vinculo.chave}">${vinculo.chave.replace('|', ' ')}</option>`
+      : '';
+    pintarCotacao();
+  }
+
+  /** Mostra ou esconde o bloco da cotação e diz o que o vínculo acha. */
+  async function pintarCotacao() {
+    const cotas = el('unidade').value === 'cotas';
+    el('cotacao-bloco').hidden = !cotas;
+    if (!cotas) return;
+    const fonte = el('cotacao-fonte').value;
+    el('cotacao-campo-b3').hidden = fonte !== 'b3';
+    el('cotacao-campo-tesouro').hidden = fonte !== 'tesouro';
+    const pista = el('cotacao-pista');
+    if (!fonte) {
+      pista.textContent = 'Manual: o preço é o que você informar em "cotação".';
+      return;
+    }
+    const cot = await cotacoes.carregar();
+    if (!cot) {
+      pista.textContent = 'Sem as cotações agora (sem conexão?). O vínculo vale quando elas chegarem.';
+      return;
+    }
+    if (fonte === 'b3') {
+      const lista = el('cotacao-codigo').parentElement.querySelector('datalist');
+      if (!lista.children.length) lista.innerHTML = cotacoes.codigosDaB3(cot).map((c) => `<option value="${c}">`).join('');
+    } else {
+      const sel = el('cotacao-titulo');
+      const antes = sel.value;
+      sel.innerHTML = '<option value="">escolha o título</option>' +
+        cotacoes.titulosDoTesouro(cot).map((t) => `<option value="${t.chave}">${t.nome}</option>`).join('');
+      sel.value = antes;
+    }
+    const v = lerCotacao();
+    const ultimo = v ? cotacoes.ultimoPreco(cot, v) : null;
+    pista.textContent = !v
+      ? 'Escolha o papel: o preço de fechamento entra a cada sincronização.'
+      : ultimo
+        ? `${formatar(ultimo.preco)} em ${diaCurto(ultimo.data)}. O preço entra a cada sincronização.`
+        : 'Não achei esse papel nas cotações.';
   }
 
   /** "Como começou": data e valor (ou quantidade e preço). Tudo vazio vale. */
@@ -467,8 +550,12 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
   el('classe').addEventListener('change', () => {
     el('unidade').value = CLASSES_POR_COTAS.has(el('classe').value) ? 'cotas' : 'valor';
     pintarInicio();
+    pintarCotacao();
   });
-  el('unidade').addEventListener('change', pintarInicio);
+  el('unidade').addEventListener('change', () => { pintarInicio(); pintarCotacao(); });
+  el('cotacao-fonte').addEventListener('change', pintarCotacao);
+  el('cotacao-codigo').addEventListener('input', pintarCotacao);
+  el('cotacao-titulo').addEventListener('change', pintarCotacao);
   el('inicio-data').addEventListener('input', pintarInicio);
   el('data').addEventListener('input', () => { if (ativo && !editandoFicha) pintar(); });
   el('tipos').addEventListener('click', (e) => {
@@ -533,6 +620,7 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
     el('classe').value = ativo.classe;
     el('unidade').value = ativo.unidade ?? 'valor';
     el('vencimento').value = ativo.vencimento ?? '';
+    porCotacaoNaFicha(ativo.cotacao);
     pintar();
     el('nome').focus();
   });
@@ -568,6 +656,7 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
       el('data').value = hoje();
       corrigindo = null;
       el('vencimento').value = '';
+      porCotacaoNaFicha(null);
       pintar();
       janela.showModal();
       el('nome').focus();

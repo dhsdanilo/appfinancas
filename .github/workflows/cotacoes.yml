@@ -1,0 +1,52 @@
+# Atualiza cotacoes.json todo dia útil, depois do fechamento da B3. Sem chave
+# nenhuma: usa os arquivos públicos da B3 e do Tesouro Transparente.
+name: cotacoes
+
+on:
+  schedule:
+    - cron: '30 23 * * 1-5'   # 20h30 em Brasília: o arquivo do dia já saiu
+    - cron: '0 11 * * 2-6'    # de manhã, caso o da noite tenha falhado
+  workflow_dispatch:
+  push:
+    paths:
+      - tools/cotacoes.py
+      - .github/workflows/cotacoes.yml
+
+permissions:
+  contents: write
+  pages: write
+
+concurrency:
+  group: cotacoes
+  cancel-in-progress: false
+
+jobs:
+  atualizar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Gerar cotacoes.json
+        run: python tools/cotacoes.py
+      - name: Publicar se mudou
+        run: |
+          if git diff --quiet -- cotacoes.json; then
+            echo "sem mudança"
+            exit 0
+          fi
+          git config user.name "cotacoes"
+          git config user.email "cotacoes@users.noreply.github.com"
+          git add cotacoes.json
+          git commit -m "Cotações de $(date -u +%Y-%m-%d)"
+          git pull --rebase
+          git push
+      - name: Pedir a publicação do Pages
+        # Commit feito pelo próprio Actions não dispara o Pages sozinho em alguns casos.
+        continue-on-error: true
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/pages/builds"

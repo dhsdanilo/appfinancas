@@ -20,6 +20,7 @@ import { VERSAO_ESTADO } from '../core/redutores.js';
 import * as cartao from '../core/cartao.js';
 import * as previsto from '../core/previsto.js';
 import * as cofrinho from '../core/cofrinho.js';
+import * as cotacoes from '../core/cotacoes.js';
 import * as datas from '../core/datas.js';
 import * as pendencias from '../core/pendencias.js';
 import { categoriaNaArea, areasParaConta } from '../app/areas.js';
@@ -1208,6 +1209,26 @@ caso('previsto', '★ cofrinho do cartão: alvo = limite usado + previstas da fa
   igual([p.cofrinho.nome, p.provisionado, p.falta], ['Cofrinho', 200000, 43990 - 200000], 'o ativo do cofrinho é a provisão; o resto da conta não conta');
   await estado.aplicarEvento('conta.alterada', { id: 'c1', cofrinhoId: null, cofrinhoAtivoId: null });
   igual(cofrinho.provisaoDoCartao(await estado.calcular(), 'c1', dia), null, 'sem vínculo, não há provisão');
+});
+
+caso('investimento', '★ cotação automática: o vínculo vira série; o preço entra como avaliação, sem pisar na manual', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const cot = {
+    acoes: { datas: ['2027-03-01', '2027-03-02', '2027-03-03'], p: { PETR4: [3000, null, 3200] } },
+    tesouro: { datas: ['2027-03-01', '2027-03-03'], p: { 'Tesouro Selic|2029-03-01': [1500000, 1500500] }, nomes: { 'Tesouro Selic|2029-03-01': 'Tesouro Selic 2029' } },
+  };
+  igual(cotacoes.serieDoVinculo(cot, { fonte: 'b3', chave: 'PETR4' }),
+    [{ data: '2027-03-01', preco: 3000 }, { data: '2027-03-03', preco: 3200 }], 'dia sem negócio some da série');
+  igual(cotacoes.ultimoPreco(cot, { fonte: 'tesouro', chave: 'Tesouro Selic|2029-03-01' }), { data: '2027-03-03', preco: 1500500 });
+  igual(cotacoes.serieDoVinculo(cot, { fonte: 'b3', chave: 'XXXX3' }), [], 'papel desconhecido: série vazia');
+  igual(cotacoes.titulosDoTesouro(cot), [{ chave: 'Tesouro Selic|2029-03-01', nome: 'Tesouro Selic 2029' }]);
+
+  await estado.aplicarEvento('conta.criada', { id: 'inv', nome: 'Corretora', tipo: 'investimento', saldoInicial: 0 });
+  await estado.aplicarEvento('ativo.criado', { id: 'a', contaId: 'inv', nome: 'PETR', classe: 'acoes', unidade: 'cotas', cotacao: { fonte: 'b3', chave: 'PETR4' } });
+  igual((await estado.calcular()).ativos.a.cotacao, { fonte: 'b3', chave: 'PETR4' });
+  await estado.aplicarEvento('ativo.alterado', { id: 'a', cotacao: null });
+  igual((await estado.calcular()).ativos.a.cotacao, null, 'desvincular volta ao manual');
 });
 
 caso('previsto', 'recorrência estimada projeta a média das últimas 3', () => {

@@ -257,6 +257,8 @@ export const redutores = {
       // FII, cripto: quantidade e preço por unidade).
       unidade: d.unidade ?? 'valor',
       vencimento: d.vencimento ?? null,
+      // Cotação automática: { fonte: 'b3' | 'tesouro', chave } — js/core/cotacoes.js.
+      cotacao: d.cotacao ?? null,
       avaliacoes: [],
       arquivado: false,
     };
@@ -265,7 +267,7 @@ export const redutores = {
   'ativo.alterado'(e, d) {
     const a = e.ativos[d.id];
     if (!a) return;
-    for (const campo of ['nome', 'classe', 'vencimento', 'contaId', 'unidade']) {
+    for (const campo of ['nome', 'classe', 'vencimento', 'contaId', 'unidade', 'cotacao']) {
       if (d[campo] !== undefined) a[campo] = d[campo];
     }
   },

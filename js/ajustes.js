@@ -8,6 +8,7 @@ import * as db from './core/db.js';
 import * as log from './core/log.js';
 import * as sincronia from './core/sincronia.js';
 import { agora as sincronizarAgora } from './app/sincronia-viva.js';
+import * as cotacoes from './core/cotacoes.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -120,6 +121,7 @@ async function sincronizar() {
   dizer('Sincronizando…');
   try {
     const { recebidos, enviados } = await sincronia.sincronizar();
+    cotacoes.atualizar({ forcar: true }).catch(() => {});
     avisar(
       recebidos || enviados
         ? `Pronto: ${enviados} enviado${enviados === 1 ? '' : 's'}, ${recebidos} recebido${recebidos === 1 ? '' : 's'}.`

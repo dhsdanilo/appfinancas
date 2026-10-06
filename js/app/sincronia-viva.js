@@ -8,6 +8,7 @@
 
 import * as estado from '../core/estado.js';
 import * as sincronia from '../core/sincronia.js';
+import * as cotacoes from '../core/cotacoes.js';
 
 const ESPERA = 2500; // junta escritas seguidas num envio só
 
@@ -18,6 +19,7 @@ let sujo = false;
 let situacao = { estado: 'parado', texto: '', grave: false };
 let carimbo = null;
 let botao = null;
+let forcarCotacoes = false;
 
 /**
  * @param {object} [opcoes]
@@ -32,7 +34,10 @@ export async function iniciarSincronia({ raiz } = {}) {
 
   const config = await sincronia.configuracao();
   if (raiz) raiz.hidden = !config;
-  if (!config) return;
+  if (!config) {
+    cotacoes.atualizar().catch(() => {});
+    return;
+  }
   // Uma página, uma sincronização: a moldura liga, e quem chamar de novo
   // (o script da página) não cria um segundo relógio.
   if (iniciada) return;
@@ -67,6 +72,7 @@ function agendar(espera) {
 /** O botão: certeza na hora, sem esperar o relógio. */
 export function agora() {
   sujo = true;
+  forcarCotacoes = true;
   agendar(0);
 }
 
@@ -78,6 +84,11 @@ async function rodar() {
 
   try {
     const { recebidos, enviados } = await sincronia.sincronizar();
+    // As cotações vêm junto: pelo botão, na hora; nas outras vezes, no máximo
+    // de meia em meia hora. Falha aqui não é falha de sincronização.
+    const forcar = forcarCotacoes;
+    forcarCotacoes = false;
+    cotacoes.atualizar({ forcar }).catch(() => {});
     definir({ estado: 'ok', texto: await textoDoCarimbo(), movimento: recebidos + enviados });
   } catch (erro) {
     // Sem rede não é falha de verdade: a fila espera (§9). O resto fica visível,
