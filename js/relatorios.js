@@ -104,10 +104,10 @@ async function pintar() {
 }
 
 /** Uma linha que abre nos lançamentos que a formam. */
-function linhaQueAbre(chave, conteudo, ids) {
+function linhaQueAbre(chave, conteudo, ids, acao = '', classe = '') {
   const aberta = abertas.has(chave);
-  return `<button type="button" class="linha-rel ${aberta ? 'aberta' : ''}" data-rel-abrir="${esc(chave)}" aria-expanded="${aberta}">${conteudo}</button>
-    ${aberta ? listaDeLancamentos(ids) : ''}`;
+  return `<button type="button" class="linha-rel ${classe} ${aberta ? 'aberta' : ''}" data-rel-abrir="${esc(chave)}" aria-expanded="${aberta}">${conteudo}</button>
+    ${aberta ? `${acao}${listaDeLancamentos(ids)}` : ''}`;
 }
 
 function listaDeLancamentos(ids) {
@@ -122,8 +122,19 @@ function listaDeLancamentos(ids) {
   }).join('')}</ol>`;
 }
 
-/** A barra de uma linha: o tamanho dela contra o maior da lista. */
-const barra = (valor, maior) => `<span class="barra-rel"><i style="width:${maior > 0 ? Math.max(1, Math.round((Math.max(0, valor) / maior) * 100)) : 0}%"></i></span>`;
+/** A barra de uma linha: o tamanho dela contra o maior da lista, na cor da linha. */
+const barra = (valor, maior, corDaLinha = null) => `<span class="barra-rel"><i style="width:${maior > 0 ? Math.max(1, Math.round((Math.max(0, valor) / maior) * 100)) : 0}%${corDaLinha ? `;background:${corDaLinha}` : ''}"></i></span>`;
+
+/** Botão duplo (escolha única): o escolhido fica cheio. */
+const segmentado = (dado, opcoes, atual, rotulo) => `<span class="segmentado" role="group" aria-label="${esc(rotulo)}">${opcoes.map(([v, n]) =>
+  `<button type="button" data-${dado}="${v}" aria-pressed="${v === atual}">${esc(n)}</button>`).join('')}</span>`;
+
+/** Abas finas, com a linha embaixo da escolhida. */
+const abasFinas = (dado, opcoes, atual, rotulo) => `<span class="abas-finas" role="group" aria-label="${esc(rotulo)}">${opcoes.map(([v, n]) =>
+  `<button type="button" data-${dado}="${v}" aria-pressed="${v === atual}">${esc(n)}</button>`).join('')}</span>`;
+
+const SINGULAR_DA_DIMENSAO = { categorias: 'categoria', etiquetas: 'etiqueta', descricoes: 'descrição', contas: 'conta' };
+const DIMENSAO_DO_AGRUPAMENTO = { categoria: 'categorias', etiqueta: 'etiquetas', descricao: 'descricoes', conta: 'contas' };
 
 const nomeCat = (id) => nomeDaCategoria(app, id) || 'sem categoria';
 
@@ -197,40 +208,52 @@ function mexida() {
 function abaGastos() {
   if (tela.salvaId && !app.selecoes?.[tela.salvaId]) tela.salvaId = null;
   const v = tela.vista;
-  const salvas = Object.values(app.selecoes ?? {}).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
-  const topo = `<div class="salvas-ex" role="group" aria-label="Seleções salvas">
-      <button type="button" data-ex-tudo aria-pressed="${!tela.salvaId && !quantosFiltros(tela.filtros)}">Tudo</button>
-      ${salvas.map((x) => `<button type="button" data-ex-abrir="${esc(x.id)}" aria-pressed="${x.id === tela.salvaId}">${esc(x.nome)}</button>`).join('')}
-    </div>`;
-
   const n = quantosFiltros(tela.filtros);
   const umMes = v.periodo === 'mes';
-  const controles = `<div class="controles-rel">
-      ${chips('rel-natureza', [['gasto', 'gastos'], ['renda', 'renda']], v.natureza, 'Gasto ou renda')}
-      ${chips('rel-periodo', ex.PERIODOS, v.periodo, 'Período')}
-      ${umMes
-        ? `<span class="passos-rel"><button type="button" class="passo" data-rel-mes="-1" aria-label="Mês anterior">‹</button>
-            <strong>${esc(nomeDoMes(tela.mes))}</strong>
-            <button type="button" class="passo" data-rel-mes="1" aria-label="Mês seguinte"${tela.mes >= hoje().slice(0, 7) ? ' disabled' : ''}>›</button></span>`
-        : chips('rel-tempo', [['mes', 'por mês'], ['ano', 'por ano']], v.tempo, 'Agrupar no tempo')}
-      <button type="button" class="elo botao-filtros" data-rel-filtros aria-expanded="${tela.filtrosAbertos}">filtros${n ? ` (${n})` : ''} ${tela.filtrosAbertos ? '▴' : '▾'}</button>
+
+  // ── a barra de ferramentas: uma linha só ─────────────────────────────────
+  const salvas = Object.values(app.selecoes ?? {}).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  const salva = app.selecoes?.[tela.salvaId];
+  const vistaAtual = tela.salvaId ?? '__tudo';
+  const opcao = (valor, texto) => `<option value="${esc(valor)}" ${valor === vistaAtual ? 'selected' : ''}>${texto}</option>`;
+  const opcoesDeVista = [
+    opcao('__tudo', 'Sem vista salva'),
+    ...salvas.map((x) => opcao(x.id, `${esc(x.nome)}${x.id === tela.salvaId && mexida() ? ' (alterada)' : ''}`)),
+    opcao('__nova', 'Salvar esta tela como vista…'),
+    ...(salva && mexida() ? [opcao('__atualizar', `Atualizar “${esc(salva.nome)}”`)] : []),
+    ...(salva ? [opcao('__apagar', `Apagar “${esc(salva.nome)}”`)] : []),
+  ].join('');
+  const periodo = `<select class="seletor-rel" data-rel-periodo-sel aria-label="Período">${ex.PERIODOS.map(([val, nome]) =>
+    `<option value="${val}" ${val === v.periodo ? 'selected' : ''}>${esc(nome)}</option>`).join('')}</select>`;
+  const barraDeFerramentas = `<div class="ferramentas-rel">
+      ${segmentado('rel-natureza', [['gasto', 'Gastos'], ['renda', 'Renda']], v.natureza, 'Gasto ou renda')}
+      <span class="direita-rel">
+        ${umMes
+          ? `<span class="passos-rel"><button type="button" class="passo" data-rel-mes="-1" aria-label="Mês anterior">‹</button>
+              <strong>${esc(nomeDoMes(tela.mes))}</strong>
+              <button type="button" class="passo" data-rel-mes="1" aria-label="Mês seguinte"${tela.mes >= hoje().slice(0, 7) ? ' disabled' : ''}>›</button></span>`
+          : ''}
+        ${periodo}
+        ${umMes ? '' : segmentado('rel-tempo', [['mes', 'por mês'], ['ano', 'por ano']], v.tempo, 'Agrupar no tempo')}
+        <select class="seletor-rel vistas-rel" data-ex-vista aria-label="Vistas salvas" title="Vistas salvas">${opcoesDeVista}</select>
+      </span>
     </div>`;
 
+  // ── os filtros à mostra: cada um uma pílula que se tira com × ─────────────
+  const pilulas = DIMENSOES.flatMap((d) => tela.filtros[d.id].map((id) =>
+    `<button type="button" class="chip-ex" data-ex-tirar="${d.id}:${esc(id)}" aria-label="Tirar ${esc(nomeDoItem(d.id, id))}"><span class="dim-ex">${SINGULAR_DA_DIMENSAO[d.id]}</span> ${esc(nomeDoItem(d.id, id))} <span aria-hidden="true">×</span></button>`)).join('');
   const tipos = ['categorias', 'etiquetas', 'descricoes'].filter((d) => tela.filtros[d].length).length;
-  const salvar = tela.salvando
-    ? `<span class="salvar-ex"><input type="text" data-ex-nome maxlength="40" placeholder="nome da seleção" aria-label="Nome da seleção">
-        <button type="button" class="principal" data-ex-confirmar>Salvar</button><button type="button" class="elo" data-ex-cancelar>cancelar</button></span>`
-    : `<span class="acoes-ex">
-        ${tela.salvaId && mexida() ? '<button type="button" class="elo" data-ex-atualizar>salvar</button>' : ''}
-        <button type="button" class="elo" data-ex-salvar-como>salvar como…</button>
-        ${tela.salvaId ? '<button type="button" class="elo" data-ex-apagar>apagar</button>' : ''}
-      </span>`;
-  const painel = tela.filtrosAbertos
-    ? `<div class="filtro-ex">
-        ${DIMENSOES.map((d) => linhaDeFiltro(d.id, d.rotulo, d.mais, tela.filtros[d.id], (c) => !['investimento', 'divida'].includes(c.tipo), 'ex')).join('')}
-        <div class="rodape-ex">${tipos >= 2 ? `<label class="cruzar-ex"><input type="checkbox" data-ex-cruzar ${tela.filtros.cruzar ? 'checked' : ''}> só o que tem os dois</label>` : ''}${salvar}</div>
-      </div>`
-    : (tela.salvando || (tela.salvaId && mexida()) ? `<div class="rodape-ex solto">${salvar}</div>` : '');
+  const salvando = tela.salvando
+    ? `<div class="salvar-vista"><input type="text" data-ex-nome maxlength="40" placeholder="nome da vista" aria-label="Nome da vista">
+        <button type="button" class="principal" data-ex-confirmar>Salvar</button><button type="button" class="elo" data-ex-cancelar>cancelar</button></div>`
+    : '';
+  const linhaDeFiltros = `<div class="filtros-rel">
+      ${pilulas ? '<span class="fino">filtrando por</span>' : ''}${pilulas}
+      <button type="button" class="mais-filtro" data-rel-filtros aria-expanded="${tela.filtrosAbertos}">${tela.filtrosAbertos ? '− fechar' : '+ filtro'}</button>
+      ${tipos >= 2 ? `<label class="cruzar-ex"><input type="checkbox" data-ex-cruzar ${tela.filtros.cruzar ? 'checked' : ''}> só o que tem os dois</label>` : ''}
+    </div>
+    ${tela.filtrosAbertos ? `<div class="filtro-ex">${DIMENSOES.map((d) => linhaDeFiltro(d.id, d.rotulo, d.mais, tela.filtros[d.id], (c) => !['investimento', 'divida'].includes(c.tipo), 'ex')).join('')}</div>` : ''}
+    ${salvando}`;
 
   const per = ex.periodo(app, v.periodo, tela.mes);
   const r = ex.relatorio(app, tela.filtros, per, v);
@@ -238,44 +261,67 @@ function abaGastos() {
   const gasto = v.natureza === 'gasto';
   if (r.vazia) {
     calculado = null;
-    return `${topo}${controles}${painel}<p class="nota-rel vazio-rel">Nada ${gasto ? 'gasto' : 'recebido'} ${umMes ? `em ${esc(nomeDoMes(tela.mes))}` : 'no período'}${n ? ' com estes filtros' : ''}.</p>`;
+    return `${barraDeFerramentas}${linhaDeFiltros}<p class="nota-rel vazio-rel">Nada ${gasto ? 'gasto' : 'recebido'} ${umMes ? `em ${esc(nomeDoMes(tela.mes))}` : 'no período'}${n ? ' com estes filtros' : ''}.</p>`;
   }
 
-  // O número: total, média, a diferença contra o período anterior de mesmo
-  // tamanho — e, num mês só sem filtro, o gasto × pagamento.
+  // ── os números: total (e contra o período anterior), média e o maior ─────
   const dif = r.anterior != null ? r.total - r.anterior : null;
   const bomOuRuim = (d) => (!d ? '' : (d > 0) === gasto ? 'ruim' : 'bom');
   const nomeAnterior = umMes
     ? `${nomeDoMes(somarMeses(`${tela.mes}-01`, -1).slice(0, 7)).split(' ')[0]}${r.ateODia ? ` até o dia ${r.ateODia}` : ''}`
     : 'o período anterior';
+  const maiorGrupo = r.grupos[0];
+  const maisAlto = !umMes && r.baldes.length > 1 ? r.baldes.reduce((m, b) => (b.total > m.total ? b : m), r.baldes[0]) : null;
+  const vezes = r.grupos.reduce((t, x) => t + x.vezes, 0);
+  const cartoes = `<div class="cartoes-rel">
+      <div class="cartao-rel destaque">
+        <p class="rotulo-numero">${gasto ? 'gasto' : 'renda'} ${umMes ? `em ${esc(nomeDoMes(tela.mes).split(' ')[0])}` : 'no período'}</p>
+        <p class="valor-rel-grande">${formatar(r.total)}</p>
+        <p class="nota-rel">${dif != null
+          ? `<span class="dif-rel ${bomOuRuim(dif)}">${dif > 0 ? '▲' : dif < 0 ? '▼' : ''} ${comSinal(dif)}${variacao(r.total, r.anterior) ? ` (${variacao(r.total, r.anterior)})` : ''}</span> contra ${esc(nomeAnterior)}`
+          : 'sem período anterior para comparar'}${gasto && r.projeto ? ` · ${formatar(r.projeto)} pagos por envelope` : ''}</p>
+      </div>
+      <div class="cartao-rel">
+        <p class="rotulo-numero">${umMes ? 'lançamentos' : `média por ${r.porAno ? 'ano' : 'mês'}`}</p>
+        <p class="valor-rel-medio">${umMes ? String(vezes) : formatar(r.media)}</p>
+        ${maisAlto ? `<p class="nota-rel">mais alto: ${esc(rotuloDoBalde(maisAlto.chave))} · ${formatar(maisAlto.total)}</p>` : ''}
+      </div>
+      <div class="cartao-rel">
+        <p class="rotulo-numero">maior ${esc((AGRUPAR.find(([k]) => k === v.agrupar) ?? [v.agrupar, v.agrupar])[1])}</p>
+        <p class="valor-rel-medio">${esc(nomeDaChave(v.agrupar, maiorGrupo.chave))}</p>
+        <p class="nota-rel">${formatar(maiorGrupo.valor)} · ${r.total ? pct(maiorGrupo.valor / r.total) : ''}</p>
+      </div>
+    </div>`;
   let extra = '';
   if (umMes && gasto && !n) {
     const gp = rel.gastoEPagamento(app, tela.mes);
     extra = `<p class="nota-rel">Consumido no mês ${formatar(gp.gasto)} · saiu das contas ${formatar(gp.saiu)}${gp.faturasPagas ? ` (inclui ${formatar(gp.faturasPagas)} de fatura)` : ''}.</p>`;
   }
-  const numero = `<div class="numero-rel">
-      <p class="rotulo-numero">${gasto ? 'gasto' : 'renda'} ${umMes ? `em ${esc(nomeDoMes(tela.mes).split(' ')[0])}` : 'no período'}</p>
-      <p class="valor-rel-grande">${formatar(r.total)}</p>
-      <p class="nota-rel">${umMes ? '' : `média ${formatar(r.media)} por ${r.porAno ? 'ano' : 'mês'} · `}${dif != null
-        ? `<span class="dif-rel ${bomOuRuim(dif)}">${comSinal(dif)} ${variacao(r.total, r.anterior) ? `(${variacao(r.total, r.anterior)})` : ''}</span> contra ${esc(nomeAnterior)}`
-        : 'sem período anterior para comparar'}${gasto && r.projeto ? ` · ${formatar(r.projeto)} pagos por envelope` : ''}</p>
-      ${extra}
-    </div>`;
 
+  // ── a lista, com a cor de cada item (a mesma do gráfico quando a pilha é a lista) ──
+  const cores = new Map(r.series.map((x, i) => [x.chave, x.chave === 'outras' ? 'var(--serie-outros)' : cor(i + 1)]));
   const maior = Math.max(...r.grupos.map((x) => x.valor), 1);
-  const lista = r.grupos.slice(0, 30).map((x) => {
+  const dimDoFiltro = DIMENSAO_DO_AGRUPAMENTO[v.agrupar];
+  const lista = r.grupos.slice(0, 30).map((x, k) => {
     const d = x.valor - x.anterior;
+    const corDaLinha = r.pilha === v.agrupar && cores.has(x.chave) ? cores.get(x.chave) : cor(k + 1);
+    const filtravel = x.chave !== 'outras' && x.chave !== '—' && !tela.filtros[dimDoFiltro].includes(x.chave);
+    const acao = filtravel
+      ? `<p class="acao-linha-rel"><button type="button" class="elo" data-ex-filtrar="${dimDoFiltro}:${esc(x.chave)}">filtrar só por ${esc(nomeDaChave(v.agrupar, x.chave))} ›</button></p>` : '';
     return linhaQueAbre(`g:${v.agrupar}:${x.chave}`, `
-      <span class="nome-rel">${esc(nomeDaChave(v.agrupar, x.chave))}<span class="fino">${x.vezes} ${x.vezes === 1 ? 'vez' : 'vezes'} · ${r.total ? pct(x.valor / r.total) : ''}</span></span>
-      ${barra(x.valor, maior)}
+      <span class="cor-rel" style="background:${corDaLinha}" aria-hidden="true"></span>
+      <span class="nome-rel">${esc(nomeDaChave(v.agrupar, x.chave))}<span class="fino">${x.vezes} ${x.vezes === 1 ? 'vez' : 'vezes'}</span></span>
+      ${barra(x.valor, maior, corDaLinha)}
+      <span class="pct-rel">${r.total ? pct(x.valor / r.total) : ''}</span>
       <span class="valor-rel">${formatar(x.valor)}</span>
-      <span class="dif-rel ${r.anterior != null ? bomOuRuim(d) : ''}">${r.anterior != null ? comSinal(d) : ''}</span>`, x.lancamentos);
+      <span class="dif-rel ${r.anterior != null ? bomOuRuim(d) : ''}">${r.anterior != null ? comSinal(d) : ''}</span>`, x.lancamentos, acao, 'com-cor');
   }).join('');
 
-  return `${topo}${controles}${painel}${numero}
+  return `${barraDeFerramentas}${linhaDeFiltros}${cartoes}${extra}
     <div class="grafico-rel" id="g-rel"></div>
     <div class="secao-rel">
-      <p class="classe-ativos"><span>por ${chips('rel-agrupar', AGRUPAR, v.agrupar, 'Agrupar a lista')}</span><span>${r.anterior != null ? `contra ${esc(nomeAnterior)}` : ''}</span></p>
+      <div class="cabeca-lista-rel">${abasFinas('rel-agrupar', AGRUPAR.map(([k, n]) => [k, n.charAt(0).toUpperCase() + n.slice(1)]), v.agrupar, 'Agrupar a lista')}
+        <span class="fino">${r.anterior != null ? `variação contra ${esc(nomeAnterior)} · ` : ''}toque numa linha para ver os lançamentos</span></div>
       ${lista}
       ${v.agrupar === 'etiqueta' ? '<p class="nota-rel">Um lançamento com duas etiquetas aparece nas duas.</p>' : ''}
     </div>`;
@@ -462,6 +508,15 @@ document.addEventListener('click', async (e) => {
     pintar();
     return;
   }
+  if (d.exFiltrar) {
+    const i = d.exFiltrar.indexOf(':');
+    const dim = d.exFiltrar.slice(0, i);
+    const id = d.exFiltrar.slice(i + 1);
+    if (!tela.filtros[dim].includes(id)) tela.filtros[dim] = [...tela.filtros[dim], id];
+    abertas.clear();
+    pintar();
+    return;
+  }
   if (d.exSalvarComo != null) {
     tela.salvando = true;
     await pintar();
@@ -506,8 +561,45 @@ document.addEventListener('change', (e) => {
     return;
   }
   const cruzar = e.target.closest('[data-ex-cruzar]');
-  if (cruzar) { tela.filtros.cruzar = cruzar.checked; pintar(); }
+  if (cruzar) { tela.filtros.cruzar = cruzar.checked; pintar(); return; }
+  // O período vem de uma lista.
+  const periodo = e.target.closest('[data-rel-periodo-sel]');
+  if (periodo) {
+    tela.vista.periodo = periodo.value;
+    tela.vista.tempo = tempoNatural(periodo.value);
+    if (periodo.value === 'mes') tela.mes = hoje().slice(0, 7);
+    abertas.clear();
+    pintar();
+    return;
+  }
+  // As vistas salvas: abrir, salvar a tela como uma, atualizar, apagar.
+  const vista = e.target.closest('[data-ex-vista]');
+  if (vista) escolherVista(vista.value);
 });
+
+async function escolherVista(valor) {
+  const s = app.selecoes?.[tela.salvaId];
+  if (valor === '__tudo') {
+    tela.filtros = semFiltro();
+    tela.salvaId = null;
+    tela.salvando = false;
+    abertas.clear();
+    pintar();
+  } else if (valor === '__nova') {
+    tela.salvando = true;
+    await pintar();
+    document.querySelector('[data-ex-nome]')?.focus();
+  } else if (valor === '__atualizar') {
+    if (s) await salvarSelecao(s.id, s.nome);
+  } else if (valor === '__apagar') {
+    if (!s || !confirm(`Apagar a vista "${s.nome}"? Os lançamentos não mudam.`)) { pintar(); return; }
+    tela.salvaId = null;
+    await estado.aplicarEvento('selecao.removida', { id: s.id });
+  } else if (app.selecoes?.[valor]) {
+    abrirSalva(app.selecoes[valor]);
+    pintar();
+  }
+}
 document.addEventListener('keydown', (e) => {
   if (!ativa || e.key !== 'Enter' || !e.target.closest('[data-ex-nome]')) return;
   e.preventDefault();

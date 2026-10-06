@@ -1432,7 +1432,7 @@ body[data-pagina="inicio"] .topo .identidade { flex: 1; }
 body[data-pagina="inicio"] #b-importar,
 body[data-pagina="inicio"] #b-exportar { display: none; }
 
-.avisos-inicio { margin: 0 0 var(--e5); }
+.avisos-inicio { margin: 0 0 var(--e6); }
 .avisos-inicio .rotulo-avisos { margin: 0 0 var(--e2); color: var(--tinta-fraca); font-size: var(--t-miudo); letter-spacing: 0.06em; text-transform: uppercase; }
 .grade-avisos { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--e3); }
 .aviso-inicio {
@@ -1475,3 +1475,36 @@ body[data-pagina="inicio"] #b-exportar { display: none; }
 .card-inicio .envelope-inicio { display: flex; flex-direction: column; gap: var(--e1); margin-bottom: var(--e2); }
 .card-inicio .envelope-inicio .linha-barra-inicio { margin-top: 0; color: var(--tinta); font-size: var(--t-apoio); }
 .card-inicio .fino { color: var(--tinta-fraca); font-size: var(--t-miudo); }
+
+/* ── o relatório de gastos (06/10/2026) ──────────────────────────────────── */
+.ferramentas-rel { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--e3); margin: 0 0 var(--e3); }
+.ferramentas-rel .direita-rel { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e2) var(--e3); }
+.segmentado { display: inline-flex; border: 1px solid var(--borda-forte); border-radius: var(--raio-pilula); overflow: hidden; }
+.segmentado button { min-height: 36px; padding: 0 var(--e4); border: 0; border-radius: 0; background: transparent; color: var(--tinta-fraca); font-size: var(--t-apoio); }
+.segmentado button[aria-pressed="true"] { background: var(--tinta); color: var(--fundo); font-weight: 600; }
+.seletor-rel { min-height: 36px; padding: 0 var(--e3); border: 1px solid var(--borda-forte); border-radius: var(--raio-pilula); background: var(--superficie); color: var(--tinta); font-size: var(--t-apoio); }
+.vistas-rel { color: var(--tinta-fraca); max-width: 220px; }
+.filtros-rel { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e2); margin: 0 0 var(--e4); }
+.filtros-rel .dim-ex { color: var(--tinta-fraca); }
+.filtros-rel .mais-filtro { min-height: 32px; padding: 0 var(--e3); border: 1px dashed var(--borda-forte); border-radius: var(--raio-pilula); background: transparent; color: var(--tinta-fraca); font-size: var(--t-apoio); }
+.salvar-vista { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e2); width: 100%; margin-top: var(--e1); }
+.cartoes-rel { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: var(--e3); margin: 0 0 var(--e4); }
+.cartao-rel { padding: var(--e3) var(--e4); border-radius: var(--raio-controle); background: var(--fundo); }
+.cartao-rel .rotulo-numero { margin: 0; }
+.cartao-rel .valor-rel-grande { font-size: var(--t-tela); font-weight: 400; }
+.cartao-rel .valor-rel-medio { margin: 0; font-size: var(--t-tela); line-height: 1.25; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.cartao-rel .nota-rel { margin-top: var(--e1); }
+.cabeca-lista-rel { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--e2) var(--e4); margin: var(--e4) 0 var(--e2); }
+.abas-finas { display: inline-flex; border-bottom: 1px solid var(--borda); }
+.abas-finas button { min-height: 38px; padding: 0 var(--e4); border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; border-radius: 0; background: transparent; color: var(--tinta-fraca); font-size: var(--t-apoio); }
+.abas-finas button[aria-pressed="true"] { border-bottom-color: var(--area, var(--acento)); color: var(--tinta); font-weight: 600; }
+.linha-rel.com-cor { grid-template-columns: 12px minmax(110px, 1.4fr) 2fr auto auto auto; align-items: center; column-gap: var(--e3); }
+.linha-rel.com-cor .cor-rel { width: 10px; height: 10px; border-radius: 2px; }
+.linha-rel.com-cor .pct-rel { color: var(--tinta-fraca); font-size: var(--t-miudo); text-align: right; }
+.linha-rel.com-cor .barra-rel i { border-radius: 3px; }
+.acao-linha-rel { margin: 0 0 var(--e2); padding-left: 22px; }
+@media (max-width: 620px) {
+  .linha-rel.com-cor { grid-template-columns: 12px minmax(0, 1fr) auto auto; }
+  .linha-rel.com-cor .pct-rel { display: none; }
+  .ferramentas-rel .direita-rel { width: 100%; }
+}

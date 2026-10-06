@@ -476,7 +476,7 @@ input[type="text"].observacao {
   justify-content: center;
   align-items: baseline;
   text-align: center;
-  gap: var(--e2) var(--e5, var(--e4));
+  gap: var(--e2) var(--e6);
   margin: var(--e2) 0 var(--e3);
   padding: var(--e2) 0 var(--e3);
   border-bottom: 1px solid var(--borda);
