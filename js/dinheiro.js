@@ -522,15 +522,17 @@ function pintarResumoDeCaixa(contas) {
   }
   const aEntrar = aEntrarNoMes(app, ids);
   // Só no mês corrente (é o único que chega aqui): cartões pagos por estas contas, com cofrinho.
-  const provisoes = Object.values(app.contas)
+  const comProvisao = Object.values(app.contas)
     .filter((c) => c.tipo === 'cartao' && temCofrinho(c) && ids.has(c.pagaCom))
     .map((c) => ({ c, prov: provisaoDoCartao(app, c.id) }))
-    .filter((x) => x.prov)
-    .map((x, _, todos) => miniProvisao(x.c, x.prov) + faturaAbertaDoCartao(x.c, todos.length > 1));
+    .filter((x) => x.prov);
+  const faixasDeCartao = comProvisao.map((x) => faixaDoCartao(x.c, x.prov, comProvisao.length > 1));
+  // O que entrou e saiu neste mês, que antes ficava solto no cabeçalho da lista.
+  const extrato = extratoDoMes(app, ids, atual);
   // No Geral, a transferência entre duas destas contas não sai do conjunto.
   const doConjunto = contas.length > 1 ? ids : null;
   const previstos = contas.map((c) => ({ conta: c, p: saldoPrevisto(app, c.id, hoje(), doConjunto) }));
-  const blocos = previstos.length === 1 ? [blocoDeCaixa(previstos[0].conta.nome, previstos[0].p, false, previstos[0].conta, aEntrar, provisoes)] : [];
+  const blocos = previstos.length === 1 ? [blocoDeCaixa(previstos[0].conta.nome, previstos[0].p, false, previstos[0].conta, aEntrar, faixasDeCartao, extrato)] : [];
 
   if (previstos.length > 1) {
     const soma = {
@@ -553,111 +555,142 @@ function pintarResumoDeCaixa(contas) {
       totalProximas: previstos.reduce((t, x) => t + x.p.totalProximas, 0),
       provisionado: previstos.reduce((t, x) => t + x.p.provisionado, 0),
     };
-    blocos.unshift(blocoDeCaixa('geral', soma, true, null, aEntrar, provisoes));
+    blocos.unshift(blocoDeCaixa('geral', soma, true, null, aEntrar, faixasDeCartao, extrato));
   }
   $('resumo').innerHTML = `<div class="blocos">${blocos.join('')}</div>`;
 }
 
 /**
- * A conta de caixa na largura toda, como as outras áreas (pedido dele,
- * 03/10/2026): o saldo real, cada coisa que vai sair até o fim do mês
- * separada pela origem, e o saldo previsto por último, em destaque.
+ * Um número em linha, para as frases pequenas do card ("fatura −R$ 4.000"). Com
+ * `para`, o valor é link para a tela onde ele mora.
  */
-function blocoDeCaixa(nome, p, total = false, conta = null, aEntrar = null, provisoes = []) {
+function numeroEmLinha(rotulo, valor, para = null, classe = '') {
+  const miolo = para && app?.contas?.[para.conta]
+    ? `<button type="button" class="elo-numero" data-ir-conta="${escapar(para.conta)}"${para.mes ? ` data-ir-mes="${escapar(para.mes)}"` : ''} title="Abrir ${escapar(app.contas[para.conta].nome)}">${escapar(valor)}</button>`
+    : `<strong>${escapar(valor)}</strong>`;
+  return `<span class="em-linha ${classe}"><span class="rot">${escapar(rotulo)}</span> ${miolo}</span>`;
+}
+
+/**
+ * O card da conta de caixa no mês corrente (pedido dele, 06/10/2026): o saldo
+ * real grande e o previsto menor, juntos; em letra pequena de onde vem o previsto
+ * (o que sai, o que ainda entra); o movimento do mês; e, por último, o cartão que
+ * esta conta paga — a fatura aberta e a barra da provisão.
+ */
+function blocoDeCaixa(nome, p, total = false, conta = null, aEntrar = null, faixasDeCartao = [], extrato = null) {
   const menos = (v, est = false) => `−${est ? '~' : ''}${formatar(v)}`;
-  const numeros = [numeroDaFaixa('saldo real', formatar(p.real))];
-  for (const f of p.faturas) numeros.push(numeroDaFaixa(`fatura ${f.cartao.nome}`, menos(f.valor), { conta: f.cartao.id, mes: vista.mes }));
-  // O "a sair" aberto pela origem: assim o número bate com o que se vê.
+  const entra = aEntrar?.total > 0 ? aEntrar : null;
   const partes = p.partes;
-  const til = p.estimado ? '~' : '';
-  if (partes?.recorrentes > 0) numeros.push(numeroDaFaixa(`recorrentes até ${diaCurto(p.ate)}`, menos(partes.recorrentes, p.estimado)));
+
+  // De onde vem o "a sair": a soma sozinha não é crível (08-telas §6).
+  const aSair = [];
+  for (const f of p.faturas) aSair.push(numeroEmLinha(`fatura ${f.cartao.nome}`, menos(f.valor), { conta: f.cartao.id, mes: vista.mes }));
+  if (partes?.recorrentes > 0) aSair.push(numeroEmLinha('recorrentes', menos(partes.recorrentes, p.estimado)));
   for (const [cartaoId, valor] of partes?.cartoes ?? []) {
-    numeros.push(numeroDaFaixa(`recorrentes no ${app.contas[cartaoId]?.nome ?? 'cartão'}`, menos(valor, p.estimado), { conta: cartaoId, mes: vista.mes }));
+    aSair.push(numeroEmLinha(`recorrentes no ${app.contas[cartaoId]?.nome ?? 'cartão'}`, menos(valor, p.estimado), { conta: cartaoId, mes: vista.mes }));
   }
-  if (partes?.agendados > 0) numeros.push(numeroDaFaixa('agendados e vencidos', menos(partes.agendados)));
-  // A provisão no cofrinho: uma mini barra por cartão que esta conta paga.
-  numeros.push(...provisoes);
+  if (partes?.agendados > 0) aSair.push(numeroEmLinha('agendados e vencidos', menos(partes.agendados)));
+
+  // Cartão sem cofrinho: a próxima fatura e o saldo com ela separada.
+  const proximas = (p.proximas ?? []).filter((x) => x.valor + x.recorrentes > 0 && !temCofrinho(app.contas[x.cartao.id]));
+  const proximasTotal = proximas.reduce((t, x) => t + x.valor + x.recorrentes, 0);
+  const faixasSemCofrinho = proximas.map((x) => `<div class="faixa-cartao">
+      <div><div class="rotulo-numero">${escapar(x.cartao.nome)} · próxima fatura</div>
+        <button type="button" class="valor-cartao elo-numero" data-ir-conta="${escapar(x.cartao.id)}" data-ir-mes="${escapar(x.vencimento?.slice(0, 7) ?? vista.mes)}">${menos(x.valor + x.recorrentes, x.estimado)}</button></div>
+    </div>`);
+  if (proximas.length) {
+    const sp = p.previsto - proximasTotal;
+    faixasSemCofrinho.push(`<div class="saldo-provisionado ${sp < 0 ? 'negativo' : ''}"><span class="rotulo-numero">saldo provisionado</span><strong>${sp < 0 ? '−' : ''}${formatar(Math.abs(sp))}</strong></div>`);
+  }
+
+  const temPrevisao = p.faturas.length || p.aSair > 0 || proximas.length || entra;
+  const prev = p.previsto;
+  const previstoHTML = temPrevisao
+    ? `<div class="saldo-previsto ${prev < 0 ? 'negativo' : ''}">
+        <span class="rotulo-numero">previsto até ${diaCurto(p.ate)}</span>
+        <span class="valor-previsto">${prev < 0 ? '−' : ''}${p.estimado ? '~' : ''}${formatar(Math.abs(prev))}</span>
+      </div>`
+    : '';
+
+  // O que ainda entra, e o previsto com isso: o alívio ao lado do aperto (D31).
+  let aEntrarHTML = '';
+  if (entra) {
+    const itens = entra.liquidos.map((x) => numeroEmLinha(`salário ${x.folha.nome} · ${diaCurto(x.data)}`, `+${x.estimado ? '~' : ''}${formatar(x.valor)}`, { conta: x.folha.id, mes: x.data.slice(0, 7) }));
+    if (entra.receitas > 0) itens.push(numeroEmLinha('receitas', `+${entra.estimado ? '~' : ''}${formatar(entra.receitas)}`));
+    if (entra.chegam > 0) itens.push(numeroEmLinha('chega de outras contas', `+${formatar(entra.chegam)}`));
+    const comRenda = p.previsto + entra.total;
+    itens.push(numeroEmLinha('previsto com a renda', `${comRenda < 0 ? '−' : ''}${p.estimado || entra.estimado ? '~' : ''}${formatar(Math.abs(comRenda))}`, null, 'com-renda'));
+    aEntrarHTML = `<p class="composicao"><span class="chave">ainda entra</span> ${itens.join('')}</p>`;
+  }
+
   // Quem comprou no cartão de outra pessoa: o que ainda é dela repassar e o que
   // realmente sobra na conta (design/16).
+  let repasse = '';
   if (conta?.titular) {
     const d = disponivelDe(app, conta.titular, (id) => saldoReal(app, id));
     if (d.aRepassar > 0) {
-      numeros.push(numeroDaFaixa('a repassar', menos(d.aRepassar)));
-      numeros.push(destaqueDaFaixa('disponível de verdade', d.disponivel));
+      repasse = `<p class="composicao"><span class="chave">repasse</span> ${numeroEmLinha('a repassar', menos(d.aRepassar))}${numeroEmLinha('disponível de verdade', `${d.disponivel < 0 ? '−' : ''}${formatar(Math.abs(d.disponivel))}`, null, d.disponivel < 0 ? '' : 'positivo')}</p>`;
     }
   }
-  const entra = aEntrar?.total > 0 ? aEntrar : null;
-  const temPrevisao = p.faturas.length || p.aSair > 0 || p.totalProximas > 0 || entra;
-  let previsto = temPrevisao
-    ? destaqueDaFaixa(`saldo previsto até ${diaCurto(p.ate)}`, p.previsto, p.estimado)
+
+  const movimento = extrato && !extrato.antesDoApp && (extrato.entrou || extrato.saiu)
+    ? `<div class="movimento-mes">
+        <span>entrou no mês <strong>+${formatar(extrato.entrou)}</strong></span>
+        <span>saiu no mês <strong>−${formatar(extrato.saiu)}</strong></span>
+      </div>`
     : '';
-  // A fatura que só sai no mês seguinte: à parte do saldo previsto, e o saldo
-  // com ela separada logo depois (pedido dele, 05/10/2026).
-  // Cartão com cofrinho não entra aqui: a provisão dele é a mini barra.
-  const proximas = (p.proximas ?? []).filter((x) => x.valor + x.recorrentes > 0 && !temCofrinho(app.contas[x.cartao.id]));
-  if (proximas.length) {
-    const varias = proximas.length > 1;
-    const proximaFatura = proximas.map((x) => numeroDaFaixa(
-      varias ? `próxima fatura ${x.cartao.nome}` : 'próxima fatura',
-      menos(x.valor + x.recorrentes, x.estimado),
-      { conta: x.cartao.id, mes: x.vencimento?.slice(0, 7) ?? vista.mes, classe: 'cor-cartao' },
-    )).join('');
-    previsto += proximaFatura + destaqueDaFaixa('saldo provisionado', p.previsto - proximas.reduce((t, x) => t + x.valor + x.recorrentes, 0), p.estimado || proximas.some((x) => x.estimado), 'provisionado');
-  }
-  const comProvisao = proximas.length > 0;
-  // O que ainda vai entrar até o fim do mês, e o previsto com isso: o alívio
-  // ao lado do aperto, um sem esconder o outro (D31).
-  if (entra) {
-    previsto = `<div class="previstos-faixa">${previsto}${numerosDeEntrada(entra).join('')}${
-      destaqueDaFaixa('previsto com a renda', p.previsto + entra.total, p.estimado || entra.estimado, 'com-renda')}</div>`;
-  } else if (comProvisao) {
-    previsto = `<div class="previstos-faixa">${previsto}</div>`;
-  }
+
   // Conferir com o banco (ou a carteira) mora na própria conta (03 §8).
-  const pe = conta
-    ? `<div class="pe-bloco"><span class="fino">${conta.conferidaEm ? `conferida em ${diaCurto(conta.conferidaEm)}` : 'nunca conferida'}</span>
-        <button type="button" class="elo" data-conferir="${escapar(conta.id)}">conferir</button></div>`
+  const conferir = conta
+    ? `<span class="fino conferencia">${conta.conferidaEm ? `conferida em ${diaCurto(conta.conferidaEm)}` : 'nunca conferida'} ·
+        <button type="button" class="elo" data-conferir="${escapar(conta.id)}">conferir</button></span>`
     : '';
-  return `<div class="bloco largo ${total ? 'total' : ''}">
-    <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(nome)}</p>
-    <div class="numeros-renda numeros-caixa">${numeros.join('')}${previsto}</div>
-    ${pe}
+  const cartao = [...faixasDeCartao, ...faixasSemCofrinho].join('');
+  return `<div class="bloco largo cartao-caixa ${total ? 'total' : ''}">
+    <div class="cab-conta">
+      <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(nome)}</p>
+      ${conferir}
+    </div>
+    <div class="saldos-conta">
+      <div class="saldo-real"><span class="rotulo-numero">saldo real</span><span class="valor-real">${p.real < 0 ? '−' : ''}${formatar(Math.abs(p.real))}</span></div>
+      ${previstoHTML}
+    </div>
+    ${aSair.length ? `<p class="composicao"><span class="chave">a sair até ${diaCurto(p.ate)}</span> ${aSair.join('')}</p>` : ''}
+    ${aEntrarHTML}
+    ${repasse}
+    ${movimento}
+    ${cartao ? `<div class="faixa-dos-cartoes">${cartao}</div>` : ''}
   </div>`;
 }
 
-/** O valor lançado da fatura aberta, para a olhada rápida na conta que paga o cartão. */
-function faturaAbertaDoCartao(cartao, comNome) {
-  const aberta = resumoDoCartao(app, cartao.id)?.aberta;
-  if (!aberta) return '';
-  return numeroDaFaixa(
-    comNome ? `fatura aberta ${cartao.nome}` : 'fatura aberta',
-    formatar(aberta.aPagar),
-    { conta: cartao.id, mes: aberta.vencimento.slice(0, 7), classe: 'cor-cartao' },
-    `Vence ${diaCurto(aberta.vencimento)}. O que já foi lançado nela.`
-  );
-}
-
-/** "4.000 de 4.170" com uma barra fininha: a provisão do cartão no cofrinho. */
-function miniProvisao(cartao, p) {
-  const pct = p.alvo > 0 ? Math.min(100, Math.max(0, (p.provisionado / p.alvo) * 100)) : 100;
+/**
+ * O cartão que esta conta paga, na linha de baixo do card: a fatura aberta
+ * (o valor já lançado, link para Cartões) e a barra da provisão no cofrinho, com a
+ * bolinha no valor real da fatura aberta (design/11 §9).
+ */
+function faixaDoCartao(cartao, p, comNome) {
   const til = p.estimado ? '~' : '';
   const reais = (c) => formatar(c).replace('R$ ', '');
-  // Leva à fatura aberta do cartão, como a "próxima fatura" levava.
+  const pct = p.alvo > 0 ? Math.min(100, Math.max(0, (p.provisionado / p.alvo) * 100)) : 100;
   const aberta = resumoDoCartao(app, cartao.id)?.aberta;
   const mes = aberta?.vencimento?.slice(0, 7) ?? '';
-  // A bolinha marca o valor real (lançado) da fatura aberta na mesma escala da
-  // barra: antes dela, o cofrinho já cobre essa fatura, mesmo sem cobrir tudo.
   const real = aberta?.aPagar ?? 0;
   const posReal = p.alvo > 0 && real > 0 ? Math.min(100, (real / p.alvo) * 100) : null;
   const bolinha = posReal == null ? '' : `<span class="bolinha-fatura ${p.provisionado >= real ? 'coberta' : ''}" style="left:${posReal.toFixed(1)}%" tabindex="0" role="img"
         title="Fatura aberta: ${escapar(formatar(real))}${p.provisionado >= real ? ' — já provisionada' : ` — faltam ${escapar(formatar(real - p.provisionado))}`}"
         aria-label="Fatura aberta: ${escapar(formatar(real))}"></span>`;
-  return `<div class="numero-faixa mini-provisao cor-cartao">
-      <span class="rotulo-numero">provisão ${escapar(cartao.nome)}</span>
-      <button type="button" class="valor-numero elo-numero" data-ir-conta="${escapar(cartao.id)}"${mes ? ` data-ir-mes="${mes}"` : ''} title="Abrir ${escapar(cartao.nome)}">${escapar(reais(p.provisionado))} de ${til}${escapar(reais(p.alvo))}</button>
-      <span class="mini-barra">
-        <span class="barra-limite mini" role="img" aria-label="${Math.round(pct)}% provisionado"><i style="width:${pct.toFixed(1)}%"></i></span>${bolinha}
-      </span>
+  const valorDaFatura = aberta
+    ? `<button type="button" class="valor-cartao elo-numero" data-ir-conta="${escapar(cartao.id)}"${mes ? ` data-ir-mes="${mes}"` : ''} title="Vence ${escapar(diaCurto(aberta.vencimento))}. O que já foi lançado nela.">${formatar(aberta.aPagar)}</button>`
+    : '<span class="valor-cartao">—</span>';
+  return `<div class="faixa-cartao">
+      <div>
+        <div class="rotulo-numero">${escapar(comNome ? `${cartao.nome} · fatura aberta` : 'fatura aberta')}</div>
+        ${valorDaFatura}
+      </div>
+      <div class="provisao-barra">
+        <div class="rotulo-numero provisao-rotulo"><span>provisão</span><span class="valor-provisao">${reais(p.provisionado)} de ${til}${reais(p.alvo)}</span></div>
+        <div class="trilho"><i style="width:${pct.toFixed(1)}%"></i>${bolinha}</div>
+      </div>
     </div>`;
 }
 
@@ -668,16 +701,6 @@ function destaqueDaFaixa(rotulo, valor, estimado = false, classe = '') {
       <span class="rotulo-numero">${escapar(rotulo)}</span>
       <span class="valor-numero">${escapar(texto)}</span>
     </div>`;
-}
-
-/** As entradas previstas, uma por origem: o salário de cada folha, receitas, transferências. */
-function numerosDeEntrada(entra) {
-  const mais = (v, est = false) => `+${est ? '~' : ''}${formatar(v)}`;
-  const numeros = entra.liquidos.map((x) =>
-    numeroDaFaixa(`salário ${x.folha.nome} · ${diaCurto(x.data)}`, mais(x.valor, x.estimado), { conta: x.folha.id, mes: x.data.slice(0, 7) }));
-  if (entra.receitas > 0) numeros.push(numeroDaFaixa('receitas', mais(entra.receitas, entra.estimado)));
-  if (entra.chegam > 0) numeros.push(numeroDaFaixa('chega de outras contas', mais(entra.chegam)));
-  return numeros;
 }
 
 /** Mês passado: um extrato — começo, entrou, saiu, e o saldo no fim (D31). */
@@ -1619,6 +1642,11 @@ function saldosCorridos(conta) {
  * O que ainda não aconteceu fica numa soma à parte, sempre rotulada.
  */
 function pintarTotais(linhas, ids) {
+  // Em Contas, mês a mês, o card já traz entrou, saiu e o previsto.
+  if (AREA === 'caixa' && modoDaTela() === 'mes') {
+    $('totais').innerHTML = '';
+    return;
+  }
   let entrou = 0;
   let saiu = 0;
   let previsto = 0;

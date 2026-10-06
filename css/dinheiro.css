@@ -893,8 +893,6 @@ body[data-pagina="dividas"] .bloco { min-width: 0; }
 .cartao-leve .rotulo-barra span:last-child { color: var(--tinta); }
 .cartao-leve .linha-barra .fino { margin-top: 0; }
 .barra-provisao i { background: var(--area-cartoes); }
-.mini-provisao .barra-limite { display: block; height: 4px; margin-top: 2px; }
-.mini-provisao .barra-limite i { background: var(--area-cartoes); }
 /* A bolinha do valor real da fatura aberta, sobre a barra; o valor aparece ao
    passar o mouse (title). */
 .mini-barra { position: relative; display: block; }
@@ -1329,3 +1327,34 @@ button.linha-rel:hover { background: var(--acento-fundo); }
 .linha-aportar { width: 100%; border: 0; border-bottom: 1px solid var(--borda); border-radius: 0; background: none; color: var(--tinta); font: inherit; text-align: left; }
 .linha-aportar:last-child { border-bottom: 0; }
 .ver-tudo { margin: var(--e2) 0 0; text-align: center; }
+
+/* O card da conta de caixa (06/10/2026): saldo real grande e previsto menor,
+   juntos; o resto em letra pequena e a faixa do cartão por último. */
+.cartao-caixa { display: flex; flex-direction: column; gap: var(--e3); font-variant-numeric: tabular-nums; }
+.cartao-caixa .cab-conta { display: flex; justify-content: space-between; align-items: center; gap: var(--e3); flex-wrap: wrap; }
+.cartao-caixa .cab-conta .nome-bloco { margin: 0; }
+.cartao-caixa .conferencia { color: var(--tinta-fraca); font-size: var(--t-miudo); }
+.cartao-caixa .saldos-conta { display: flex; align-items: flex-end; gap: var(--e6) var(--e6); flex-wrap: wrap; }
+.cartao-caixa .saldo-real, .cartao-caixa .saldo-previsto { display: flex; flex-direction: column; gap: 2px; }
+.cartao-caixa .valor-real { font-size: var(--t-tela); line-height: 1.15; font-weight: 400; }
+.cartao-caixa .valor-previsto { font-size: var(--t-secao); line-height: 1.2; color: var(--positivo); }
+.cartao-caixa .saldo-previsto.negativo .valor-previsto { color: var(--alerta); }
+.cartao-caixa .saldo-previsto { padding-bottom: 3px; }
+.cartao-caixa .composicao { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--e1) var(--e4); color: var(--tinta-fraca); font-size: var(--t-miudo); }
+.cartao-caixa .composicao .chave { color: var(--tinta-fraca); font-weight: 600; }
+.cartao-caixa .em-linha strong, .cartao-caixa .em-linha .elo-numero { color: var(--tinta); font-weight: 600; font-size: var(--t-apoio); }
+.cartao-caixa .em-linha.positivo strong { color: var(--positivo); }
+.cartao-caixa .movimento-mes { display: flex; flex-wrap: wrap; gap: var(--e1) var(--e6); padding-top: var(--e3); border-top: 1px solid var(--borda); color: var(--tinta-fraca); font-size: var(--t-apoio); }
+.cartao-caixa .movimento-mes strong { color: var(--tinta); font-weight: 400; font-size: var(--t-corpo); margin-left: var(--e1); }
+.cartao-caixa .faixa-dos-cartoes { display: flex; flex-direction: column; gap: var(--e3); padding-top: var(--e3); border-top: 1px solid var(--borda); }
+.cartao-caixa .faixa-cartao { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--e4) var(--e6); flex-wrap: wrap; }
+.cartao-caixa .valor-cartao { font-size: var(--t-secao); color: var(--area-cartoes); font-weight: 400; }
+.cartao-caixa button.valor-cartao { padding: 0; border: 0; background: none; font: inherit; font-size: var(--t-secao); color: var(--area-cartoes); cursor: pointer; text-align: left; }
+.cartao-caixa .provisao-barra { flex: 1; min-width: 220px; max-width: 360px; }
+.cartao-caixa .provisao-rotulo { display: flex; justify-content: space-between; gap: var(--e3); margin-bottom: var(--e2); }
+.cartao-caixa .valor-provisao { color: var(--area-cartoes); }
+.cartao-caixa .trilho { position: relative; height: 5px; border-radius: 3px; background: var(--borda); }
+.cartao-caixa .trilho i { display: block; height: 100%; border-radius: 3px; background: var(--area-cartoes); }
+.cartao-caixa .saldo-provisionado { display: flex; flex-direction: column; gap: 2px; }
+.cartao-caixa .saldo-provisionado strong { font-size: var(--t-secao); font-weight: 400; color: var(--positivo); }
+.cartao-caixa .saldo-provisionado.negativo strong { color: var(--alerta); }
