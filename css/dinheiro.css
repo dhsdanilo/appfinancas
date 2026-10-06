@@ -206,7 +206,9 @@ body.abas-no-topo #sub-tela {
    a linha de cima da caixa (3px, mesma cor) — a aba é parte dela, não flutua. */
 body.abas-no-topo .topo { padding-bottom: 0; position: relative; z-index: 2; }
 body.abas-no-topo .topo .subabas { margin-bottom: -3px; }
-body.abas-no-topo #painel { margin-top: 0; border-top-left-radius: 0; }
+body.abas-no-topo #painel,
+body.abas-no-topo #painel-envelopes,
+body.abas-no-topo #painel-relatorios { margin-top: 0; border-top-left-radius: 0; }
 .subabas .nova-conta { margin-bottom: var(--e2); }
 /* A aba de cada conta: ícone redondo com a inicial e o nome. A ativa é maior e
    leva a cor da área — o foco é nas contas, não nos botões (pedido dele, 06/10/2026). */

@@ -12,6 +12,12 @@ import * as ex from './core/explorar.js';
 import { novoId } from './core/id.js';
 import { AREAS } from './app/areas.js';
 import { colunas, areas, linhas as graficoDeLinhas, cor } from './app/graficos.js';
+import { ICONES } from './app/marcacao-dinheiro.js';
+
+// As abas dos relatórios sobem para o cabeçalho (06/10/2026).
+document.querySelector('.topo .identidade')?.append(document.getElementById('abas-relatorios'));
+const abasNoTopo = (sim) => document.body.classList.toggle('abas-no-topo', sim);
+const ICONE_DA_ABA = { gastos: ICONES.barras, patrimonio: ICONES.linha };
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -87,8 +93,10 @@ async function pintar() {
   if (!ativa) return;
   app = await estado.calcular();
   document.body.dataset.area = 'relatorios';
+  $('abas-relatorios').hidden = false;
+  abasNoTopo(true);
   $('abas-relatorios').innerHTML = ABAS
-    .map((a) => `<button type="button" data-rel-aba="${a.id}" aria-pressed="${a.id === tela.aba}">${esc(a.nome)}</button>`).join('');
+    .map((a) => `<button type="button" class="aba-conta" data-rel-aba="${a.id}" aria-pressed="${a.id === tela.aba}"><span class="ic ic-geral">${ICONE_DA_ABA[a.id] ?? ICONES.geral}</span><span class="nome">${esc(a.nome)}</span></button>`).join('');
   $('periodo-relatorios').hidden = true;
   $('corpo-relatorios').innerHTML = tela.aba === 'gastos' ? abaGastos() : abaPatrimonio();
   if (tela.aba === 'gastos') desenharGastos(); else desenharPatrimonio();
@@ -509,5 +517,6 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('app:tela', (e) => {
   ativa = e.detail.tela === 'relatorios';
   if (ativa) pintar();
+  else $('abas-relatorios').hidden = true;
 });
 estado.aoAplicar(() => pintar());

@@ -16,6 +16,12 @@ import { periodo as periodoDe, PERIODOS } from './core/explorar.js';
 import { criarJanelasDeEnvelope } from './app/envelope.js';
 import { criarJanelasDeUso } from './app/envelope-uso.js';
 import { areas, pizza, cor } from './app/graficos.js';
+import { ICONES } from './app/marcacao-dinheiro.js';
+import { iniciaisDaConta, corDaConta } from './core/ordem.js';
+
+// As abas dos envelopes sobem para o cabeçalho, como as das contas (06/10/2026).
+document.querySelector('.topo .identidade')?.append(document.getElementById('subabas-envelopes'));
+const abasNoTopo = (sim) => document.body.classList.toggle('abas-no-topo', sim);
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -54,10 +60,16 @@ async function pintar() {
 
   // O encerrado ou arquivado aberto ganha aba enquanto está à vista.
   const abas = foco !== 'geral' && !lista.some((v) => v.id === foco) ? [...lista, app.envelopes[foco]] : lista;
-  $('subabas-envelopes').hidden = !abas.length;
-  $('subabas-envelopes').innerHTML = [{ id: 'geral', nome: 'Geral' }, ...abas]
-    .map((v) => `<button type="button" data-env-aba="${esc(v.id)}" aria-pressed="${v.id === foco}">${esc(v.nome)}</button>`)
-    .join('');
+  $('subabas-envelopes').hidden = false;
+  abasNoTopo(true);
+  $('subabas-envelopes').innerHTML = [{ id: 'geral', nome: 'Envelopes' }, ...abas]
+    .map((v) => {
+      const icone = v.id === 'geral'
+        ? `<span class="ic ic-geral">${ICONES.geral}</span>`
+        : `<span class="ic" style="background:${corDaConta(v.nome)}">${esc(iniciaisDaConta(v.nome))}</span>`;
+      return `<button type="button" class="aba-conta" data-env-aba="${esc(v.id)}" aria-pressed="${v.id === foco}">${icone}<span class="nome">${esc(v.nome)}</span></button>`;
+    })
+    .join('') + `<button type="button" class="nova-conta" data-novo-envelope title="Novo envelope" aria-label="Novo envelope">${ICONES.mais}</button>`;
 
   const donos = donosNoDia(app);
   if (!lista.length && foco === 'geral') {
@@ -335,7 +347,10 @@ function linhaDoExtrato(x) {
 
 // ── eventos ───────────────────────────────────────────────────────────────
 
-$('b-novo-envelope').addEventListener('click', () => janelas.abrirFicha());
+// O "+" no fim das abas cria um envelope.
+document.addEventListener('click', (e) => {
+  if (ativa && e.target.closest('[data-novo-envelope]')) janelas.abrirFicha();
+});
 
 // Cada período abre no agrupamento natural: anos longos por ano, o resto por mês.
 const tempoNatural = (p) => (p === '5anos' || p === 'tudo' ? 'ano' : 'mes');
@@ -381,5 +396,6 @@ document.addEventListener('click', async (e) => {
 document.addEventListener('app:tela', (e) => {
   ativa = e.detail.tela === 'envelopes';
   if (ativa) pintar();
+  else $('subabas-envelopes').hidden = true;
 });
 estado.aoAplicar(() => pintar());

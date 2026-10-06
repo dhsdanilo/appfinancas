@@ -13,6 +13,8 @@ export const ICONES = {
   transferir: ICONE('<path d="M7 4v16M7 4 4 7M7 4l3 3M17 20V4M17 20l-3-3M17 20l3-3"/>'),
   importar: ICONE('<path d="M12 16V4M12 4 8 8M12 4l4 4M4 20h16"/>'),
   exportar: ICONE('<path d="M12 4v12M12 16l-4-4M12 16l4-4M4 20h16"/>'),
+  barras: ICONE('<path d="M5 20V10M12 20V4M19 20v-7"/>'),
+  linha: ICONE('<path d="M4 17l5-5 4 4 7-8"/>'),
   geral: ICONE('<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/>'),
 };
 
