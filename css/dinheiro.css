@@ -1413,3 +1413,65 @@ button.linha-rel:hover { background: var(--acento-fundo); }
 .aba-mais .item-mais { display: flex; align-items: center; gap: var(--e3); width: 100%; padding: var(--e2) var(--e3); border: 0; border-radius: var(--raio-controle); background: transparent; color: var(--tinta); text-align: left; font-size: var(--t-apoio); }
 .aba-mais .item-mais:hover { background: var(--area-fundo, var(--acento-fundo)); }
 .aba-mais .item-mais .ic { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 10px; font-weight: 600; }
+
+/* ── a página inicial (06/10/2026) ───────────────────────────────────────── */
+.marca-app { display: none; align-items: center; gap: var(--e3); }
+.marca-app img { border-radius: 11px; }
+.marca-app .nome-app { font-size: var(--t-tela); font-weight: 600; letter-spacing: -0.01em; }
+.marca-app .sub { margin: 0; color: var(--tinta-fraca); font-size: var(--t-apoio); }
+body[data-pagina="inicio"] .marca-app { display: flex; }
+body[data-pagina="inicio"] #titulo-tela,
+body[data-pagina="inicio"] #sub-tela { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* A caixa da página inicial some: os avisos e os cards falam por si. */
+body[data-pagina="inicio"] #painel { background: none; border: 0; padding: 0; margin-top: var(--e3); }
+body[data-pagina="inicio"] .linha-topo-painel { display: none; }
+/* O + e o transferir, no canto do cabeçalho; importar e exportar ficam nas áreas. */
+body[data-pagina="inicio"] .topo { align-items: center; flex-wrap: nowrap; }
+body[data-pagina="inicio"] .topo .identidade { flex: 1; }
+body[data-pagina="inicio"] #b-importar,
+body[data-pagina="inicio"] #b-exportar { display: none; }
+
+.avisos-inicio { margin: 0 0 var(--e5); }
+.avisos-inicio .rotulo-avisos { margin: 0 0 var(--e2); color: var(--tinta-fraca); font-size: var(--t-miudo); letter-spacing: 0.06em; text-transform: uppercase; }
+.grade-avisos { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--e3); }
+.aviso-inicio {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--e3);
+  padding: var(--e3) var(--e3);
+  border: 1px solid var(--borda);
+  border-left: 3px solid var(--borda-forte);
+  border-radius: 0 var(--raio-controle) var(--raio-controle) 0;
+  background: var(--superficie);
+  color: var(--tinta);
+  text-align: left;
+}
+.aviso-inicio:hover { border-color: var(--borda-forte); }
+.aviso-inicio.ruim { border-left-color: var(--alerta); }
+.aviso-inicio.atencao { border-left-color: #e0a63a; }
+.aviso-inicio.info { border-left-color: #378add; }
+.aviso-inicio .icone-aviso { flex: none; width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: var(--t-miudo); font-weight: 700; color: var(--fundo); background: var(--borda-forte); }
+.aviso-inicio.ruim .icone-aviso { background: var(--alerta); }
+.aviso-inicio.atencao .icone-aviso { background: #e0a63a; }
+.aviso-inicio.info .icone-aviso { background: #378add; }
+.aviso-inicio .texto-aviso { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: var(--t-apoio); }
+.aviso-inicio .detalhe-aviso { color: var(--tinta-fraca); font-size: var(--t-miudo); }
+
+.blocos-inicio { grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); }
+.card-inicio { display: flex; flex-direction: column; gap: var(--e3); font-variant-numeric: tabular-nums; }
+.card-inicio .nome-bloco { margin: 0; }
+.card-inicio .corpo-card-inicio { display: flex; flex-direction: column; gap: var(--e1); }
+.card-inicio .valor-card-inicio { font-size: var(--t-tela); line-height: 1.2; }
+.card-inicio .valor-card-inicio.menor { font-size: var(--t-secao); }
+.card-inicio .valor-card-inicio.negativo { color: var(--alerta); }
+.card-inicio .linha-card-inicio { color: var(--tinta-fraca); font-size: var(--t-apoio); }
+.card-inicio .linha-card-inicio strong { color: var(--tinta); font-weight: 600; margin-left: var(--e1); }
+.card-inicio .linha-card-inicio strong.positivo { color: var(--positivo); }
+.card-inicio .linha-card-inicio strong.negativo { color: var(--alerta); }
+.card-inicio .linha-card-inicio.atencao { color: #e0a63a; }
+.card-inicio .linha-barra-inicio { display: flex; justify-content: space-between; gap: var(--e3); margin-top: var(--e2); color: var(--tinta-fraca); font-size: var(--t-miudo); }
+.card-inicio .linha-barra-inicio .atencao { color: #e0a63a; }
+.card-inicio .envelope-inicio { display: flex; flex-direction: column; gap: var(--e1); margin-bottom: var(--e2); }
+.card-inicio .envelope-inicio .linha-barra-inicio { margin-top: 0; color: var(--tinta); font-size: var(--t-apoio); }
+.card-inicio .fino { color: var(--tinta-fraca); font-size: var(--t-miudo); }

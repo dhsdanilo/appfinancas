@@ -24,7 +24,8 @@ import { lancarOcorrencia } from './app/ocorrencia.js';
 import { criarJanelaDoAtivo } from './app/ativo.js';
 import { criarImportacao } from './app/importar.js';
 import { resumoDaConta, ativosDaConta, nomeDaClasse, CLASSES } from './core/investimentos.js';
-import { donosNoDia } from './core/envelopes.js';
+import { donosNoDia, envelopesAtivos, numerosDoEnvelope } from './core/envelopes.js';
+import { avisosDoInicio } from './core/avisos.js';
 import { mesDosInvestimentos, rendimentoNoPeriodo } from './core/relatorios.js';
 import { areas, cor as corDaSerie } from './app/graficos.js';
 import { aoLancar } from './app/pagina.js';
@@ -137,6 +138,8 @@ const modoDaTela = () => (PAGINA === 'cartoes' ? 'mes' : vista.modo);
 /** Entra numa tela de dinheiro: troca o foco e pinta. */
 function entrar(pagina) {
   if (PAGINA && PAGINA !== pagina) guardarVista();
+  // O + e o transferir estão no cabeçalho só na página inicial; nas outras, na caixa.
+  if (pagina !== 'inicio') document.querySelector('.linha-topo-painel')?.append($('barra-acoes'));
   // O mês acompanha entre as telas: Cartões só salta para a fatura aberta
   // quando o mês da tela é o corrente; noutro mês, mostra a fatura dele.
   if (pagina === 'cartoes' && PAGINA !== 'cartoes') {
@@ -286,6 +289,10 @@ function pintarInicio() {
   abasNoTopo(false);
   delete $('painel').dataset.area;
   delete $('barra-acoes').dataset.area;
+  // O + e o transferir moram no canto do cabeçalho, não dentro da caixa.
+  document.querySelector('.topo').append($('barra-acoes'));
+  const hojePorExtenso = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
+  $('data-marca').textContent = `${hojePorExtenso[0].toUpperCase()}${hojePorExtenso.slice(1)} · como estamos agora`;
 
   const blocos = [];
   for (const area of ABAS) {
@@ -293,64 +300,133 @@ function pintarInicio() {
     if (!contas.length) continue;
     blocos.push(cartaoDoInicio(area, contas));
   }
+  const envelopes = cartaoDeEnvelopesDoInicio();
+  if (envelopes) blocos.push(envelopes);
   $('resumo').innerHTML = blocos.length
-    ? `<div class="blocos">${blocos.join('')}</div>`
+    ? `${avisosHTML()}<div class="blocos blocos-inicio">${blocos.join('')}</div>`
     : `<p class="vazio">Nada por aqui ainda. Comece criando uma conta em <a href="${enderecoDa('contas')}">Contas</a> e as categorias em <a href="${enderecoDa('configuracoes')}">Configurações</a>.</p>`;
   guardarVista();
 }
 
-/** Um cartão por área, com o número que importa nela, levando à tela dela. */
+const ICONE_DO_AVISO = { ruim: '!', atencao: '◷', info: 'i' };
+
+/** A faixa de avisos: até quatro, os que mais pedem atenção primeiro. */
+function avisosHTML() {
+  const lista = avisosDoInicio(app);
+  if (!lista.length) return '';
+  const cartoes = lista.slice(0, 4).map((a, k) => {
+    const alvo = a.para.conta ? `data-ir-conta="${escapar(a.para.conta)}"${a.para.mes ? ` data-ir-mes="${escapar(a.para.mes)}"` : ''}`
+      : `data-ir-tela="${escapar(a.para.tela)}"`;
+    return `<button type="button" class="aviso-inicio ${a.nivel}" ${alvo} data-k="${k}">
+      <span class="icone-aviso" aria-hidden="true">${ICONE_DO_AVISO[a.nivel]}</span>
+      <span class="texto-aviso"><span class="titulo-aviso">${escapar(a.titulo)}</span><span class="detalhe-aviso">${escapar(a.detalhe)}</span></span>
+    </button>`;
+  }).join('');
+  return `<section class="avisos-inicio" aria-label="Avisos"><p class="rotulo-avisos">Atenção${lista.length > 4 ? ` <span class="fino">· mais ${lista.length - 4}</span>` : ''}</p><div class="grade-avisos">${cartoes}</div></section>`;
+}
+
+/** Um card por área, com o número que importa nela, levando à tela dela. */
 function cartaoDoInicio(area, contas) {
-  const linhas = [];
+  const titulo = { caixa: 'Contas', cartoes: 'Cartões', folha: 'Renda', investimentos: 'Investimentos', dividas: 'Dívidas' }[area.id];
+  const rotulo = (t) => `<span class="rotulo-numero">${escapar(t)}</span>`;
+  let corpo = '';
+
   if (area.id === 'caixa') {
     const ps = contas.map((c) => saldoPrevisto(app, c.id));
     const real = ps.reduce((t, p) => t + p.real, 0);
     const previsto = ps.reduce((t, p) => t + p.previsto, 0);
     const estimado = ps.some((p) => p.estimado);
-    linhas.push(linhaDeResumo('saldo real', dinheiroHTML(real), real < 0 ? 'negativo' : ''));
-    linhas.push(linhaDeResumo(`previsto até ${diaCurto(ps[0].ate)}`, dinheiroHTML(previsto, { estimado }), previsto < 0 ? 'negativo' : ''));
-    if (ps.some((p) => p.totalProximas > 0)) {
-      const provisionado = ps.reduce((t, p) => t + p.provisionado, 0);
-      linhas.push(linhaDeResumo('saldo provisionado', dinheiroHTML(provisionado, { estimado }), provisionado < 0 ? 'negativo' : ''));
-    }
+    corpo = `${rotulo('saldo real')}
+      <span class="valor-card-inicio ${real < 0 ? 'negativo' : ''}">${dinheiroHTML(real)}</span>
+      <span class="linha-card-inicio">previsto até ${diaCurto(ps[0].ate)} <strong class="${previsto < 0 ? 'negativo' : 'positivo'}">${dinheiroHTML(previsto, { estimado })}</strong></span>
+      <span class="fino">${contas.length} conta${contas.length > 1 ? 's' : ''}</span>`;
   }
+
   if (area.id === 'cartoes') {
     let aberta = 0;
     let fechada = 0;
+    let venceAberta = null;
+    let usado = 0;
+    let limite = 0;
+    let provisionado = 0;
+    let alvo = 0;
     for (const c of contas) {
       const r = resumoDoCartao(app, c.id);
       if (!r) continue;
       aberta += r.aberta?.aPagar ?? 0;
       fechada += r.fechada?.aPagar ?? 0;
+      if (r.aberta && (!venceAberta || r.aberta.vencimento < venceAberta)) venceAberta = r.aberta.vencimento;
+      usado += r.divida ?? 0;
+      limite += c.limite ?? 0;
+      const p = provisaoDoCartao(app, c.id);
+      if (p) { provisionado += p.provisionado; alvo += p.alvo; }
     }
-    if (fechada) linhas.push(linhaDeResumo('faturas fechadas a pagar', dinheiroHTML(fechada), 'negativo'));
-    linhas.push(linhaDeResumo('faturas abertas', dinheiroHTML(aberta)));
+    const barra = (pct) => `<span class="barra-limite" aria-hidden="true"><i style="width:${Math.min(100, Math.max(0, pct)).toFixed(1)}%"></i></span>`;
+    corpo = `${fechada ? `${rotulo('fatura fechada a pagar')}<span class="valor-card-inicio negativo">${dinheiroHTML(fechada)}</span>` : ''}
+      ${rotulo(`fatura aberta${venceAberta ? ` · vence ${diaCurto(venceAberta)}` : ''}`)}
+      <span class="valor-card-inicio ${fechada ? 'menor' : ''}">${dinheiroHTML(aberta)}</span>
+      ${limite > 0 ? `<span class="linha-barra-inicio"><span>limite</span><span>${Math.round((usado / limite) * 100)}% usado</span></span>${barra((usado / limite) * 100)}` : ''}
+      ${alvo > 0 ? `<span class="linha-barra-inicio"><span>cofrinho</span><span>${provisionado >= alvo ? 'coberto' : `${Math.round((provisionado / alvo) * 100)}% provisionado`}</span></span>${barra((provisionado / alvo) * 100)}` : ''}`;
   }
+
   if (area.id === 'folha') {
     const mes = hoje().slice(0, 7);
     const doMes = visiveis(app).filter(
       (l) => contas.some((c) => c.id === l.contaId) && l.dataCompetencia.slice(0, 7) === mes
     );
     const { liquida } = rendaDaFolha(app, doMes, new Set(contas.map((c) => c.id)));
-    linhas.push(linhaDeResumo(`renda líquida de ${nomeDoMes(mes).split(' ')[0]}`, dinheiroHTML(liquida)));
     const faltam = contas.filter((c) => linhasDoHolerite(app, c.id, mes).some((l) => !l.automatico)).length;
-    if (faltam) linhas.push(linhaDeResumo('contracheques a lançar', String(faltam), 'abate'));
+    corpo = `${rotulo(`líquida de ${nomeDoMes(mes).split(' ')[0]}`)}
+      <span class="valor-card-inicio">${dinheiroHTML(liquida)}</span>
+      ${faltam ? `<span class="linha-card-inicio atencao">contracheque${faltam > 1 ? 's' : ''} a lançar</span>` : '<span class="fino">contracheque lançado</span>'}`;
   }
+
   if (area.id === 'investimentos') {
     const resumos = contas.map((c) => resumoDaConta(app, c));
     const total = resumos.reduce((t, r) => t + r.valorAtual, 0);
     const rendeu = resumos.reduce((t, r) => t + r.rendeu, 0);
-    linhas.push(linhaDeResumo('valor atual', dinheiroHTML(total, { estimado: resumos.some((r) => r.estimado) })));
-    linhas.push(linhaDeResumo('rendeu', dinheiroHTML(rendeu, { sinal: rendeu >= 0 ? '+' : '' }), 'abate'));
+    corpo = `${rotulo('valor atual')}
+      <span class="valor-card-inicio">${dinheiroHTML(total, { estimado: resumos.some((r) => r.estimado) })}</span>
+      <span class="linha-card-inicio"><strong class="${rendeu >= 0 ? 'positivo' : 'negativo'}">${dinheiroHTML(rendeu, { sinal: rendeu >= 0 ? '+' : '' })}</strong> rendeu</span>`;
   }
+
   if (area.id === 'dividas') {
     const total = contas.reduce((t, c) => t + (saldoDevedor(app, c.id) ?? 0), 0);
-    linhas.push(linhaDeResumo('saldo devedor', dinheiroHTML(total, { estimado: contas.some((c) => situacao(app, c.id)?.estimado) })));
+    const parcelas = contas.reduce((t, c) => {
+      const s = situacao(app, c.id);
+      return t + (s?.restantes ? s.valorParcela : 0);
+    }, 0);
+    corpo = `${rotulo('saldo devedor')}
+      <span class="valor-card-inicio">${dinheiroHTML(total, { estimado: contas.some((c) => situacao(app, c.id)?.estimado) })}</span>
+      ${parcelas ? `<span class="linha-card-inicio">parcelas por mês <strong>${dinheiroHTML(parcelas)}</strong></span>` : ''}`;
   }
-  const titulo = { caixa: 'Contas', cartoes: 'Cartões', folha: 'Renda', investimentos: 'Investimentos', dividas: 'Dívidas' }[area.id];
-  return `<a class="bloco bloco-link" href="${enderecoDa(PAGINA_DA_AREA[area.id])}" data-area="${area.id}">
+
+  return `<a class="bloco bloco-link card-inicio" href="${enderecoDa(PAGINA_DA_AREA[area.id])}" data-area="${area.id}">
     <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(titulo)}</p>
-    <dl>${linhas.join('')}</dl>
+    <div class="corpo-card-inicio">${corpo}</div>
+  </a>`;
+}
+
+/** Os envelopes que mais pedem atenção: atrasados primeiro, até três, cada um com a sua barra. */
+function cartaoDeEnvelopesDoInicio() {
+  const lista = envelopesAtivos(app);
+  if (!lista.length) return '';
+  const donos = donosNoDia(app);
+  const itens = lista.map((v) => {
+    const total = donos.porEnvelope.get(v.id)?.total ?? 0;
+    const n = numerosDoEnvelope(v, total);
+    return { v, total, n, atrasado: n.deveriaTer != null && total < n.deveriaTer, pct: n.alvo ? Math.max(0, Math.min(1, total / n.alvo)) : null };
+  });
+  const mostrados = itens
+    .sort((a, b) => Number(b.atrasado) - Number(a.atrasado) || (a.pct ?? 2) - (b.pct ?? 2))
+    .slice(0, 3);
+  const linhas = mostrados.map((x) => `<span class="envelope-inicio">
+      <span class="linha-barra-inicio"><span>${escapar(x.v.nome)}</span><span class="${x.atrasado ? 'atencao' : ''}">${x.atrasado ? 'atrasado' : x.pct != null ? `${Math.round(x.pct * 100)}%` : dinheiroHTML(x.total)}</span></span>
+      ${x.pct != null ? `<span class="barra-limite" aria-hidden="true"><i style="width:${(x.pct * 100).toFixed(1)}%;background:${corDaConta(x.v.nome)}"></i></span>` : ''}
+    </span>`).join('');
+  return `<a class="bloco bloco-link card-inicio" href="${enderecoDa('envelopes')}" data-area="envelopes">
+    <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>Envelopes</p>
+    <div class="corpo-card-inicio">${linhas}${itens.length > 3 ? `<span class="fino">e mais ${itens.length - 3}</span>` : ''}</div>
   </a>`;
 }
 
@@ -2064,6 +2140,11 @@ async function pagarFatura(cartaoId, centavos) {
 }
 
 document.addEventListener('click', async (e) => {
+  const irTela = e.target.closest('[data-ir-tela]');
+  if (irTela) {
+    location.hash = `#/${irTela.dataset.irTela}`;
+    return;
+  }
   const ir = e.target.closest('[data-ir-conta]');
   if (ir) {
     irParaConta(ir.dataset.irConta, ir.dataset.irMes || null);
@@ -2415,6 +2496,11 @@ async function continuarDoTerreo() {
 document.addEventListener('app:tela', (e) => {
   ativa = e.detail.grupo === 'dinheiro';
   if (ativa) entrar(e.detail.tela);
-  else { $('subabas').hidden = true; abasNoTopo(false); }
+  else {
+    $('subabas').hidden = true;
+    abasNoTopo(false);
+    // O + e o transferir voltam para a caixa: no cabeçalho só vivem na página inicial.
+    document.querySelector('.linha-topo-painel')?.append($('barra-acoes'));
+  }
 });
 estado.aoAplicar(() => pintar());
