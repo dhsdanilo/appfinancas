@@ -466,13 +466,22 @@ input[type="text"].observacao {
 /* O simulador de saldo e os botões crédito × conta (design/16 §2.1). */
 .tipo-pagamento { margin: 0 0 var(--e2); }
 .tipo-pagamento button { flex: 1; }
+/* O que ela tem de verdade, logo abaixo do valor: real, disponível e, ao digitar,
+   o que fica — com mais corpo que o resto do formulário. */
 .simulador-saldo {
-  margin: var(--e2) 0 0;
-  color: var(--tinta-fraca);
-  font-size: var(--t-apoio);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--e2) var(--e5, var(--e4));
+  margin: var(--e2) 0 var(--e3);
+  padding: var(--e2) 0 var(--e3);
+  border-bottom: 1px solid var(--borda);
   font-variant-numeric: tabular-nums;
 }
-.simulador-saldo.negativo { color: var(--alerta); }
+.simulador-saldo .saldo-peca { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.simulador-saldo .miudo { color: var(--tinta-fraca); font-size: var(--t-miudo); }
+.simulador-saldo strong { font-size: var(--t-secao, 1.15rem); font-weight: 600; white-space: nowrap; }
+.simulador-saldo .destaque strong { color: var(--positivo); }
+.simulador-saldo .negativo strong { color: var(--alerta); }
 .repasse-transf {
   display: flex;
   flex-wrap: wrap;

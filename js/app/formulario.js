@@ -97,7 +97,11 @@ const P = {
     </label>
     <button type="button" class="elo" data-papel="b-refino" aria-expanded="false">detalhes</button>
   </div>
-  <p class="simulador-saldo" data-papel="simulador" hidden></p>
+
+`,
+  simulador: `
+  <!-- Aparelho com dono: o que ela tem de verdade, logo abaixo do valor (design/16). -->
+  <div class="simulador-saldo" data-papel="simulador" hidden></div>
 
 `,
   descricao: `
@@ -231,14 +235,14 @@ const P = {
 
 const rotuloDeCampo = (texto) => `  <p class="rotulo-campo">${texto}</p>\n`;
 
-const MARCACAO = P.valor + P.contexto + P.fatura + P.recado + P.atalhos + P.categorias + P.conta + P.refinoComDescricao + P.final;
+const MARCACAO = P.contexto + P.valor + P.simulador + P.recado + P.atalhos + P.categorias + P.conta + P.refinoComDescricao + P.final;
 
 const MARCACAO_DO_APP =
   P.contexto + P.recado +
   rotuloDeCampo('categoria') + P.categorias +
   rotuloDeCampo('descrição <span class="fino">· opcional</span>') + P.descricao +
-  rotuloDeCampo('valor') + P.valor +
-  P.conta + P.fatura + P.refino + P.atalhos + P.final;
+  rotuloDeCampo('valor') + P.valor + P.simulador +
+  P.conta + P.refino + P.atalhos + P.final;
 
 /**
  * @param {object} opcoes
@@ -251,7 +255,7 @@ export async function criarFormulario({
   raiz, acoes, aoSalvar, aoFechar, comEtiquetas = false, rapido = false, aoDevolver = null,
   ordemDoApp = false,
 }) {
-  raiz.innerHTML = ordemDoApp ? MARCACAO_DO_APP : MARCACAO;
+  raiz.innerHTML = (ordemDoApp ? MARCACAO_DO_APP : MARCACAO).replace('<div class="refino" data-papel="refino" hidden>', `<div class="refino" data-papel="refino" hidden>${P.fatura}`);
   raiz.classList.toggle('formulario-app', ordemDoApp);
   if (ordemDoApp) raiz.querySelector('[data-papel="nova-categoria"]').placeholder = 'buscar ou criar categoria';
   const dedo = matchMedia('(pointer: coarse)').matches;
@@ -540,9 +544,9 @@ export async function criarFormulario({
   }
 
   function pintarAtalhos() {
-    // No app o "repetir último" e os favoritos saem (pedido dele): a lista de
+    // "Repetir o último" e os favoritos saem em todo lugar (pedido dele): a lista de
     // categorias já começa pelas que você usou por último.
-    const mostrar = !ordemDoApp && !editando && !daSerie;
+    const mostrar = false;
     const daqui = mostrar ? ultimoDaqui() : null;
     const ultimo = daqui && contaNaEscolha(daqui.contaId) ? daqui : null;
     const favs = mostrar ? favoritos().filter((f) => contaNaEscolha(f.contaId)) : [];
@@ -607,9 +611,14 @@ export async function criarFormulario({
       conta.tipo === 'corrente' || conta.tipo === 'especie' || (conta.tipo === 'cartao' && conta.titular && conta.titular !== dona)
     );
     const depois = d.disponivel - (baixa ? v : 0);
+    const bloco3 = (rotulo, centavos, classe = '') =>
+      `<span class="saldo-peca ${classe}"><span class="miudo">${rotulo}</span><strong>${escapar(formatar(centavos))}</strong></span>`;
     bloco.hidden = false;
-    bloco.classList.toggle('negativo', depois < 0);
-    bloco.textContent = `disponível ${formatar(d.disponivel)}${baixa ? ` · ficam ${formatar(depois)}` : ''}${d.aRepassar > 0 ? ` (já sem os ${formatar(d.aRepassar)} a repassar)` : ''}`;
+    bloco.innerHTML =
+      bloco3('real', d.saldo) +
+      bloco3('disponível', d.disponivel, depois < 0 && !baixa ? 'negativo' : '') +
+      (baixa ? bloco3('ficam', depois, depois < 0 ? 'negativo' : 'destaque') : '');
+    bloco.title = d.aRepassar > 0 ? `O disponível já desconta ${formatar(d.aRepassar)} a repassar.` : '';
   }
 
   function pintarConta() {
@@ -987,13 +996,11 @@ export async function criarFormulario({
       sugeridos.unshift(app.detalhes[detalheId]);
     }
 
-    el('chips-detalhe').innerHTML = sugeridos.length
-      ? sugeridos
-          .map(
-            (d) =>
-              `<button type="button" data-detalhe="${escapar(d.id)}" aria-pressed="${d.id === detalheId}">${escapar(d.nome)}</button>`
-          )
-          .join('')
+    // As descrições de compras anteriores não são mais sugeridas (pedido dele);
+    // só a escolhida aparece, para poder ser tirada.
+    const escolhida = detalheId ? app.detalhes[detalheId] : null;
+    el('chips-detalhe').innerHTML = escolhida
+      ? `<button type="button" data-detalhe="${escapar(escolhida.id)}" aria-pressed="true">${escapar(escolhida.nome)}</button>`
       : '';
   }
 
