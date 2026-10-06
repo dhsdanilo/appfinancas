@@ -1520,3 +1520,7 @@ body[data-pagina="inicio"] #b-exportar { display: none; }
   body[data-pagina="relatorios"] .mais-filtro,
   body[data-pagina="relatorios"] .vistas-rel { display: none; }
 }
+
+/* Se vender hoje (ficha do Tesouro): rótulo à esquerda, valor à direita. */
+.venda-liquida .linha-holerite { display: flex; justify-content: space-between; gap: var(--e3); }
+.venda-liquida .nome-linha { flex: 1; min-width: 0; }

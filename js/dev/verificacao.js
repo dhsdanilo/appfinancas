@@ -34,6 +34,7 @@ import * as automaticas from '../core/automaticas.js';
 import * as importar from '../core/importar.js';
 import * as explorar from '../core/explorar.js';
 import * as exportar from '../core/exportar.js';
+import * as ir from '../core/ir-venda.js';
 import * as icones from '../core/icones-conta.js';
 
 const BANCO_DE_TESTE = 'appfinancas-teste';
@@ -2486,6 +2487,20 @@ caso('exportar', 'o ícone da conta: desenho, banco, e a inicial quando não há
   verdade(icones.marcaDoIcone('i:banco', 'X').html.startsWith('<svg'), 'o desenho genérico');
   igual(icones.marcaDoIcone('', 'Banco Azul').html, 'BA', 'sem escolha: as iniciais');
   igual(icones.marcaDoIcone('b:nao-existe', 'Moeda').html, 'M', 'código desconhecido cai nas iniciais');
+});
+
+caso('investimento', 'vender o Tesouro: IR regressivo por compra, só sobre o ganho, perda não compensa', async () => {
+  const lote = (data, quantidade, preco) => ({ data, quantidade, resta: quantidade, preco, valor: quantidade * preco });
+  const p = (lotes, preco) => ({ porCotas: true, quantidade: lotes.reduce((t, l) => t + l.resta, 0), cotacao: { data: '2026-10-05', preco }, lotes });
+  const um = ir.liquidoDaVenda(p([lote('2025-05-23', 100, 10000)], 15000), '2026-10-06');
+  igual([um.bruto, um.ganho, um.ir, um.liquido, um.aliquotas], [1500000, 500000, 87500, 1412500, [0.175]], '501 dias: 17,5% sobre o ganho de 5.000');
+  const dois = ir.liquidoDaVenda(p([lote('2025-05-23', 100, 10000), lote('2026-08-01', 50, 16000)], 15000), '2026-10-06');
+  igual([dois.bruto, dois.ganho, dois.ir], [2250000, 500000, 87500], 'a compra mais nova deu perda: sem IR e sem abater a outra');
+  const novo = ir.liquidoDaVenda(p([lote('2026-08-01', 100, 10000)], 11000), '2026-10-06');
+  igual([novo.ir, novo.aliquotas], [22500, [0.225]], '66 dias: 22,5%');
+  igual([ir.aliquotaDoIR(180), ir.aliquotaDoIR(181), ir.aliquotaDoIR(360), ir.aliquotaDoIR(361), ir.aliquotaDoIR(720), ir.aliquotaDoIR(721)],
+    [0.225, 0.2, 0.2, 0.175, 0.175, 0.15], 'os limites da tabela');
+  igual(ir.liquidoDaVenda({ porCotas: true, quantidade: 1, cotacao: null, lotes: [] }), null, 'sem cotação não calcula');
 });
 
 async function limpar() {

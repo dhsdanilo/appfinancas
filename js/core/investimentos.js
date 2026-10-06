@@ -134,7 +134,7 @@ function posicaoPorCotas(ativo, ops, dia) {
       aplicado += l.valor;
       quantidade += q;
       custo += l.valor;
-      lotes.push({ id: l.id, data: l.dataCompetencia, quantidade: q, resta: q, preco: l.preco ?? (q ? l.valor / q : 0) });
+      lotes.push({ id: l.id, data: l.dataCompetencia, quantidade: q, resta: q, valor: l.valor, preco: l.preco ?? (q ? l.valor / q : 0) });
     } else if (l.tipo === 'resgate') {
       resgatado += l.valor;
       const medio = quantidade ? custo / quantidade : 0;

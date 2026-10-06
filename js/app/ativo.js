@@ -15,6 +15,7 @@ import { CLASSES, CLASSES_POR_COTAS, nomeDaClasse, posicao, contaDoDinheiro, con
 import { lugarDaConta, envelopesAtivos } from '../core/envelopes.js';
 import { provisaoDoCartao } from '../core/cofrinho.js';
 import * as cotacoes from '../core/cotacoes.js';
+import { liquidoDaVenda } from '../core/ir-venda.js';
 import { ligarDonos, criarJanelasDeEnvelope } from './envelope.js';
 
 const MARCACAO = `
@@ -115,6 +116,12 @@ const MARCACAO = `
         <button type="button" class="elo" data-ativo="b-distribuir">distribuir</button>
       </p>
 
+      <!-- Se vender hoje: bruto pelo preço de venda, IR da tabela regressiva e o líquido. Só Tesouro. -->
+      <div data-ativo="parte-venda" hidden>
+        <p class="miudo titulo-linhas" data-ativo="titulo-venda"></p>
+        <ol class="linhas-holerite operacoes-lista venda-liquida" data-ativo="venda"></ol>
+        <p class="miudo" data-ativo="nota-venda">Não inclui a taxa de custódia da B3.</p>
+      </div>
       <div data-ativo="parte-lotes" hidden>
         <p class="miudo titulo-linhas">compras na mão</p>
         <ol class="linhas-holerite operacoes-lista lotes" data-ativo="lotes"></ol>
@@ -223,6 +230,7 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
     } else {
       el('parte-lotes').hidden = true;
     }
+    pintarVenda(p, ativo);
     const desde = p.desde
       ? n(`desde ${diaCurto(p.desde)}/${p.desde.slice(0, 4)}`, p.aoAno == null ? `${Math.max(0, Math.round(p.meses))} ${Math.round(p.meses) === 1 ? 'mês' : 'meses'}` : `≈ ${(p.aoAno * 100).toFixed(1).replace('.', ',')}% ao ano`)
       : '';
@@ -280,6 +288,23 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
 
   /** Aplicar no cofrinho de um cartão: quanto falta para cobrir o limite usado. */
   let sugerido = 0;
+  /** Se vender hoje: só no Tesouro por cotas, com o preço de venda guardado. */
+  function pintarVenda(p, ativo) {
+    const tesouro = ativo.classe === 'tesouro' || ativo.cotacao?.fonte === 'tesouro';
+    const v = tesouro && ativo.unidade === 'cotas' ? liquidoDaVenda(p) : null;
+    el('parte-venda').hidden = !v;
+    if (!v) return;
+    const pct = v.aliquotas.map((x) => `${(x * 100).toFixed(1).replace('.', ',').replace(',0', '')}%`).join(' e ');
+    const linha = (nome, valor, classe = '') =>
+      `<li class="linha-holerite operacao"><span class="nome-linha">${nome}</span><span class="valor-lancado ${classe}">${valor}</span></li>`;
+    el('titulo-venda').textContent = `se vender hoje · preço de venda de ${diaCurto(v.data)}`;
+    el('venda').innerHTML =
+      linha(`valor bruto <span class="fino">${quantos(p.quantidade)} × ${formatar(v.preco)}</span>`, formatar(v.bruto)) +
+      linha('ganho', formatar(v.ganho)) +
+      linha(`IR${pct ? ` <span class="fino">${pct}</span>` : ''}`, v.ir ? `− ${formatar(v.ir)}` : formatar(0), v.ir ? 'negativo' : '') +
+      linha('<strong>líquido do IR</strong>', `<strong>${formatar(v.liquido)}</strong>`);
+  }
+
   function pintarSugestao() {
     sugerido = 0;
     const cartao = ativo && op === 'aplicacao' && !corrigindo && ativo.unidade !== 'cotas'
