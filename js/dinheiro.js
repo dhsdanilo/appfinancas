@@ -36,7 +36,7 @@ import {
   sinalDeSaida, ehTransferencia, dataVista, estornado, ehDeInvestimento,
 } from './core/lancamentos.js';
 import { temCiclo } from './core/cartao.js';
-import { provisaoDoCartao } from './core/cofrinho.js';
+import { provisaoDoCartao, temCofrinho } from './core/cofrinho.js';
 import { extratoDoMes, resultadoDoMes, aEntrarNoMes, saldoNoDia } from './core/mes-da-conta.js';
 import { AREAS as ABAS } from './app/areas.js';
 import {
@@ -491,7 +491,7 @@ function pintarResumoDeCaixa(contas) {
   const aEntrar = aEntrarNoMes(app, ids);
   // Só no mês corrente (é o único que chega aqui): cartões pagos por estas contas, com cofrinho.
   const provisoes = Object.values(app.contas)
-    .filter((c) => c.tipo === 'cartao' && c.cofrinhoId && ids.has(c.pagaCom))
+    .filter((c) => c.tipo === 'cartao' && temCofrinho(c) && ids.has(c.pagaCom))
     .map((c) => ({ c, prov: provisaoDoCartao(app, c.id) }))
     .filter((x) => x.prov)
     .map((x) => miniProvisao(x.c, x.prov));
@@ -553,7 +553,7 @@ function blocoDeCaixa(nome, p, total = false, conta = null, aEntrar = null, prov
   // A fatura que só sai no mês seguinte: à parte do saldo previsto, e o saldo
   // com ela separada logo depois (pedido dele, 05/10/2026).
   // Cartão com cofrinho não entra aqui: a provisão dele é a mini barra.
-  const proximas = (p.proximas ?? []).filter((x) => x.valor + x.recorrentes > 0 && !app.contas[x.cartao.id]?.cofrinhoId);
+  const proximas = (p.proximas ?? []).filter((x) => x.valor + x.recorrentes > 0 && !temCofrinho(app.contas[x.cartao.id]));
   if (proximas.length) {
     const varias = proximas.length > 1;
     const proximaFatura = proximas.map((x) => numeroDaFaixa(

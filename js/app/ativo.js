@@ -13,6 +13,7 @@ import { hoje, diaCurto } from '../core/datas.js';
 import { visiveis } from '../core/lancamentos.js';
 import { CLASSES, CLASSES_POR_COTAS, nomeDaClasse, posicao, contaDoDinheiro, contaDaOperacao } from '../core/investimentos.js';
 import { lugarDaConta, envelopesAtivos } from '../core/envelopes.js';
+import { provisaoDoCartao } from '../core/cofrinho.js';
 import { ligarDonos, criarJanelasDeEnvelope } from './envelope.js';
 
 const MARCACAO = `
@@ -80,6 +81,10 @@ const MARCACAO = `
       </div>
       <p class="total-operacao" data-ativo="total" hidden></p>
       <p class="nota" data-ativo="pista"></p>
+      <p class="sugestao-cofrinho" data-ativo="sugestao" hidden>
+        <span data-ativo="texto-sugestao"></span>
+        <button type="button" class="elo" data-ativo="b-sugerir">usar</button>
+      </p>
       <!-- De quem é o dinheiro que sai: só quando há envelope na origem (design/11 §4). -->
       <div class="donos-saida" data-ativo="donos" hidden></div>
       <p class="recado" data-ativo="recado" hidden></p>
@@ -222,6 +227,7 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
         : op === 'resgate' ? `volta para ${dinheiro.nome}${cotas ? ' — o preço médio não muda' : ''}`
           : op === 'provento' ? `entra em ${dinheiro.nome} — conta como rendimento, não como receita`
             : cotas ? 'o preço de uma unidade hoje; o valor é quantidade × cotação' : 'o que o banco mostra: o rendimento sai da diferença';
+    pintarSugestao();
     el('b-op').textContent = corrigindo
       ? 'Salvar correção'
       : cotas
@@ -250,6 +256,21 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
 
     el('b-arquivar').textContent = ativo.arquivado ? 'desarquivar' : 'arquivar';
     el('b-excluir').hidden = ops.length > 0;
+  }
+
+  /** Aplicar no cofrinho de um cartão: quanto falta para cobrir o limite usado. */
+  let sugerido = 0;
+  function pintarSugestao() {
+    sugerido = 0;
+    const cartao = ativo && op === 'aplicacao' && !corrigindo && ativo.unidade !== 'cotas'
+      ? Object.values(app.contas).find((c) => c.tipo === 'cartao' && c.cofrinhoAtivoId === ativo.id)
+      : null;
+    const p = cartao ? provisaoDoCartao(app, cartao.id) : null;
+    if (p && p.falta > 0) {
+      sugerido = p.falta;
+      el('texto-sugestao').textContent = `Faltam ${formatar(p.falta)} para cobrir ${cartao.nome} (${formatar(p.provisionado)} de ${formatar(p.alvo)}).`;
+    }
+    el('sugestao').hidden = !sugerido;
   }
 
   /** Na compra e na venda por cotas, o total que mexe na conta. */
@@ -432,6 +453,11 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
   el('b-ficha').addEventListener('click', salvarFicha);
   el('nome').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); salvarFicha(); } });
   el('b-op').addEventListener('click', registrar);
+  el('b-sugerir').addEventListener('click', () => {
+    if (!sugerido) return;
+    el('valor').value = formatar(sugerido, { comPrefixo: false });
+    el('sugestao').hidden = true;
+  });
   for (const campo of ['valor', 'quantidade', 'preco', 'taxas']) {
     el(campo).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); registrar(); } });
     el(campo).addEventListener('input', pintarTotal);

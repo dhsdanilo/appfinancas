@@ -1196,7 +1196,17 @@ caso('previsto', '★ cofrinho do cartão: alvo = limite usado + previstas da fa
   });
   p = cofrinho.provisaoDoCartao(await estado.calcular(), 'c1', dia);
   igual([p.limiteUsado, p.alvo, p.provisionado], [40000, 43990, 0], 'paga a fechada: o alvo cai para o que sobrou no cartão');
-  await estado.aplicarEvento('conta.alterada', { id: 'c1', cofrinhoId: null });
+  // O cofrinho pode ser um ativo numa conta de investimento: só o valor dele conta.
+  await estado.aplicarEvento('conta.criada', { id: 'inv', nome: 'Investimentos', tipo: 'investimento', saldoInicial: 0 });
+  await estado.aplicarEvento('ativo.criado', { id: 'cofre', contaId: 'inv', nome: 'Cofrinho', classe: 'renda_fixa', unidade: 'valor' });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'ap', tipo: 'aplicacao', valor: 200000, contaId: null, ativoId: 'cofre',
+    dataCompetencia: '2027-03-01', dataCaixa: '2027-03-01', confirmado: true,
+  });
+  await estado.aplicarEvento('conta.alterada', { id: 'c1', cofrinhoId: null, cofrinhoAtivoId: 'cofre' });
+  p = cofrinho.provisaoDoCartao(await estado.calcular(), 'c1', dia);
+  igual([p.cofrinho.nome, p.provisionado, p.falta], ['Cofrinho', 200000, 43990 - 200000], 'o ativo do cofrinho é a provisão; o resto da conta não conta');
+  await estado.aplicarEvento('conta.alterada', { id: 'c1', cofrinhoId: null, cofrinhoAtivoId: null });
   igual(cofrinho.provisaoDoCartao(await estado.calcular(), 'c1', dia), null, 'sem vínculo, não há provisão');
 });
 

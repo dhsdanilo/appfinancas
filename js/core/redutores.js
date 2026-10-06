@@ -138,6 +138,7 @@ export const redutores = {
       'caixaEm',
       // O cofrinho que guarda, de antemão, o que o cartão deve (design/11 §9).
       'cofrinhoId',
+      'cofrinhoAtivoId',
       'risco',
       'liquidez',
       // O número da conta no arquivo do banco: a segunda importação já sabe qual é.

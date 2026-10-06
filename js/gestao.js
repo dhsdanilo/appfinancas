@@ -1001,7 +1001,7 @@ function abrirEditarConta(id) {
     f.limite.value = c.limite ? formatarSimples(c.limite).replace('R$ ', '') : '';
     pintarPagadoras();
     f.pagaCom.value = c.pagaCom ?? '';
-    f.cofrinho.value = c.cofrinhoId ?? '';
+    f.cofrinho.value = c.cofrinhoAtivoId ? `ativo:${c.cofrinhoAtivoId}` : c.cofrinhoId ? `conta:${c.cofrinhoId}` : '';
   }
   $('ec-campo-caixa').hidden = c.tipo !== 'investimento';
   if (c.tipo === 'investimento') {
@@ -1054,7 +1054,9 @@ $('f-editar-conta')?.addEventListener('submit', async (e) => {
       diaVencimento: Number(f.vencimento.value) || null,
       limite: deTexto(f.limite.value) || null,
       pagaCom: f.pagaCom.value || null,
-      cofrinhoId: f.cofrinho.value || null,
+      // "ativo:ID" ou "conta:ID": um só vale, o outro é limpo.
+      cofrinhoAtivoId: f.cofrinho.value.startsWith('ativo:') ? f.cofrinho.value.slice(6) : null,
+      cofrinhoId: f.cofrinho.value.startsWith('conta:') ? f.cofrinho.value.slice(6) : null,
     };
     for (const [k, v] of Object.entries(novo)) if ((c[k] ?? null) !== v) mudou[k] = v;
   }
@@ -1161,8 +1163,12 @@ function pintarPagadoras() {
     .sort(porNome);
   for (const select of document.querySelectorAll('[data-papel="cofrinho"]')) {
     const antes = select.value;
+    const ativos = Object.values(app.ativos ?? {})
+      .filter((a) => !a.arquivado && app.contas[a.contaId] && !app.contas[a.contaId].arquivada)
+      .sort((a, b) => (a.nome < b.nome ? -1 : 1));
     select.innerHTML = '<option value="">nenhum</option>' +
-      cofrinhos.map((c) => `<option value="${escapar(c.id)}">${escapar(c.nome)}</option>`).join('');
+      (ativos.length ? `<optgroup label="Ativos">${ativos.map((a) => `<option value="ativo:${escapar(a.id)}">${escapar(a.nome)} · ${escapar(app.contas[a.contaId].nome)}</option>`).join('')}</optgroup>` : '') +
+      `<optgroup label="Contas">${cofrinhos.map((c) => `<option value="conta:${escapar(c.id)}">${escapar(c.nome)}</option>`).join('')}</optgroup>`;
     select.value = antes;
   }
   // A parcela de uma dívida pode sair da corrente, do cartão ou da folha
