@@ -994,6 +994,7 @@ function abrirEditarConta(id) {
   $('f-editar-conta').dataset.area = areaDaConta(c);
   $('titulo-editar-conta').textContent = NOME_DO_TIPO[c.tipo] ?? 'conta';
   f.nome.value = c.nome;
+  f.dono.value = (c.titular && app.pessoas[c.titular]?.nome) || '';
   $('ec-cartao').hidden = !cartao;
   if (cartao) {
     f.fechamento.value = c.diaFechamento ?? '';
@@ -1048,6 +1049,10 @@ $('f-editar-conta')?.addEventListener('submit', async (e) => {
 
   const mudou = {};
   if (nome !== c.nome) mudou.nome = nome;
+  // O dono (titular): é por ele que o "a repassar" sabe de quem é cada conta e cartão.
+  const dono = f.dono.value.trim();
+  const titularAntes = (c.titular && app.pessoas[c.titular]?.nome) || '';
+  if (dono !== titularAntes) mudou.titular = dono ? await pessoaChamada(dono) : null;
   if (c.tipo === 'cartao') {
     const novo = {
       diaFechamento: Number(f.fechamento.value) || null,

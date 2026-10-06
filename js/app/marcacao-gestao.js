@@ -228,6 +228,10 @@ export const EDITAR_CONTA = `
       <label for="ec-nome">Nome</label>
       <input type="text" id="ec-nome" name="nome" autocomplete="off">
     </div>
+    <div class="campo">
+      <label for="ec-dono">Dono</label>
+      <input type="text" id="ec-dono" name="dono" autocomplete="off" list="donos" placeholder="de quem é">
+    </div>
     <div class="so-cartao" id="ec-cartao" hidden>
       <div class="campo estreito">
         <label for="ec-fechamento">Fecha dia</label>
