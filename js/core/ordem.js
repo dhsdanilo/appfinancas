@@ -10,7 +10,7 @@ export function porOrdemDaConta(a, b) {
   return nome(a) < nome(b) ? -1 : nome(a) > nome(b) ? 1 : 0;
 }
 
-/** As iniciais para o ícone de uma conta: "Banco do Brasil" → "BB", "Inter" → "I". */
+/** As iniciais para o ícone de uma conta: "Banco Azul" → "BA", "Moeda" → "M". */
 export function iniciaisDaConta(texto) {
   const palavras = String(texto).trim().split(/\s+/).filter((p) => !/^(d[aeo]s?|e)$/i.test(p));
   if (!palavras.length) return '?';
