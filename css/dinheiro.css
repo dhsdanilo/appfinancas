@@ -783,6 +783,22 @@ body[data-pagina="dividas"] .bloco { min-width: 0; }
 .barra-provisao i { background: var(--area-cartoes); }
 .mini-provisao .barra-limite { display: block; height: 4px; margin-top: 2px; }
 .mini-provisao .barra-limite i { background: var(--area-cartoes); }
+/* A bolinha do valor real da fatura aberta, sobre a barra; o valor aparece ao
+   passar o mouse (title). */
+.mini-barra { position: relative; display: block; }
+.bolinha-fatura {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin: -3px 0 0 -5px;
+  border-radius: 50%;
+  background: var(--tinta);
+  border: 2px solid var(--superficie);
+  box-sizing: border-box;
+  cursor: help;
+}
+.bolinha-fatura.coberta { background: var(--positivo); }
 .barra-limite { height: 6px; border-radius: 3px; background: var(--borda); overflow: hidden; }
 .barra-limite i { display: block; height: 100%; background: var(--area, var(--acento)); }
 .barra-limite.alto i { background: var(--alerta); }

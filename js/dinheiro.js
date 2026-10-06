@@ -592,10 +592,19 @@ function miniProvisao(cartao, p) {
   // Leva à fatura aberta do cartão, como a "próxima fatura" levava.
   const aberta = resumoDoCartao(app, cartao.id)?.aberta;
   const mes = aberta?.vencimento?.slice(0, 7) ?? '';
+  // A bolinha marca o valor real (lançado) da fatura aberta na mesma escala da
+  // barra: antes dela, o cofrinho já cobre essa fatura, mesmo sem cobrir tudo.
+  const real = aberta?.aPagar ?? 0;
+  const posReal = p.alvo > 0 && real > 0 ? Math.min(100, (real / p.alvo) * 100) : null;
+  const bolinha = posReal == null ? '' : `<span class="bolinha-fatura ${p.provisionado >= real ? 'coberta' : ''}" style="left:${posReal.toFixed(1)}%" tabindex="0" role="img"
+        title="Fatura aberta: ${escapar(formatar(real))}${p.provisionado >= real ? ' — já provisionada' : ` — faltam ${escapar(formatar(real - p.provisionado))}`}"
+        aria-label="Fatura aberta: ${escapar(formatar(real))}"></span>`;
   return `<div class="numero-faixa mini-provisao cor-cartao">
       <span class="rotulo-numero">provisão ${escapar(cartao.nome)}</span>
       <button type="button" class="valor-numero elo-numero" data-ir-conta="${escapar(cartao.id)}"${mes ? ` data-ir-mes="${mes}"` : ''} title="Abrir ${escapar(cartao.nome)}">${escapar(reais(p.provisionado))} de ${til}${escapar(reais(p.alvo))}</button>
-      <span class="barra-limite mini" role="img" aria-label="${Math.round(pct)}% provisionado"><i style="width:${pct.toFixed(1)}%"></i></span>
+      <span class="mini-barra">
+        <span class="barra-limite mini" role="img" aria-label="${Math.round(pct)}% provisionado"><i style="width:${pct.toFixed(1)}%"></i></span>${bolinha}
+      </span>
     </div>`;
 }
 
