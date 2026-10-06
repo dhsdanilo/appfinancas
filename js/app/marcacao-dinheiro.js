@@ -22,9 +22,9 @@ export const BARRA = '';
 const ACOES = `
     <div class="barra-acoes acoes-redondas" id="barra-acoes">
       <button type="button" class="redondo grande" id="b-novo" title="Novo lançamento (N)" aria-label="Novo lançamento">${ICONES.mais}</button>
-      <button type="button" class="redondo grande" id="b-transferir" title="Transferir (T)" aria-label="Transferir">${ICONES.transferir}</button>
-      <button type="button" class="redondo pequeno" id="b-importar" title="Importar extrato" aria-label="Importar extrato">${ICONES.importar}</button>
-      <button type="button" class="redondo pequeno" id="b-exportar" title="Exportar (em breve)" aria-label="Exportar">${ICONES.exportar}</button>
+      <button type="button" class="redondo medio" id="b-transferir" title="Transferir (T)" aria-label="Transferir">${ICONES.transferir}</button>
+      <button type="button" class="redondo leve" id="b-importar" title="Importar extrato" aria-label="Importar extrato">${ICONES.importar}</button>
+      <button type="button" class="redondo leve" id="b-exportar" title="Exportar (em breve)" aria-label="Exportar">${ICONES.exportar}</button>
     </div>
 `;
 

@@ -189,6 +189,19 @@ button.linha.vencido { border-left: 3px solid var(--alerta); background: var(--a
 }
 .subabas[hidden] { display: none; }
 .subabas { align-items: center; }
+
+/* As abas das contas moram no cabeçalho, onde ficava o título (pedido dele,
+   06/10/2026): o título só some visualmente — a página continua se chamando como era. */
+body.abas-no-topo #titulo-tela,
+body.abas-no-topo #sub-tela {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.topo .subabas { padding: var(--e2) 0 var(--e3); }
 /* A aba de cada conta: ícone redondo com a inicial e o nome. A ativa é maior e
    leva a cor da área — o foco é nas contas, não nos botões (pedido dele, 06/10/2026). */
 .subabas .aba-conta {
@@ -257,8 +270,20 @@ button.linha.vencido { border-left: 3px solid var(--alerta); background: var(--a
 .redondo:hover { filter: brightness(1.08); }
 .redondo.grande { width: 52px; height: 52px; }
 .redondo.grande svg { width: 26px; height: 26px; }
-.redondo.pequeno { width: 34px; height: 34px; }
-.redondo.pequeno svg { width: 16px; height: 16px; }
+/* Um só destaque (opção A, 06/10/2026): o + é cheio; transferir só tem o contorno
+   da cor da área; importar e exportar são ícones leves, sem fundo. */
+.redondo.medio {
+  width: 44px;
+  height: 44px;
+  background: transparent;
+  border: 1.5px solid var(--area, var(--acento));
+  color: var(--area, var(--acento));
+}
+.redondo.medio svg { width: 22px; height: 22px; }
+.redondo.medio:hover { background: var(--area-fundo, var(--acento-fundo)); filter: none; }
+.redondo.leve { width: 34px; height: 34px; background: transparent; color: var(--tinta-fraca); }
+.redondo.leve svg { width: 18px; height: 18px; }
+.redondo.leve:hover { background: var(--area-fundo, var(--acento-fundo)); color: var(--tinta); filter: none; }
 
 .periodo {
   display: flex;

@@ -61,6 +61,9 @@ let AREA = null;
 let ativa = false;
 
 $('principal').innerHTML = BARRA + PRINCIPAL;
+// As abas das contas sobem para o cabeçalho, no lugar do título (só nas cinco áreas).
+document.querySelector('.topo .identidade')?.append($('subabas'));
+const abasNoTopo = (sim) => document.body.classList.toggle('abas-no-topo', sim);
 document.body.insertAdjacentHTML('beforeend', DIALOGOS);
 
 function escapar(s) {
@@ -280,6 +283,7 @@ const VAZIO_DA_AREA = {
 
 function pintarInicio() {
   for (const parte of ['subabas', 'periodo', 'parte-lista', 'filtros']) $(parte).hidden = true;
+  abasNoTopo(false);
   delete $('painel').dataset.area;
   delete $('barra-acoes').dataset.area;
 
@@ -354,6 +358,7 @@ function cartaoDoInicio(area, contas) {
 
 function pintarLancamentos() {
   $('subabas').hidden = true;
+  abasNoTopo(false);
   $('filtros').hidden = false;
   $('parte-lista').hidden = false;
   $('periodo').hidden = false;
@@ -441,6 +446,10 @@ function contasDaAba(aba) {
     .sort(porOrdemDaConta);
 }
 
+const NOME_DA_AREA = {
+  caixa: 'Contas', cartoes: 'Cartões', folha: 'Renda', investimentos: 'Investimentos', dividas: 'Dívidas',
+};
+
 const NOVO_DA_AREA = {
   caixa: 'Nova conta', cartoes: 'Novo cartão', folha: 'Nova fonte de renda',
   investimentos: 'Novo investimento', dividas: 'Novo empréstimo',
@@ -457,8 +466,11 @@ const botaoNovaConta = () =>
  */
 function pintarSubabas(contas) {
   const unica = contas.length === 1;
-  const abas = contas.length > 1 ? [{ id: 'todas', nome: 'Geral' }, ...contas] : contas;
+  // A primeira aba leva o nome da área (Contas, Cartões…) e mostra todas juntas;
+  // com uma conta só, ela própria é a aba.
+  const abas = unica ? contas : [{ id: 'todas', nome: NOME_DA_AREA[AREA] ?? 'Todas' }, ...contas];
   $('subabas').hidden = false;
+  abasNoTopo(true);
   $('subabas').innerHTML = abas
     .map((c) => {
       const ativa = unica || c.id === vista.conta;
@@ -917,9 +929,10 @@ let amortizando = null;
 
 function pintarDividas(contas) {
   for (const parte of ['subabas', 'periodo', 'parte-lista', 'filtros']) $(parte).hidden = true;
-  // Em Dívidas as abas não existem, mas o "+" de novo empréstimo sim.
+  // Em Dívidas não há uma aba por empréstimo: só o nome da área e o "+" de novo empréstimo.
   $('subabas').hidden = false;
-  $('subabas').innerHTML = botaoNovaConta();
+  abasNoTopo(true);
+  $('subabas').innerHTML = `<button type="button" class="aba-conta" data-conta="todas" aria-pressed="true"><span class="ic ic-geral">${ICONES.geral}</span><span class="nome">${NOME_DA_AREA.dividas}</span></button>` + botaoNovaConta();
   const arquivadas = Object.values(app.contas).filter((c) => c.tipo === 'divida' && c.arquivada);
   if (!contas.length && !arquivadas.length) {
     $('resumo').innerHTML = `<p class="vazio">${escapar(VAZIO_DA_AREA.dividas)}</p>`;
@@ -2330,5 +2343,6 @@ async function continuarDoTerreo() {
 document.addEventListener('app:tela', (e) => {
   ativa = e.detail.grupo === 'dinheiro';
   if (ativa) entrar(e.detail.tela);
+  else { $('subabas').hidden = true; abasNoTopo(false); }
 });
 estado.aoAplicar(() => pintar());
