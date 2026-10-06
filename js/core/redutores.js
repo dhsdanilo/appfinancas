@@ -25,7 +25,7 @@ export const AREAS_PADRAO = ['caixa', 'cartoes'];
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 24;
+export const VERSAO_ESTADO = 25;
 
 export function estadoVazio() {
   return {
@@ -682,6 +682,10 @@ export const redutores = {
       textoBanco: d.textoBanco ?? null,
       extraordinario: d.extraordinario ?? Boolean(d.custeadoPor),
       lancadoPor: d.lancadoPor ?? null,
+      // Quem comprou, numa compra no cartão de outra pessoa; e, na transferência,
+      // se é repasse dessas compras (design/16).
+      compradoPor: d.compradoPor ?? null,
+      repasse: d.repasse ?? false,
       // Só no estorno: quando o dinheiro voltou (02 §3.6). No cartão, é isso
       // que põe a devolução na fatura em formação, e não na da compra.
       devolvidoEm: d.devolvidoEm ?? null,

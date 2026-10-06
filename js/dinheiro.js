@@ -37,6 +37,7 @@ import {
 } from './core/lancamentos.js';
 import { temCiclo } from './core/cartao.js';
 import { provisaoDoCartao, temCofrinho } from './core/cofrinho.js';
+import { disponivelDe } from './core/repasse.js';
 import { extratoDoMes, resultadoDoMes, aEntrarNoMes, saldoNoDia } from './core/mes-da-conta.js';
 import { AREAS as ABAS } from './app/areas.js';
 import {
@@ -545,6 +546,15 @@ function blocoDeCaixa(nome, p, total = false, conta = null, aEntrar = null, prov
   if (partes?.agendados > 0) numeros.push(numeroDaFaixa('agendados e vencidos', menos(partes.agendados)));
   // A provisão no cofrinho: uma mini barra por cartão que esta conta paga.
   numeros.push(...provisoes);
+  // Quem comprou no cartão de outra pessoa: o que ainda é dela repassar e o que
+  // realmente sobra na conta (design/16).
+  if (conta?.titular) {
+    const d = disponivelDe(app, conta.titular, (id) => saldoReal(app, id));
+    if (d.aRepassar > 0) {
+      numeros.push(numeroDaFaixa('a repassar', menos(d.aRepassar)));
+      numeros.push(destaqueDaFaixa('disponível de verdade', d.disponivel));
+    }
+  }
   const entra = aEntrar?.total > 0 ? aEntrar : null;
   const temPrevisao = p.faturas.length || p.aSair > 0 || p.totalProximas > 0 || entra;
   let previsto = temPrevisao

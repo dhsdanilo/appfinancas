@@ -20,6 +20,7 @@ import {
   hoje, nasceConfirmado, nomeDaCategoria, correcao, detalhesDaCategoria, dataVista, estornado,
 } from '../core/lancamentos.js';
 import { somarDias, somarMeses, fimDoMes } from '../core/datas.js';
+import { compradoPorDaCompra } from '../core/repasse.js';
 import { temCiclo, cicloDaCompra } from '../core/cartao.js';
 import { MARCACAO_CAMPO_VALOR, ligarCampoValor } from './campo-valor.js';
 import { ligarZonaDePerigo } from './zona-perigo.js';
@@ -1090,6 +1091,8 @@ export async function criarFormulario({
       // A compra inteira anda junto: cada parcela, uma fatura a mais.
       faturaDesloca: noCartao ? faturaDesloca : 0,
       custeadoPor: tipo === 'despesa' ? custeadoPor : null,
+      // Num cartão de outra pessoa, o aparelho com dono marca quem comprou.
+      compradoPor: tipo === 'despesa' ? compradoPorDaCompra(app, contaId) : null,
       ...procedencia(),
     };
 

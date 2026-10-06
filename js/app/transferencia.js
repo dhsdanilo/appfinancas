@@ -26,6 +26,7 @@ import { pularParcela, corrigirParcela, voltarAoContrato } from './contrato.js';
 import { lugarDaConta } from '../core/envelopes.js';
 import { ligarDonos } from './envelope.js';
 import { provisaoDoCartao } from '../core/cofrinho.js';
+import { aRepassarAo } from '../core/repasse.js';
 
 // Todas as contas que não estão arquivadas. Cartão, dívida e folha entram
 // porque o dinheiro passa por elas de verdade: pagar a fatura é corrente →
@@ -79,6 +80,14 @@ const MARCACAO = `
   <div class="donos-saida" data-papel="donos" hidden></div>
 
   <p class="recado" data-papel="recado" hidden></p>
+
+  <!-- De uma pessoa para outra: pode ser repasse das compras que ela fez no cartão
+       da outra — só vale o que se marca (design/16). -->
+  <div class="repasse-transf" data-papel="repasse-bloco" hidden>
+    <label><input type="checkbox" data-papel="repasse"> é repasse das compras no cartão</label>
+    <span class="fino" data-papel="texto-repasse"></span>
+    <button type="button" class="elo" data-papel="b-usar-repasse" hidden>usar</button>
+  </div>
 
   <!-- Indo para o cofrinho de um cartão: quanto falta para cobrir o limite usado (design/11 §9). -->
   <p class="sugestao-cofrinho" data-papel="sugestao" hidden>
@@ -162,6 +171,23 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
     el('destino').closest('.perna').dataset.area = areaDaConta(app.contas[destino()]);
   }
 
+  /** "É repasse": só entre titulares diferentes; mostra quanto falta repassar. */
+  let faltaRepassar = 0;
+  function pintarRepasse() {
+    faltaRepassar = 0;
+    const de = app?.contas[origem()]?.titular;
+    const para = app?.contas[destino()]?.titular;
+    const cabe = Boolean(de && para && de !== para) && !daParcela && !daSerie;
+    el('repasse-bloco').hidden = !cabe;
+    if (!cabe) { el('repasse').checked = false; return; }
+    faltaRepassar = aRepassarAo(app, de, para);
+    const nomes = `${app.pessoas?.[de]?.nome ?? 'ela'} → ${app.pessoas?.[para]?.nome ?? 'ele'}`;
+    el('texto-repasse').textContent = faltaRepassar > 0
+      ? `${nomes}: faltam ${formatar(faltaRepassar)} para repassar.`
+      : `${nomes}: nada a repassar agora.`;
+    el('b-usar-repasse').hidden = !(faltaRepassar > 0 && valor.centavos() !== faltaRepassar);
+  }
+
   /** O valor que falta no cofrinho, se o destino é o cofrinho de algum cartão. */
   let sugerido = 0;
   function pintarSugestao() {
@@ -198,6 +224,7 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
     el('recado').textContent = recusa;
     el('recado').hidden = !recusa;
     pintarSugestao();
+    pintarRepasse();
     if (recusa) { el('b-salvar').disabled = true; el('b-salvar-nova').disabled = true; }
   }
 
@@ -335,6 +362,7 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
       confirmado: nasceConfirmado({ manual: true, dataCaixa: data }),
       recorrenciaId: daSerie ?? serie,
       donos: donos.ler(),
+      repasse: !el('repasse-bloco').hidden && el('repasse').checked,
       lancadoPor: ap?.id ?? null,
     });
     daSerie = null;
@@ -355,6 +383,8 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
     });
     const deQuem = donos.ler();
     if (JSON.stringify(deQuem) !== JSON.stringify(editando.donos ?? [])) mudancas.donos = deQuem;
+    const ehRepasse = !el('repasse-bloco').hidden && el('repasse').checked;
+    if (ehRepasse !== Boolean(editando.repasse)) mudancas.repasse = ehRepasse;
     if (Object.keys(mudancas).length === 0) return true;
 
     await estado.aplicarEvento('lancamento.alterado', { id: editando.id, ...mudancas });
@@ -413,6 +443,12 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
   el('origem').addEventListener('change', pintarAcao);
   el('donos').addEventListener('input', pintarAcao);
   el('destino').addEventListener('change', pintarAcao);
+  el('repasse').addEventListener('change', pintarRepasse);
+  el('b-usar-repasse').addEventListener('click', () => {
+    if (!faltaRepassar) return;
+    valor.definir(faltaRepassar);
+    pintarAcao();
+  });
   el('b-sugerir').addEventListener('click', () => {
     if (!sugerido) return;
     valor.definir(sugerido);
@@ -449,6 +485,8 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
       data = l.dataCaixa;
       valor.definir(l.valor);
       await recarregar();
+      el('repasse').checked = Boolean(l.repasse);
+      pintarRepasse();
     },
 
     /** A data em que a transferência nova abre (o mês da tela, D35). */

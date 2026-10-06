@@ -21,6 +21,7 @@ import * as cartao from '../core/cartao.js';
 import * as previsto from '../core/previsto.js';
 import * as cofrinho from '../core/cofrinho.js';
 import * as cotacoes from '../core/cotacoes.js';
+import * as repasse from '../core/repasse.js';
 import * as datas from '../core/datas.js';
 import * as pendencias from '../core/pendencias.js';
 import { categoriaNaArea, areasParaConta } from '../app/areas.js';
@@ -1262,6 +1263,49 @@ caso('investimento', '★ cotação automática em ativo por valor: o valor cada
   igual((await estado.calcular()).ativos.a.avaliacoes.find((v) => v.data === '2027-03-02').valor, null, 'sobrou só o preço');
   await cotacoes.atualizar({ cot });
   igual((await estado.calcular()).ativos.a.avaliacoes.find((v) => v.data === '2027-03-02').valor, 505000, 'o valor volta a ser gravado por cima');
+});
+
+caso('repasse', '★ compra no cartão de outro: a repassar = compras − repasses marcados; só o marcado abate', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const dia = '2027-03-10';
+  await estado.aplicarEvento('pessoa.criada', { id: 'p1', nome: 'João' });
+  await estado.aplicarEvento('pessoa.criada', { id: 'p2', nome: 'Maria' });
+  await estado.aplicarEvento('conta.criada', { id: 'cj', nome: 'Corrente João', tipo: 'corrente', titular: 'p1', saldoInicial: 0 });
+  await estado.aplicarEvento('conta.criada', { id: 'cm', nome: 'Corrente Maria', tipo: 'corrente', titular: 'p2', saldoInicial: 100000 });
+  await estado.aplicarEvento('conta.criada', { id: 'ct', nome: 'Cartão João', tipo: 'cartao', titular: 'p1', diaFechamento: 3, diaVencimento: 10, pagaCom: 'cj' });
+  let e = await estado.calcular();
+  igual([repasse.compradoPorDaCompra(e, 'ct', 'p2'), repasse.compradoPorDaCompra(e, 'ct', 'p1'), repasse.compradoPorDaCompra(e, 'cm', 'p2'), repasse.compradoPorDaCompra(e, 'ct', null)],
+    ['p2', null, null, null], 'só marca em cartão de outra pessoa, e só com dono no aparelho');
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'c1', tipo: 'despesa', valor: 10000, contaId: 'ct', categoriaId: 'x', compradoPor: 'p2',
+    dataCompetencia: '2027-03-05', dataCaixa: '2027-03-05', confirmado: true,
+  });
+  // Uma compra dele mesmo no mesmo cartão não entra.
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'c2', tipo: 'despesa', valor: 99900, contaId: 'ct', categoriaId: 'x',
+    dataCompetencia: '2027-03-06', dataCaixa: '2027-03-06', confirmado: true,
+  });
+  e = await estado.calcular();
+  igual(repasse.aRepassarAo(e, 'p2', 'p1', dia), 10000, 'só a compra dela');
+  // Transferência sem marca: não é repasse.
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 't0', tipo: 'transferencia', valor: 2500, contaId: 'cm', contaDestinoId: 'cj', categoriaId: null,
+    dataCompetencia: '2027-03-07', dataCaixa: '2027-03-07', confirmado: true,
+  });
+  igual(repasse.aRepassarAo(await estado.calcular(), 'p2', 'p1', dia), 10000, 'sem a marca, não abate');
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 't1', tipo: 'transferencia', valor: 4000, contaId: 'cm', contaDestinoId: 'cj', categoriaId: null, repasse: true,
+    dataCompetencia: '2027-03-08', dataCaixa: '2027-03-08', confirmado: true,
+  });
+  e = await estado.calcular();
+  igual(repasse.aRepassarAo(e, 'p2', 'p1', dia), 6000, 'o repasse marcado abate');
+  igual(repasse.aReceber(e, 'p1', dia), [{ pessoa: 'p2', aRepassar: 6000 }], 'e ele vê o que vai receber');
+  const d = repasse.disponivelDe(e, 'p2', (id) => lanc.saldoReal(e, id), dia);
+  igual([d.saldo, d.aRepassar, d.disponivel], [100000 - 2500 - 4000, 6000, 100000 - 2500 - 4000 - 6000], 'o disponível de verdade desconta o que é dele');
+  await estado.aplicarEvento('lancamento.alterado', { id: 't1', valor: 12000 });
+  const s2 = repasse.repassesDe(await estado.calcular(), 'p2', dia)[0];
+  igual([s2.aRepassar, s2.adiantado], [0, 2000], 'repassou a mais: vira adiantado');
 });
 
 caso('previsto', 'recorrência estimada projeta a média das últimas 3', () => {

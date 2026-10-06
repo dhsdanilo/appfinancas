@@ -9,6 +9,8 @@ import * as log from './core/log.js';
 import * as sincronia from './core/sincronia.js';
 import { agora as sincronizarAgora } from './app/sincronia-viva.js';
 import * as cotacoes from './core/cotacoes.js';
+import * as estadoDoApp from './core/estado.js';
+import { pessoaDoAparelho, definirPessoaDoAparelho } from './core/repasse.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -165,3 +167,16 @@ function escapar(s) {
 
 await recarregar();
 
+
+// ── de quem é este aparelho (design/16) ─────────────────────────────────────
+async function pintarDonoDoAparelho() {
+  const sel = document.getElementById('ap-pessoa');
+  if (!sel) return;
+  const app = await estadoDoApp.calcular();
+  const pessoas = Object.values(app.pessoas ?? {});
+  sel.innerHTML = '<option value="">ninguém em especial</option>' +
+    pessoas.map((p) => `<option value="${p.id}">${p.nome}</option>`).join('');
+  sel.value = pessoaDoAparelho() ?? '';
+}
+document.getElementById('ap-pessoa')?.addEventListener('change', (e) => definirPessoaDoAparelho(e.target.value || null));
+document.addEventListener('app:tela', (e) => { if (e.detail.tela === 'configuracoes') pintarDonoDoAparelho(); });
