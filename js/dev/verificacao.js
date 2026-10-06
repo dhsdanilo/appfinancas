@@ -2503,6 +2503,28 @@ caso('investimento', 'vender o Tesouro: IR regressivo por compra, só sobre o ga
   igual(ir.liquidoDaVenda({ porCotas: true, quantidade: 1, cotacao: null, lotes: [] }), null, 'sem cotação não calcula');
 });
 
+caso('investimento', 'a linha do tempo do ativo: um ponto por dia com movimento, da primeira compra até hoje', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const ev = (t, d) => estado.aplicarEvento(t, d);
+  await ev('conta.criada', { id: 'cc', nome: 'Corrente', tipo: 'corrente', saldoInicial: 2000000 });
+  await ev('conta.criada', { id: 'inv', nome: 'Banco', tipo: 'investimento', caixaEm: 'cc' });
+  await ev('ativo.criado', { id: 'petr', contaId: 'inv', nome: 'PETR4', classe: 'acoes', unidade: 'cotas' });
+  const op = (id, tipo, data, quantidade, preco) => ev('lancamento.registrado', {
+    id, tipo, contaId: 'cc', ativoId: 'petr', dataCompetencia: data, confirmado: true, quantidade, preco, valor: Math.round(quantidade * preco),
+  });
+  await op('c1', 'aplicacao', '2025-02-01', 100, 3000);
+  await op('c2', 'aplicacao', '2025-03-01', 100, 4000);
+  await ev('ativo.avaliado', { id: 'petr', data: '2025-03-15', preco: 4200 });
+  const e = await estado.calcular();
+  const s = investimentos.serieDoAtivo(e, 'petr', '2000-01-01', '2025-04-05');
+  igual(s.map((x) => x.data), ['2025-02-01', '2025-03-01', '2025-03-15', '2025-04-05'], 'as compras, a cotação e o dia de hoje');
+  igual([s[0].investido, s[0].valor], [300000, 300000], 'no primeiro dia: o que custou (sem cotação ainda)');
+  igual([s[3].investido, s[3].valor, s[3].preco], [700000, 840000, 4200], 'no fim: 200 × R$ 42,00 contra R$ 7.000 pagos');
+  igual(investimentos.serieDoAtivo(e, 'petr', '2025-03-10', '2025-04-05').map((x) => x.data)[0], '2025-03-10', 'o período corta o começo');
+  igual(investimentos.serieDoAtivo(e, 'nada', '2000-01-01'), [], 'ativo que não existe');
+});
+
 async function limpar() {
   db.usarBanco(BANCO_DE_TESTE);
   await db.apagarTudo();

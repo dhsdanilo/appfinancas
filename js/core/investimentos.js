@@ -199,6 +199,33 @@ function periodo(ops, dia, rendeu, aplicado) {
   return { desde, meses, aoAno };
 }
 
+/**
+ * A linha do tempo de um ativo, para o gráfico: [{ data, valor, investido, preco }].
+ * Um ponto por dia em que algo aconteceu (operação ou valor/cotação informado) dentro
+ * de [de, ate], mais as pontas; começa na primeira aplicação. Passando de `maximo`
+ * pontos, fica um subconjunto espalhado, sempre com o primeiro e o último.
+ */
+export function serieDoAtivo(estado, ativoId, de, ate = hoje(), maximo = 70) {
+  const ativo = estado.ativos?.[ativoId];
+  if (!ativo) return [];
+  const ops = visiveis(estado, ate).filter((l) => l.ativoId === ativoId && l.confirmado && l.dataCompetencia <= ate);
+  const primeira = ops.filter((l) => l.tipo === 'aplicacao').map((l) => l.dataCompetencia).sort()[0];
+  if (!primeira) return [];
+  const inicio = de > primeira ? de : primeira;
+  const datas = new Set([inicio, ate]);
+  for (const v of ativo.avaliacoes) if (v.data >= inicio && v.data <= ate) datas.add(v.data);
+  for (const l of ops) if (l.dataCompetencia >= inicio) datas.add(l.dataCompetencia);
+  let dias = [...datas].sort();
+  if (dias.length > maximo) {
+    const passo = (dias.length - 1) / (maximo - 1);
+    dias = Array.from({ length: maximo }, (_, i) => dias[Math.round(i * passo)]);
+  }
+  return dias.map((data) => {
+    const p = posicao(estado, ativoId, data);
+    return { data, valor: p.valorAtual, investido: p.investido, preco: p.cotacao?.preco ?? null };
+  });
+}
+
 /** O saldo de uma conta até um dia (o que se moveu até ali). */
 export function saldoAte(estado, contaId, dia) {
   const conta = estado.contas[contaId];

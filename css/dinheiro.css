@@ -1524,3 +1524,26 @@ body[data-pagina="inicio"] #b-exportar { display: none; }
 /* Se vender hoje (ficha do Tesouro): rótulo à esquerda, valor à direita. */
 .venda-liquida .linha-holerite { display: flex; justify-content: space-between; gap: var(--e3); }
 .venda-liquida .nome-linha { flex: 1; min-width: 0; }
+
+/* O detalhe de um ativo (só leitura): números, gráfico, blocos e movimentos. */
+.dialogo-ativo-detalhe { width: min(680px, calc(100vw - 2 * var(--e4))); max-height: calc(100vh - 2 * var(--e4)); overflow-y: auto; }
+.dialogo-ativo-detalhe .corpo-detalhe { display: flex; flex-direction: column; gap: var(--e3); padding-top: var(--e3); }
+.dialogo-ativo-detalhe .acoes-detalhe { display: flex; flex-wrap: wrap; gap: var(--e2); }
+.dialogo-ativo-detalhe .acoes-detalhe button { min-height: 40px; }
+.numeros-detalhe { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--e2); }
+.numero-det { display: flex; flex-direction: column; gap: 2px; padding: var(--e2) var(--e3); border-radius: var(--raio-controle); background: var(--fundo); min-width: 0; }
+.numero-det .valor-numero { font-size: var(--t-destaque-menor, 1.15rem); font-weight: 600; overflow-wrap: anywhere; }
+.numero-det .valor-numero.positivo { color: var(--positivo); }
+.numero-det .valor-numero.negativo { color: var(--alerta); }
+.ferramentas-detalhe { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--e2); }
+.seg-det { display: inline-flex; gap: 2px; }
+.seg-det button { min-height: 36px; padding: 0 var(--e3); border: 1px solid var(--borda); background: transparent; color: var(--tinta-fraca); font-size: var(--t-apoio); }
+.seg-det button:first-child { border-radius: 99px 0 0 99px; }
+.seg-det button:last-child { border-radius: 0 99px 99px 0; }
+.seg-det button:only-child { border-radius: 99px; }
+.seg-det button[aria-pressed="true"] { background: var(--acento-fundo); border-color: var(--acento); color: var(--tinta); }
+.blocos-detalhe { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--e4); }
+.tabelinha { list-style: none; margin: 0; padding: 0; }
+.tabelinha li { display: flex; justify-content: space-between; gap: var(--e3); padding: var(--e1) 0; border-bottom: 1px solid var(--borda); font-size: var(--t-apoio); }
+.tabelinha li .positivo { color: var(--positivo); }
+.tabelinha li .negativo { color: var(--alerta); }
