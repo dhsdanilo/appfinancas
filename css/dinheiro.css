@@ -781,6 +781,8 @@ body[data-pagina="dividas"] .bloco { min-width: 0; }
    abaixo do limite, com a mesma divisória. */
 .cartao-resumo .provisao-cartao { padding-top: var(--e3); }
 .barra-provisao i { background: var(--area-cartoes); }
+.mini-provisao .barra-limite { display: block; height: 4px; margin-top: 2px; }
+.mini-provisao .barra-limite i { background: var(--area-cartoes); }
 .barra-limite { height: 6px; border-radius: 3px; background: var(--borda); overflow: hidden; }
 .barra-limite i { display: block; height: 100%; background: var(--area, var(--acento)); }
 .barra-limite.alto i { background: var(--alerta); }

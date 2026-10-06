@@ -25,6 +25,7 @@ import { areaDaConta, opcoesDeConta } from './areas.js';
 import { pularParcela, corrigirParcela, voltarAoContrato } from './contrato.js';
 import { lugarDaConta } from '../core/envelopes.js';
 import { ligarDonos } from './envelope.js';
+import { provisaoDoCartao } from '../core/cofrinho.js';
 
 // Todas as contas que não estão arquivadas. Cartão, dívida e folha entram
 // porque o dinheiro passa por elas de verdade: pagar a fatura é corrente →
@@ -78,6 +79,12 @@ const MARCACAO = `
   <div class="donos-saida" data-papel="donos" hidden></div>
 
   <p class="recado" data-papel="recado" hidden></p>
+
+  <!-- Indo para o cofrinho de um cartão: quanto falta para cobrir o limite usado (design/11 §9). -->
+  <p class="sugestao-cofrinho" data-papel="sugestao" hidden>
+    <span data-papel="texto-sugestao"></span>
+    <button type="button" class="elo" data-papel="b-sugerir">usar</button>
+  </p>
 
   <!-- A parcela de uma dívida cai sozinha; aqui só se corrige a exceção
        (design/10 §4.4). -->
@@ -155,6 +162,21 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
     el('destino').closest('.perna').dataset.area = areaDaConta(app.contas[destino()]);
   }
 
+  /** O valor que falta no cofrinho, se o destino é o cofrinho de algum cartão. */
+  let sugerido = 0;
+  function pintarSugestao() {
+    sugerido = 0;
+    const cartao = !editando && !daParcela && !daSerie && app && destino()
+      ? Object.values(app.contas).find((c) => c.tipo === 'cartao' && c.cofrinhoId === destino())
+      : null;
+    const p = cartao ? provisaoDoCartao(app, cartao.id) : null;
+    if (p && p.falta > 0 && valor.centavos() !== p.falta) {
+      sugerido = p.falta;
+      el('texto-sugestao').textContent = `Faltam ${formatar(p.falta)} para cobrir ${cartao.nome} (${formatar(p.provisionado)} de ${formatar(p.alvo)}).`;
+    }
+    el('sugestao').hidden = !sugerido;
+  }
+
   function pintarAcao() {
     pintarAreas();
     pintarDonos();
@@ -175,6 +197,7 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
     const recusa = mesma ? 'Escolha duas contas diferentes: transferência é dinheiro trocando de bolso.' : donos.conferir(valor.centavos());
     el('recado').textContent = recusa;
     el('recado').hidden = !recusa;
+    pintarSugestao();
     if (recusa) { el('b-salvar').disabled = true; el('b-salvar-nova').disabled = true; }
   }
 
@@ -390,6 +413,11 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
   el('origem').addEventListener('change', pintarAcao);
   el('donos').addEventListener('input', pintarAcao);
   el('destino').addEventListener('change', pintarAcao);
+  el('b-sugerir').addEventListener('click', () => {
+    if (!sugerido) return;
+    valor.definir(sugerido);
+    pintarAcao();
+  });
   el('data').addEventListener('change', () => {
     if (!el('data').value) { pintarData(); return; }
     irPara(el('data').value);

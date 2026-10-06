@@ -463,6 +463,15 @@ input[type="text"].observacao {
 .todas-categorias .chips button { min-height: 32px; padding: 0 var(--e3); font-size: var(--t-apoio); }
 .todas-categorias .chips button[aria-pressed="true"] { border-color: var(--acento); background: var(--acento-fundo); }
 
+.sugestao-cofrinho {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--e3);
+  margin: var(--e2) 0 0;
+  color: var(--tinta-fraca);
+  font-size: var(--t-apoio);
+}
 .serie-acoes {
   display: flex;
   flex-wrap: wrap;

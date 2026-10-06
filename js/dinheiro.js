@@ -489,10 +489,16 @@ function pintarResumoDeCaixa(contas) {
     return;
   }
   const aEntrar = aEntrarNoMes(app, ids);
+  // Só no mês corrente (é o único que chega aqui): cartões pagos por estas contas, com cofrinho.
+  const provisoes = Object.values(app.contas)
+    .filter((c) => c.tipo === 'cartao' && c.cofrinhoId && ids.has(c.pagaCom))
+    .map((c) => ({ c, prov: provisaoDoCartao(app, c.id) }))
+    .filter((x) => x.prov)
+    .map((x) => miniProvisao(x.c, x.prov));
   // No Geral, a transferência entre duas destas contas não sai do conjunto.
   const doConjunto = contas.length > 1 ? ids : null;
   const previstos = contas.map((c) => ({ conta: c, p: saldoPrevisto(app, c.id, hoje(), doConjunto) }));
-  const blocos = previstos.length === 1 ? [blocoDeCaixa(previstos[0].conta.nome, previstos[0].p, false, previstos[0].conta, aEntrar)] : [];
+  const blocos = previstos.length === 1 ? [blocoDeCaixa(previstos[0].conta.nome, previstos[0].p, false, previstos[0].conta, aEntrar, provisoes)] : [];
 
   if (previstos.length > 1) {
     const soma = {
@@ -515,7 +521,7 @@ function pintarResumoDeCaixa(contas) {
       totalProximas: previstos.reduce((t, x) => t + x.p.totalProximas, 0),
       provisionado: previstos.reduce((t, x) => t + x.p.provisionado, 0),
     };
-    blocos.unshift(blocoDeCaixa('geral', soma, true, null, aEntrar));
+    blocos.unshift(blocoDeCaixa('geral', soma, true, null, aEntrar, provisoes));
   }
   $('resumo').innerHTML = `<div class="blocos">${blocos.join('')}</div>`;
 }
@@ -525,7 +531,7 @@ function pintarResumoDeCaixa(contas) {
  * 03/10/2026): o saldo real, cada coisa que vai sair até o fim do mês
  * separada pela origem, e o saldo previsto por último, em destaque.
  */
-function blocoDeCaixa(nome, p, total = false, conta = null, aEntrar = null) {
+function blocoDeCaixa(nome, p, total = false, conta = null, aEntrar = null, provisoes = []) {
   const menos = (v) => `−${formatar(v)}`;
   const numeros = [numeroDaFaixa('saldo real', formatar(p.real))];
   for (const f of p.faturas) numeros.push(numeroDaFaixa(`fatura ${f.cartao.nome}`, menos(f.valor), { conta: f.cartao.id, mes: vista.mes }));
@@ -537,6 +543,8 @@ function blocoDeCaixa(nome, p, total = false, conta = null, aEntrar = null) {
     numeros.push(numeroDaFaixa(`recorrentes no ${app.contas[cartaoId]?.nome ?? 'cartão'}`, `${til}${menos(valor)}`, { conta: cartaoId, mes: vista.mes }));
   }
   if (partes?.agendados > 0) numeros.push(numeroDaFaixa('agendados e vencidos', menos(partes.agendados)));
+  // A provisão no cofrinho: uma mini barra por cartão que esta conta paga.
+  numeros.push(...provisoes);
   const entra = aEntrar?.total > 0 ? aEntrar : null;
   const temPrevisao = p.faturas.length || p.aSair > 0 || p.totalProximas > 0 || entra;
   let previsto = temPrevisao
@@ -544,7 +552,8 @@ function blocoDeCaixa(nome, p, total = false, conta = null, aEntrar = null) {
     : '';
   // A fatura que só sai no mês seguinte: à parte do saldo previsto, e o saldo
   // com ela separada logo depois (pedido dele, 05/10/2026).
-  const proximas = (p.proximas ?? []).filter((x) => x.valor + x.recorrentes > 0);
+  // Cartão com cofrinho não entra aqui: a provisão dele é a mini barra.
+  const proximas = (p.proximas ?? []).filter((x) => x.valor + x.recorrentes > 0 && !app.contas[x.cartao.id]?.cofrinhoId);
   if (proximas.length) {
     const varias = proximas.length > 1;
     const proximaFatura = proximas.map((x) => numeroDaFaixa(
@@ -552,7 +561,7 @@ function blocoDeCaixa(nome, p, total = false, conta = null, aEntrar = null) {
       `${x.estimado ? '~' : ''}${menos(x.valor + x.recorrentes)}`,
       { conta: x.cartao.id, mes: x.vencimento?.slice(0, 7) ?? vista.mes, classe: 'cor-cartao' },
     )).join('');
-    previsto += proximaFatura + destaqueDaFaixa('saldo provisionado', p.provisionado, p.estimado || proximas.some((x) => x.estimado), 'provisionado');
+    previsto += proximaFatura + destaqueDaFaixa('saldo provisionado', p.previsto - proximas.reduce((t, x) => t + x.valor + x.recorrentes, 0), p.estimado || proximas.some((x) => x.estimado), 'provisionado');
   }
   const comProvisao = proximas.length > 0;
   // O que ainda vai entrar até o fim do mês, e o previsto com isso: o alívio
@@ -573,6 +582,18 @@ function blocoDeCaixa(nome, p, total = false, conta = null, aEntrar = null) {
     <div class="numeros-renda numeros-caixa">${numeros.join('')}${previsto}</div>
     ${pe}
   </div>`;
+}
+
+/** "4.000 de 4.170" com uma barra fininha: a provisão do cartão no cofrinho. */
+function miniProvisao(cartao, p) {
+  const pct = p.alvo > 0 ? Math.min(100, Math.max(0, (p.provisionado / p.alvo) * 100)) : 100;
+  const til = p.estimado ? '~' : '';
+  const reais = (c) => formatar(c).replace('R$ ', '');
+  return `<div class="numero-faixa mini-provisao">
+      <span class="rotulo-numero">provisão ${escapar(cartao.nome)}</span>
+      <span class="valor-numero">${escapar(reais(p.provisionado))} de ${til}${escapar(reais(p.alvo))}</span>
+      <span class="barra-limite mini" role="img" aria-label="${Math.round(pct)}% provisionado"><i style="width:${pct.toFixed(1)}%"></i></span>
+    </div>`;
 }
 
 /** O número que fecha a faixa, em destaque — vermelho quando negativo. */
