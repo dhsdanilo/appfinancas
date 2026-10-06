@@ -532,15 +532,15 @@ function pintarResumoDeCaixa(contas) {
  * separada pela origem, e o saldo previsto por último, em destaque.
  */
 function blocoDeCaixa(nome, p, total = false, conta = null, aEntrar = null, provisoes = []) {
-  const menos = (v) => `−${formatar(v)}`;
+  const menos = (v, est = false) => `−${est ? '~' : ''}${formatar(v)}`;
   const numeros = [numeroDaFaixa('saldo real', formatar(p.real))];
   for (const f of p.faturas) numeros.push(numeroDaFaixa(`fatura ${f.cartao.nome}`, menos(f.valor), { conta: f.cartao.id, mes: vista.mes }));
   // O "a sair" aberto pela origem: assim o número bate com o que se vê.
   const partes = p.partes;
   const til = p.estimado ? '~' : '';
-  if (partes?.recorrentes > 0) numeros.push(numeroDaFaixa(`recorrentes até ${diaCurto(p.ate)}`, `${til}${menos(partes.recorrentes)}`));
+  if (partes?.recorrentes > 0) numeros.push(numeroDaFaixa(`recorrentes até ${diaCurto(p.ate)}`, menos(partes.recorrentes, p.estimado)));
   for (const [cartaoId, valor] of partes?.cartoes ?? []) {
-    numeros.push(numeroDaFaixa(`recorrentes no ${app.contas[cartaoId]?.nome ?? 'cartão'}`, `${til}${menos(valor)}`, { conta: cartaoId, mes: vista.mes }));
+    numeros.push(numeroDaFaixa(`recorrentes no ${app.contas[cartaoId]?.nome ?? 'cartão'}`, menos(valor, p.estimado), { conta: cartaoId, mes: vista.mes }));
   }
   if (partes?.agendados > 0) numeros.push(numeroDaFaixa('agendados e vencidos', menos(partes.agendados)));
   // A provisão no cofrinho: uma mini barra por cartão que esta conta paga.
@@ -558,7 +558,7 @@ function blocoDeCaixa(nome, p, total = false, conta = null, aEntrar = null, prov
     const varias = proximas.length > 1;
     const proximaFatura = proximas.map((x) => numeroDaFaixa(
       varias ? `próxima fatura ${x.cartao.nome}` : 'próxima fatura',
-      `${x.estimado ? '~' : ''}${menos(x.valor + x.recorrentes)}`,
+      menos(x.valor + x.recorrentes, x.estimado),
       { conta: x.cartao.id, mes: x.vencimento?.slice(0, 7) ?? vista.mes, classe: 'cor-cartao' },
     )).join('');
     previsto += proximaFatura + destaqueDaFaixa('saldo provisionado', p.previsto - proximas.reduce((t, x) => t + x.valor + x.recorrentes, 0), p.estimado || proximas.some((x) => x.estimado), 'provisionado');
@@ -610,7 +610,7 @@ function miniProvisao(cartao, p) {
 
 /** O número que fecha a faixa, em destaque — vermelho quando negativo. */
 function destaqueDaFaixa(rotulo, valor, estimado = false, classe = '') {
-  const texto = `${estimado ? '~' : ''}${valor < 0 ? `−${formatar(-valor)}` : formatar(valor)}`;
+  const texto = `${valor < 0 ? '−' : ''}${estimado ? '~' : ''}${formatar(Math.abs(valor))}`;
   return `<div class="numero-faixa previsto-faixa ${classe} ${valor < 0 ? 'negativo' : ''}">
       <span class="rotulo-numero">${escapar(rotulo)}</span>
       <span class="valor-numero">${escapar(texto)}</span>
@@ -619,7 +619,7 @@ function destaqueDaFaixa(rotulo, valor, estimado = false, classe = '') {
 
 /** As entradas previstas, uma por origem: o salário de cada folha, receitas, transferências. */
 function numerosDeEntrada(entra) {
-  const mais = (v, est = false) => `${est ? '~' : ''}+${formatar(v)}`;
+  const mais = (v, est = false) => `+${est ? '~' : ''}${formatar(v)}`;
   const numeros = entra.liquidos.map((x) =>
     numeroDaFaixa(`salário ${x.folha.nome} · ${diaCurto(x.data)}`, mais(x.valor, x.estimado), { conta: x.folha.id, mes: x.data.slice(0, 7) }));
   if (entra.receitas > 0) numeros.push(numeroDaFaixa('receitas', mais(entra.receitas, entra.estimado)));
@@ -646,25 +646,49 @@ function blocoDoExtrato(nome, x, mes, conta) {
 
 /** Mês seguinte: sem o saldo de hoje, só o que entra e sai nele (D31). */
 function blocoDoMesSeguinte(nome, r, mes) {
-  const menos = (v, est = false) => `${est ? '~' : ''}−${formatar(v)}`;
+  const menos = (v, est = false) => `−${est ? '~' : ''}${formatar(v)}`;
   const { entra, sai } = r;
-  const numeros = numerosDeEntrada(entra);
-  for (const f of sai.faturas) {
-    const vence = f.vencimento ? ` · vence ${diaCurto(f.vencimento)}` : '';
-    const para = { conta: f.cartao.id, mes: f.vencimento?.slice(0, 7) ?? mes };
-    if (f.valor > 0) numeros.push(numeroDaFaixa(`fatura ${f.cartao.nome}${vence}`, menos(f.valor), para));
-    if (f.recorrentes > 0) numeros.push(numeroDaFaixa(`recorrentes no ${f.cartao.nome}${f.valor > 0 ? '' : vence}`, menos(f.recorrentes, f.estimado), para));
-  }
-  if (sai.recorrentes > 0) numeros.push(numeroDaFaixa('recorrentes', menos(sai.recorrentes, sai.estimado)));
-  if (sai.parcelas > 0) numeros.push(numeroDaFaixa('parcelas de dívida', menos(sai.parcelas)));
-  if (sai.agendados > 0) numeros.push(numeroDaFaixa('agendados', menos(sai.agendados)));
   const mesNome = nomeDoMes(mes).split(' ')[0];
-  const corpo = numeros.length
-    ? numeros.join('') + destaqueDaFaixa(`resultado de ${mesNome}`, r.resultado, r.estimado)
-    : `<p class="fino">Nada previsto para ${escapar(nomeDoMes(mes))} ainda.</p>`;
+  const nada = !entra.total && !sai.total;
+  if (nada) {
+    return `<div class="bloco largo">
+    <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(`${nome} · ${mesNome}`)}</p>
+    <div class="numeros-renda numeros-caixa"><p class="fino">Nada previsto para ${escapar(nomeDoMes(mes))} ainda.</p></div>
+  </div>`;
+  }
+  // Menos números, uma conta que fecha de cabeça (pedido dele, 05/10/2026):
+  // receitas, a fatura que vence no mês, as outras despesas, o total e o resultado.
+  const numeros = [];
+  const origem = [
+    ...entra.liquidos.map((x) => `salário ${x.folha.nome}: +${formatar(x.valor)}`),
+    entra.receitas > 0 ? `receitas: +${formatar(entra.receitas)}` : '',
+    entra.chegam > 0 ? `chega de outras contas: +${formatar(entra.chegam)}` : '',
+  ].filter(Boolean).join(' · ');
+  numeros.push(numeroDaFaixa('receitas', `+${entra.estimado ? '~' : ''}${formatar(entra.total)}`, null, origem));
+
+  // A fatura que vence no mês, com as recorrentes do cartão já somadas.
+  const faturas = sai.faturas;
+  if (faturas.length) {
+    const total = faturas.reduce((t, f) => t + f.valor + f.recorrentes, 0);
+    const vence = faturas.length === 1 && faturas[0].vencimento ? ` · vence ${diaCurto(faturas[0].vencimento)}` : '';
+    const partes = faturas.map((f) => `${f.cartao.nome}${f.vencimento ? ` (vence ${diaCurto(f.vencimento)})` : ''}: ${formatar(f.valor + f.recorrentes)}`).join(' · ');
+    const para = { conta: faturas[0].cartao.id, mes: faturas[0].vencimento?.slice(0, 7) ?? mes };
+    numeros.push(numeroDaFaixa(`fatura prevista${vence}`, menos(total, faturas.some((f) => f.estimado)), para, partes));
+  }
+  const despesas = sai.recorrentes + sai.parcelas + sai.agendados;
+  if (despesas > 0) {
+    const partes = [
+      sai.recorrentes > 0 ? `recorrentes: ${formatar(sai.recorrentes)}` : '',
+      sai.parcelas > 0 ? `parcelas de dívida: ${formatar(sai.parcelas)}` : '',
+      sai.agendados > 0 ? `agendados: ${formatar(sai.agendados)}` : '',
+    ].filter(Boolean).join(' · ');
+    numeros.push(numeroDaFaixa('despesas previstas', menos(despesas, sai.estimadoDespesas), null, partes));
+  }
+  numeros.push(numeroDaFaixa('total de despesas', menos(sai.total, sai.estimado)));
+  numeros.push(destaqueDaFaixa('resultado previsto', r.resultado, r.estimado));
   return `<div class="bloco largo">
     <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(`${nome} · ${mesNome}`)}</p>
-    <div class="numeros-renda numeros-caixa">${corpo}</div>
+    <div class="numeros-renda numeros-caixa">${numeros.join('')}</div>
   </div>`;
 }
 
@@ -881,12 +905,12 @@ function pintarDividas(contas) {
  * Um número da faixa. Com `para` ({ conta, mes }), o valor vira um link para a
  * tela onde ele mora, no mesmo período (pedido dele, 05/10/2026).
  */
-const numeroDaFaixa = (rotulo, valor, para = null) => {
+const numeroDaFaixa = (rotulo, valor, para = null, titulo = '') => {
   const texto = escapar(valor);
   const miolo = para && app?.contas?.[para.conta]
     ? `<button type="button" class="valor-numero elo-numero" data-ir-conta="${escapar(para.conta)}"${para.mes ? ` data-ir-mes="${escapar(para.mes)}"` : ''} title="Abrir ${escapar(app.contas[para.conta].nome)}">${texto}</button>`
     : `<span class="valor-numero">${texto}</span>`;
-  return `<div class="numero-faixa ${para?.classe ?? ''}"><span class="rotulo-numero">${escapar(rotulo)}</span>${miolo}</div>`;
+  return `<div class="numero-faixa ${para?.classe ?? ''}"${titulo ? ` title="${escapar(titulo)}"` : ''}><span class="rotulo-numero">${escapar(rotulo)}</span>${miolo}</div>`;
 };
 
 const dataCheia = (dia) => `${dia.slice(8, 10)}/${dia.slice(5, 7)}/${dia.slice(0, 4)}`;

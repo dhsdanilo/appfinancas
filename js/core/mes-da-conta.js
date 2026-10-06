@@ -144,6 +144,8 @@ export function saidasDoMes(estado, ids, mes, dia = hoje()) {
   let parcelas = 0;
   let agendados = 0;
   let estimado = false;
+  // Estimativa só nas despesas da conta (sem as do cartão), para o "despesas previstas".
+  let estimadoDespesas = false;
 
   const cartoes = Object.values(estado.contas).filter((c) => c.tipo === 'cartao' && ids.has(c.pagaCom));
   const daFatura = (cartao) => {
@@ -179,7 +181,7 @@ export function saidasDoMes(estado, ids, mes, dia = hoje()) {
     if (saida <= 0) continue;
     if (estado.contas[o.contaDestinoId]?.tipo === 'divida') parcelas += saida;
     else recorrentes += saida;
-    if (o.estimado) estimado = true;
+    if (o.estimado) estimado = estimadoDespesas = true;
   }
 
   for (const l of visiveis(estado, dia)) {
@@ -191,7 +193,7 @@ export function saidasDoMes(estado, ids, mes, dia = hoje()) {
 
   const lista = [...porCartao.values()].filter((x) => x.valor > 0 || x.recorrentes > 0);
   const total = lista.reduce((t, x) => t + x.valor + x.recorrentes, 0) + recorrentes + parcelas + agendados;
-  return { faturas: lista, recorrentes, parcelas, agendados, total, estimado };
+  return { faturas: lista, recorrentes, parcelas, agendados, total, estimado, estimadoDespesas };
 }
 
 /** O que um mês seguinte deixa: entra − sai, sem o saldo de hoje. */
