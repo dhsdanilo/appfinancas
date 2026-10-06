@@ -483,6 +483,7 @@ input[type="text"].observacao {
 .simulador-saldo .miudo { color: var(--tinta-fraca); font-size: var(--t-miudo); }
 .simulador-saldo strong { font-size: var(--t-secao, 1.15rem); font-weight: 400; white-space: nowrap; }
 .simulador-saldo .menor strong { font-size: var(--t-corpo); }
+.simulador-saldo .aviso-passa { flex-basis: 100%; color: var(--alerta); font-size: var(--t-apoio); }
 .simulador-saldo .disponivel strong { color: var(--positivo); }
 .simulador-saldo .negativo strong { color: var(--alerta); }
 .repasse-transf {

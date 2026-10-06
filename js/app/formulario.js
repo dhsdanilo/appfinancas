@@ -314,6 +314,7 @@ export async function criarFormulario({
       if (app) pintarParcelas();
       if (app && custeadoPor) pintarEnvelope();
       pintarReajuste();
+      if (app) pintarSimulador();
     },
     aoConfirmar: async (e) => {
       if (!pronto()) { valor.desfocar(); return; }
@@ -604,12 +605,20 @@ export async function criarFormulario({
     const dona = pessoaDoAparelho();
     const d = dona && app && !editando ? disponivelDe(app, dona, (id) => saldoReal(app, id)) : null;
     if (!d || !d.contas) { bloco.hidden = true; return; }
+    // Gastar mais do que o disponível: só então aparece um aviso.
+    const conta = app.contas[contaId];
+    const v = valor.centavos();
+    const gasta = tipo === 'despesa' && v > 0 && conta && (
+      conta.tipo === 'corrente' || conta.tipo === 'especie' || (conta.tipo === 'cartao' && conta.titular && conta.titular !== dona)
+    );
+    const passa = gasta && v > d.disponivel ? v - Math.max(0, d.disponivel) : 0;
     const bloco3 = (rotulo, centavos, classe = '') =>
       `<span class="saldo-peca ${classe}"><span class="miudo">${rotulo}</span><strong>${escapar(formatar(centavos))}</strong></span>`;
     bloco.hidden = false;
     bloco.innerHTML =
       bloco3('disponível', d.disponivel, d.disponivel < 0 ? 'negativo' : 'disponivel') +
-      bloco3('real', d.saldo, 'menor');
+      bloco3('real', d.saldo, 'menor') +
+      (passa ? `<span class="aviso-passa">Passa do disponível em ${escapar(formatar(passa))}.</span>` : '');
     bloco.title = d.aRepassar > 0 ? `O disponível já desconta ${formatar(d.aRepassar)} a repassar.` : '';
   }
 
