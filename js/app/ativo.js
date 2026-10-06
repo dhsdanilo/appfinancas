@@ -37,6 +37,8 @@ const MARCACAO = `
           <option value="valor">pelo valor (CDB, Tesouro, poupança)</option>
           <option value="cotas">por quantidade e preço (ações, FII, cripto)</option>
         </select></label>
+      <p class="recado" data-ativo="aviso-unidade" hidden>Cuidado: trocar isto muda como as operações que já estão aqui são lidas
+        (valor × quantidade e preço), e o valor do ativo pode sumir da tela. Voltar a escolher a forma de antes desfaz.</p>
       <label class="campo-simples"><span class="miudo">vencimento · opcional</span>
         <input type="date" data-ativo="vencimento"></label>
 
@@ -351,7 +353,6 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
 
   /** O vínculo escolhido na ficha: { fonte, chave } ou null (manual). */
   function lerCotacao() {
-    if (el('unidade').value !== 'cotas') return null;
     const fonte = el('cotacao-fonte').value;
     if (fonte === 'b3') {
       const chave = el('cotacao-codigo').value.trim().toUpperCase();
@@ -362,6 +363,13 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
       return chave ? { fonte, chave } : null;
     }
     return null;
+  }
+
+  /** Trocar "acompanhar" num ativo com operações muda como elas são lidas. */
+  function avisarTrocaDeUnidade() {
+    const mudou = ativo && el('unidade').value !== (ativo.unidade ?? 'valor');
+    const temOperacoes = ativo && visiveis(app).some((l) => l.ativoId === ativo.id);
+    el('aviso-unidade').hidden = !(mudou && temOperacoes);
   }
 
   /** Põe na ficha o vínculo que o ativo tem (ou nenhum) e a pinta. */
@@ -377,15 +385,13 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
 
   /** Mostra ou esconde o bloco da cotação e diz o que o vínculo acha. */
   async function pintarCotacao() {
-    const cotas = el('unidade').value === 'cotas';
-    el('cotacao-bloco').hidden = !cotas;
-    if (!cotas) return;
+    el('cotacao-bloco').hidden = false;
     const fonte = el('cotacao-fonte').value;
     el('cotacao-campo-b3').hidden = fonte !== 'b3';
     el('cotacao-campo-tesouro').hidden = fonte !== 'tesouro';
     const pista = el('cotacao-pista');
     if (!fonte) {
-      pista.textContent = 'Manual: o preço é o que você informar em "cotação".';
+      pista.textContent = 'Manual: o valor é o que você informar.';
       return;
     }
     const cot = await cotacoes.carregar();
@@ -405,10 +411,11 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
     }
     const v = lerCotacao();
     const ultimo = v ? cotacoes.ultimoPreco(cot, v) : null;
+    const porValor = el('unidade').value !== 'cotas';
     pista.textContent = !v
       ? 'Escolha o papel: o preço de fechamento entra a cada sincronização.'
       : ultimo
-        ? `${formatar(ultimo.preco)} em ${diaCurto(ultimo.data)}. O preço entra a cada sincronização.`
+        ? `${formatar(ultimo.preco)} em ${diaCurto(ultimo.data)}. ${porValor ? 'O valor que você já tem passa a acompanhar a variação do preço a cada sincronização.' : 'O preço entra a cada sincronização.'}`
         : 'Não achei esse papel nas cotações.';
   }
 
@@ -548,11 +555,17 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
   // Ação, FII e cripto se acompanham por cotas; o resto, pelo valor. Só
   // sugere: a pessoa pode trocar.
   el('classe').addEventListener('change', () => {
-    el('unidade').value = CLASSES_POR_COTAS.has(el('classe').value) ? 'cotas' : 'valor';
+    // Num ativo que já existe, a classe não mexe em como ele é acompanhado:
+    // trocar isso muda a leitura das operações (valor × quantidade).
+    if (!ativo) el('unidade').value = CLASSES_POR_COTAS.has(el('classe').value) ? 'cotas' : 'valor';
     pintarInicio();
     pintarCotacao();
   });
-  el('unidade').addEventListener('change', () => { pintarInicio(); pintarCotacao(); });
+  el('unidade').addEventListener('change', () => {
+    pintarInicio();
+    pintarCotacao();
+    avisarTrocaDeUnidade();
+  });
   el('cotacao-fonte').addEventListener('change', pintarCotacao);
   el('cotacao-codigo').addEventListener('input', pintarCotacao);
   el('cotacao-titulo').addEventListener('change', pintarCotacao);
@@ -621,6 +634,7 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
     el('unidade').value = ativo.unidade ?? 'valor';
     el('vencimento').value = ativo.vencimento ?? '';
     porCotacaoNaFicha(ativo.cotacao);
+    avisarTrocaDeUnidade();
     pintar();
     el('nome').focus();
   });
@@ -657,6 +671,7 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
       corrigindo = null;
       el('vencimento').value = '';
       porCotacaoNaFicha(null);
+      el('aviso-unidade').hidden = true;
       pintar();
       janela.showModal();
       el('nome').focus();

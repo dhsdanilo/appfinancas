@@ -1231,6 +1231,39 @@ caso('investimento', '★ cotação automática: o vínculo vira série; o preç
   igual((await estado.calcular()).ativos.a.cotacao, null, 'desvincular volta ao manual');
 });
 
+caso('investimento', '★ cotação automática em ativo por valor: o valor cadastrado segue a variação, sem trocar de unidade', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const cot = {
+    acoes: { datas: [], p: {} },
+    tesouro: {
+      datas: ['2027-03-01', '2027-03-02', '2027-03-03', '2027-03-04'],
+      p: { 'Tesouro Selic|2029-03-01': [1000000, 1010000, 1010000, 1030300] },
+      nomes: { 'Tesouro Selic|2029-03-01': 'Tesouro Selic 2029' },
+    },
+  };
+  await estado.aplicarEvento('conta.criada', { id: 'inv', nome: 'Corretora', tipo: 'investimento', saldoInicial: 0 });
+  await estado.aplicarEvento('ativo.criado', { id: 'a', contaId: 'inv', nome: 'Selic', classe: 'tesouro', unidade: 'valor' });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'ap', tipo: 'aplicacao', valor: 500000, contaId: null, ativoId: 'a',
+    dataCompetencia: '2027-02-01', dataCaixa: '2027-02-01', confirmado: true,
+  });
+  await estado.aplicarEvento('ativo.alterado', { id: 'a', cotacao: { fonte: 'tesouro', chave: 'Tesouro Selic|2029-03-01' } });
+  const n = await cotacoes.atualizar({ cot });
+  let e = await estado.calcular();
+  igual(n, 3, 'o primeiro pregão só marca o ponto de partida');
+  igual(e.ativos.a.unidade, 'valor', 'vincular não troca a forma de acompanhar');
+  igual(e.ativos.a.avaliacoes.map((v) => [v.data, v.valor]),
+    [['2027-03-02', 505000], ['2027-03-03', 505000], ['2027-03-04', 515150]], 'o valor segue o preço: +1%, 0%, +2%');
+  igual(lanc.visiveis(e).filter((l) => l.ativoId === 'a').map((l) => l.valor), [500000], 'o valor inicial continua lá');
+  igual(await cotacoes.atualizar({ cot }), 0, 'de novo não grava nada');
+  // Quem já foi por cotas deixou avaliações só com preço: elas não travam o valor.
+  await estado.aplicarEvento('ativo.avaliado', { id: 'a', data: '2027-03-02', preco: 1010000 });
+  igual((await estado.calcular()).ativos.a.avaliacoes.find((v) => v.data === '2027-03-02').valor, null, 'sobrou só o preço');
+  await cotacoes.atualizar({ cot });
+  igual((await estado.calcular()).ativos.a.avaliacoes.find((v) => v.data === '2027-03-02').valor, 505000, 'o valor volta a ser gravado por cima');
+});
+
 caso('previsto', 'recorrência estimada projeta a média das últimas 3', () => {
   const r = { tipoValor: 'variavel', valor: null };
   const serie = [
