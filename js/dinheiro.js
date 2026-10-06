@@ -589,9 +589,12 @@ function miniProvisao(cartao, p) {
   const pct = p.alvo > 0 ? Math.min(100, Math.max(0, (p.provisionado / p.alvo) * 100)) : 100;
   const til = p.estimado ? '~' : '';
   const reais = (c) => formatar(c).replace('R$ ', '');
-  return `<div class="numero-faixa mini-provisao">
+  // Leva à fatura aberta do cartão, como a "próxima fatura" levava.
+  const aberta = resumoDoCartao(app, cartao.id)?.aberta;
+  const mes = aberta?.vencimento?.slice(0, 7) ?? '';
+  return `<div class="numero-faixa mini-provisao cor-cartao">
       <span class="rotulo-numero">provisão ${escapar(cartao.nome)}</span>
-      <span class="valor-numero">${escapar(reais(p.provisionado))} de ${til}${escapar(reais(p.alvo))}</span>
+      <button type="button" class="valor-numero elo-numero" data-ir-conta="${escapar(cartao.id)}"${mes ? ` data-ir-mes="${mes}"` : ''} title="Abrir ${escapar(cartao.nome)}">${escapar(reais(p.provisionado))} de ${til}${escapar(reais(p.alvo))}</button>
       <span class="barra-limite mini" role="img" aria-label="${Math.round(pct)}% provisionado"><i style="width:${pct.toFixed(1)}%"></i></span>
     </div>`;
 }
