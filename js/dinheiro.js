@@ -22,7 +22,7 @@ import { situacao, saldoDevedor, jurosDaParcela, cronograma, simularAmortizacao 
 import { fotografar, amortizar, pularParcela } from './app/contrato.js';
 import { lancarOcorrencia } from './app/ocorrencia.js';
 import { criarJanelaDoAtivo } from './app/ativo.js';
-import { criarDetalheDoAtivo } from './app/ativo-detalhe.js';
+import { iniciarPaginaDoAtivo } from './app/ativo-detalhe.js';
 import { criarImportacao } from './app/importar.js';
 import { resumoDaConta, ativosDaConta, nomeDaClasse, CLASSES } from './core/investimentos.js';
 import { donosNoDia, envelopesAtivos, numerosDoEnvelope } from './core/envelopes.js';
@@ -2134,8 +2134,8 @@ const transferencia = await criarTransferencia({
 });
 
 const janelaDoAtivo = criarJanelaDoAtivo({ aoSalvar: pintar });
-// Tocar num ativo abre primeiro a tela de leitura; registrar e editar são botões dela.
-const detalheDoAtivo = criarDetalheDoAtivo({
+// Tocar num ativo vai para a página dele (#/ativo/<id>); registrar e editar são botões dela.
+iniciarPaginaDoAtivo({
   aoRegistrar: (id) => janelaDoAtivo.abrir(id),
   aoEditar: (id) => janelaDoAtivo.editar(id),
 });
@@ -2260,7 +2260,7 @@ document.addEventListener('click', async (e) => {
   }
   const abrirAtivo = e.target.closest('[data-ativo-abrir]');
   if (abrirAtivo) {
-    await detalheDoAtivo.abrir(abrirAtivo.dataset.ativoAbrir);
+    location.hash = `#/ativo/${abrirAtivo.dataset.ativoAbrir}`;
     return;
   }
   const novoAtivo = e.target.closest('[data-novo-ativo]');

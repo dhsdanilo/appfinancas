@@ -299,7 +299,7 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
       `<li class="linha-holerite operacao"><span class="nome-linha">${nome}</span><span class="valor-lancado ${classe}">${valor}</span></li>`;
     el('titulo-venda').textContent = `se vender hoje · preço de venda de ${diaCurto(v.data)}`;
     el('venda').innerHTML =
-      linha(`valor bruto <span class="fino">${quantos(p.quantidade)} × ${formatar(v.preco)}</span>`, formatar(v.bruto)) +
+      linha('valor bruto', formatar(v.bruto)) +
       linha('ganho', formatar(v.ganho)) +
       linha(`IR${pct ? ` <span class="fino">${pct}</span>` : ''}`, v.ir ? `− ${formatar(v.ir)}` : formatar(0), v.ir ? 'negativo' : '') +
       linha('<strong>líquido do IR</strong>', `<strong>${formatar(v.liquido)}</strong>`);

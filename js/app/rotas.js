@@ -14,6 +14,8 @@ const TELAS = {
   renda: { grupo: 'dinheiro', titulo: 'Renda', sub: 'Cada fonte de renda e o seu contracheque.' },
   investimentos: { grupo: 'dinheiro', titulo: 'Investimentos', sub: 'O que está guardado e quanto rende.' },
   dividas: { grupo: 'dinheiro', titulo: 'Dívidas', sub: 'Cada empréstimo, o que falta e quanto custa.' },
+  // Um ativo de investimento (#/ativo/<id>): a página de leitura dele.
+  ativo: { grupo: 'ativo', titulo: 'Ativo', sub: 'Resumo, gráfico e detalhes.' },
   envelopes: { grupo: 'envelopes', titulo: 'Envelopes', sub: 'O dinheiro guardado, e de quem ele é.' },
   relatorios: { grupo: 'relatorios', titulo: 'Relatórios', sub: 'Em que foi, quando aperta, para onde vai e se estamos melhorando.' },
   configuracoes: {

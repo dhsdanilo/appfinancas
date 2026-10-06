@@ -2568,6 +2568,32 @@ caso('cópia', 'o aviso de cópia: nunca, antiga, recente, e sem aviso quando n�
   igual(titulos(undefined), [], 'sem a informação: sem aviso');
 });
 
+caso('investimento', 'o rendimento do ativo no período: sobre o que estava posto, média por mês e ao ano compostas', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const ev = (t, d) => estado.aplicarEvento(t, d);
+  await ev('conta.criada', { id: 'cc', nome: 'Corrente', tipo: 'corrente', saldoInicial: 2000000 });
+  await ev('conta.criada', { id: 'inv', nome: 'Banco', tipo: 'investimento', caixaEm: 'cc' });
+  await ev('ativo.criado', { id: 'petr', contaId: 'inv', nome: 'PETR4', classe: 'acoes', unidade: 'cotas' });
+  const op = (id, tipo, data, quantidade, preco) => ev('lancamento.registrado', {
+    id, tipo, contaId: 'cc', ativoId: 'petr', dataCompetencia: data, confirmado: true, quantidade, preco, valor: Math.round(quantidade * preco),
+  });
+  await op('c1', 'aplicacao', '2025-02-01', 100, 3000);
+  await op('c2', 'aplicacao', '2025-03-01', 100, 4000);
+  await ev('ativo.avaliado', { id: 'petr', data: '2025-03-15', preco: 4200 });
+  const e = await estado.calcular();
+  const tudo = investimentos.rendimentoDoAtivo(e, 'petr', '2000-01-01', '2025-04-05');
+  igual([tudo.desde, tudo.base, tudo.fim, tudo.rendeu, Math.round(tudo.pct * 1000) / 1000], ['2025-02-01', 700000, 840000, 140000, 0.2], 'desde o início: 20% sobre os R$ 7.000 postos');
+  const meses = 63 / 30.4375;
+  igual(Math.round(tudo.mensal * 1e6), Math.round((1.2 ** (1 / meses) - 1) * 1e6), 'média por mês composta');
+  igual(Math.round(tudo.anual * 1e6), Math.round((1.2 ** (12 / meses) - 1) * 1e6), 'equivalente ao ano composto');
+  const meio = investimentos.rendimentoDoAtivo(e, 'petr', '2025-03-10', '2025-04-05');
+  igual([meio.inicio, meio.aplicado, meio.rendeu], [700000, 0, 140000], 'período que já começa com tudo comprado');
+  const curto = investimentos.rendimentoDoAtivo(e, 'petr', '2025-03-20', '2025-04-05');
+  igual([curto.mensal, curto.anual], [null, null], 'menos de 1 mês: sem média nem anual');
+  igual(investimentos.rendimentoDoAtivo(e, 'petr', '2000-01-01', '2025-01-01'), null, 'antes da primeira compra');
+});
+
 async function limpar() {
   db.usarBanco(BANCO_DE_TESTE);
   await db.apagarTudo();

@@ -501,6 +501,11 @@ addEventListener('resize', () => {
 
 document.addEventListener('app:tela', (e) => {
   ativa = e.detail.tela === 'envelopes';
+  // #/envelopes/<id> (o link do ativo): abre na aba do envelope e volta ao endereço simples.
+  if (ativa && e.detail.sub) {
+    foco = e.detail.sub;
+    history.replaceState(null, '', '#/envelopes');
+  }
   if (ativa) pintar();
   else $('subabas-envelopes').hidden = true;
 });

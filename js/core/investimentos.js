@@ -8,7 +8,7 @@
 // Rendeu = o que vale hoje + o que já voltou (resgates) + proventos − o que
 // foi aplicado. É a conta que fecha mesmo depois de um resgate total.
 
-import { hoje } from './datas.js';
+import { hoje, somarDias } from './datas.js';
 import { visiveis, saldoReal, sinalDeSaida } from './lancamentos.js';
 
 /** As classes: lista nossa, como os níveis de risco (design/10 §3.1). */
@@ -224,6 +224,47 @@ export function serieDoAtivo(estado, ativoId, de, ate = hoje(), maximo = 70) {
     const p = posicao(estado, ativoId, data);
     return { data, valor: p.valorAtual, investido: p.investido, preco: p.cotacao?.preco ?? null };
   });
+}
+
+/**
+ * O que um ativo rendeu num período [de, ate]: o valor no começo (o do dia anterior), o que
+ * entrou e saiu no meio, o valor no fim. `base` é o que estava posto no período (valor do
+ * começo mais o que se aplicou); `pct` é o rendimento sobre ela. A média por mês e o
+ * equivalente ao ano são compostos e só existem com cerca de 1 mês ou mais de período.
+ * null quando o ativo ainda não tinha aplicação no fim do período.
+ */
+// Menos que isto de período não dá média nem equivalente anual com sentido (o "1 mês" da tela tem 30 dias).
+const MES_MINIMO = 0.9;
+
+export function rendimentoDoAtivo(estado, ativoId, de, ate = hoje()) {
+  const ativo = estado.ativos?.[ativoId];
+  if (!ativo) return null;
+  const ops = visiveis(estado, ate).filter((l) => l.ativoId === ativoId && l.confirmado && l.dataCompetencia <= ate);
+  const primeira = ops.filter((l) => l.tipo === 'aplicacao').map((l) => l.dataCompetencia).sort()[0];
+  if (!primeira) return null;
+  const desde = de > primeira ? de : primeira;
+  const diaAntes = somarDias(desde, -1);
+  const inicio = de > primeira ? (posicao(estado, ativoId, diaAntes)?.valorAtual ?? 0) : 0;
+  let aplicado = 0;
+  let resgatado = 0;
+  let proventos = 0;
+  for (const l of ops) {
+    if (l.dataCompetencia <= diaAntes) continue;
+    if (l.tipo === 'aplicacao') aplicado += l.valor;
+    if (l.tipo === 'resgate') resgatado += l.valor;
+    if (l.tipo === 'provento') proventos += l.valor;
+  }
+  const fim = posicao(estado, ativoId, ate)?.valorAtual ?? 0;
+  const rendeu = fim + resgatado + proventos - inicio - aplicado;
+  const base = inicio + aplicado;
+  const meses = (Date.parse(`${ate}T00:00:00Z`) - Date.parse(`${desde}T00:00:00Z`)) / 86400000 / 30.4375;
+  const fator = base > 0 ? 1 + rendeu / base : null;
+  return {
+    desde, ate, inicio, fim, aplicado, resgatado, proventos, rendeu, base, meses,
+    pct: base > 0 ? rendeu / base : 0,
+    mensal: fator > 0 && meses >= MES_MINIMO ? fator ** (1 / meses) - 1 : null,
+    anual: fator > 0 && meses >= MES_MINIMO ? fator ** (12 / meses) - 1 : null,
+  };
 }
 
 /** O saldo de uma conta até um dia (o que se moveu até ali). */

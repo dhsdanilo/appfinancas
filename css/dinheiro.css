@@ -1526,10 +1526,6 @@ body[data-pagina="inicio"] #b-exportar { display: none; }
 .venda-liquida .nome-linha { flex: 1; min-width: 0; }
 
 /* O detalhe de um ativo (só leitura): números, gráfico, blocos e movimentos. */
-.dialogo-ativo-detalhe { width: min(680px, calc(100vw - 2 * var(--e4))); max-height: calc(100vh - 2 * var(--e4)); overflow-y: auto; }
-.dialogo-ativo-detalhe .corpo-detalhe { display: flex; flex-direction: column; gap: var(--e3); padding-top: var(--e3); }
-.dialogo-ativo-detalhe .acoes-detalhe { display: flex; flex-wrap: wrap; gap: var(--e2); }
-.dialogo-ativo-detalhe .acoes-detalhe button { min-height: 40px; }
 .numeros-detalhe { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--e2); }
 .numero-det { display: flex; flex-direction: column; gap: 2px; padding: var(--e2) var(--e3); border-radius: var(--raio-controle); background: var(--fundo); min-width: 0; }
 .numero-det .valor-numero { font-size: var(--t-destaque-menor, 1.15rem); font-weight: 600; overflow-wrap: anywhere; }
@@ -1552,3 +1548,20 @@ body[data-pagina="inicio"] #b-exportar { display: none; }
 .tabelinha-copia { width: 100%; border-collapse: collapse; font-size: var(--t-apoio); margin: var(--e2) 0; }
 .tabelinha-copia td { padding: var(--e1) 0; border-bottom: 1px solid var(--borda); }
 .tabelinha-copia td:last-child { text-align: right; }
+
+/* A página do ativo (#/ativo/<id>). */
+.pagina-ativo { display: flex; flex-direction: column; gap: var(--e3); }
+.pagina-ativo .topo-ativo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--e2); }
+.voltar-ativo { color: var(--tinta-fraca); text-decoration: none; font-size: var(--t-apoio); min-height: 40px; display: inline-flex; align-items: center; }
+.voltar-ativo:hover { color: var(--tinta); }
+.pagina-ativo .acoes-detalhe { display: flex; flex-wrap: wrap; gap: var(--e2); }
+.pagina-ativo .acoes-detalhe button { min-height: 40px; }
+.periodos-det { display: flex; flex-wrap: wrap; gap: var(--e2); }
+.periodos-det button { min-height: 36px; padding: 0 var(--e3); border: 1px solid var(--borda); border-radius: 99px; background: transparent; color: var(--tinta-fraca); font-size: var(--t-apoio); }
+.periodos-det button[aria-pressed="true"] { background: var(--acento-fundo); border-color: var(--acento); color: var(--tinta); }
+.outro-periodo { display: flex; flex-wrap: wrap; gap: var(--e3); font-size: var(--t-apoio); color: var(--tinta-fraca); }
+.outro-periodo input { flex: none; min-width: 0; width: auto; }
+.numero-det.alterna { text-align: left; border: 1px dashed var(--borda); cursor: pointer; font: inherit; color: inherit; }
+.numero-det.alterna:hover { border-color: var(--acento); }
+.donos-det a.elo-envelope { color: var(--tinta); text-decoration: underline; text-decoration-color: var(--borda); }
+.donos-det a.elo-envelope:hover { text-decoration-color: var(--acento); }

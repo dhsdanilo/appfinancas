@@ -79,7 +79,7 @@ function marcarAtual(tela) {
   for (const folha of inferior.querySelectorAll('[data-folha]')) folha.hidden = true;
 }
 
-document.addEventListener('app:tela', (e) => marcarAtual(e.detail.tela));
+document.addEventListener('app:tela', (e) => marcarAtual(e.detail.tela === 'ativo' ? 'investimentos' : e.detail.tela));
 
 function lateral(atual) {
   return `
