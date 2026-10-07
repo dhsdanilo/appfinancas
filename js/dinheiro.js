@@ -393,10 +393,12 @@ function cartaoDoInicio(area, contas) {
   if (area.id === 'investimentos') {
     const resumos = contas.map((c) => resumoDaConta(app, c));
     const total = resumos.reduce((t, r) => t + r.valorAtual, 0);
-    const rendeu = resumos.reduce((t, r) => t + r.rendeu, 0);
+    // O que rendeu NO MÊS da tela (não desde o começo), como na tela de Investimentos.
+    const doMes = mesDosInvestimentos(app, new Set(contas.map((c) => c.id)), vista.mes);
+    const rendeu = doMes.rendeu;
     corpo = `${rotulo('valor atual')}
       <span class="valor-card-inicio">${dinheiroHTML(total, { estimado: resumos.some((r) => r.estimado) })}</span>
-      <span class="linha-card-inicio"><strong class="${rendeu >= 0 ? 'positivo' : 'negativo'}">${dinheiroHTML(rendeu, { sinal: rendeu >= 0 ? '+' : '' })}</strong> rendeu</span>`;
+      <span class="linha-card-inicio"><strong class="${rendeu >= 0 ? 'positivo' : 'negativo'}">${dinheiroHTML(rendeu, { sinal: rendeu >= 0 ? '+' : '' })}</strong> rendeu em ${escapar(nomeDoMes(vista.mes).split(' ')[0])}${doMes.inicio > 0 ? ` · ${pctTexto(rendeu / doMes.inicio)}` : ''}</span>`;
   }
 
   if (area.id === 'dividas') {
