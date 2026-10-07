@@ -154,6 +154,7 @@ export function iniciarPaginaDoAtivo({ aoRegistrar, aoEditar, aoCorrigir } = {})
         <span class="acoes-detalhe">
           <button type="button" class="principal" data-det="b-registrar">${cotas ? 'comprar ou vender' : 'registrar operação'}</button>
           <button type="button" data-det="b-editar">editar ativo</button>
+          <button type="button" class="elo" data-det="b-arquivar">${ativo.arquivado ? 'desarquivar' : 'arquivar'}</button>
         </span>
       </div>
       ${periodos}
@@ -224,7 +225,11 @@ export function iniciarPaginaDoAtivo({ aoRegistrar, aoEditar, aoCorrigir } = {})
     if (op) { if (aoCorrigir) await aoCorrigir(aberto, op.dataset.detOp); return; }
     if (e.target.closest('[data-det="b-ver-tudo"]')) { todosOsMovimentos = !todosOsMovimentos; await pintar(); return; }
     if (e.target.closest('[data-det="b-registrar"]')) { if (aoRegistrar) await aoRegistrar(aberto); return; }
-    if (e.target.closest('[data-det="b-editar"]')) { if (aoEditar) await aoEditar(aberto); }
+    if (e.target.closest('[data-det="b-editar"]')) { if (aoEditar) await aoEditar(aberto); return; }
+    if (e.target.closest('[data-det="b-arquivar"]')) {
+      const ativo = (await estado.calcular()).ativos[aberto];
+      if (ativo) await estado.aplicarEvento('ativo.arquivado', { id: aberto, arquivado: !ativo.arquivado });
+    }
   });
   raiz.addEventListener('change', async (e) => {
     if (e.target.matches('[data-det-de]')) { outro.de = e.target.value; await pintar(); }

@@ -1600,3 +1600,4 @@ a.dono-ativo:hover { text-decoration: underline; }
 /* Os juros do contrato, o CET e a economia, no cartão da dívida. */
 .taxas-contrato { margin-top: var(--e3); }
 .taxas-contrato .linha-detalhe.economia span:last-child { color: var(--positivo); }
+.acoes-card-ativo { padding: 0 var(--e4) var(--e3); }

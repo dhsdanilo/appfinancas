@@ -2621,6 +2621,24 @@ caso('dívida', 'o valor para quitar sai dos juros do contrato, não do valor to
   igual([foto.saldoDevedor, foto.estimado], [650000, false], 'o saldo que o banco mostra continua mandando');
 });
 
+caso('saldo previsto', 'a transferência agendada de outra conta dele conta no previsto; salário e conta do mesmo conjunto, não', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const ev = (t, d) => estado.aplicarEvento(t, d);
+  await ev('conta.criada', { id: 'cc', nome: 'Corrente', tipo: 'corrente', saldoInicial: 100000, dataInicial: '2027-01-01' });
+  await ev('conta.criada', { id: 'po', nome: 'Poupança', tipo: 'corrente', saldoInicial: 500000, dataInicial: '2027-01-01' });
+  const agendado = (id, tipo, extra) => ev('lancamento.registrado', { id, tipo, dataCompetencia: '2027-03-20', dataCaixa: '2027-03-20', confirmado: false, ...extra });
+  await agendado('desp', 'despesa', { contaId: 'cc', valor: 120000 });
+  let e = await estado.calcular();
+  igual(previstoDeCc(e).previsto, -20000, 'só a despesa agendada: o previsto fica negativo');
+  await agendado('trf', 'transferencia', { contaId: 'po', contaDestinoId: 'cc', valor: 50000 });
+  e = await estado.calcular();
+  const p = previstoDeCc(e);
+  igual([p.previsto, p.totalChegam, p.chegam.length, p.chegam[0].origemId], [30000, 50000, 1, 'po'], 'a transferência agendada cobre: −200 + 500 = 300');
+  igual(previsto.saldoPrevisto(e, 'cc', '2027-03-10', new Set(['cc', 'po'])).totalChegam, 0, 'no Geral, entre contas do mesmo conjunto não conta');
+  function previstoDeCc(est) { return previsto.saldoPrevisto(est, 'cc', '2027-03-10'); }
+});
+
 async function limpar() {
   db.usarBanco(BANCO_DE_TESTE);
   await db.apagarTudo();

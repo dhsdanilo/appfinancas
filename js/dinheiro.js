@@ -625,6 +625,8 @@ function pintarResumoDeCaixa(contas) {
       faturas: [{ cartao: { nome: 'faturas' }, valor: previstos.reduce((t, x) => t + x.p.faturas.reduce((u, f) => u + f.valor, 0), 0) }]
         .filter((f) => f.valor > 0),
       aSair: previstos.reduce((t, x) => t + x.p.aSair, 0),
+      chegam: previstos.flatMap((x) => x.p.chegam),
+      totalChegam: previstos.reduce((t, x) => t + x.p.totalChegam, 0),
       partes: {
         recorrentes: previstos.reduce((t, x) => t + x.p.partes.recorrentes, 0),
         agendados: previstos.reduce((t, x) => t + x.p.partes.agendados, 0),
@@ -688,7 +690,7 @@ function blocoDeCaixa(nome, p, total = false, conta = null, aEntrar = null, faix
     faixasSemCofrinho.push(`<div class="saldo-provisionado ${sp < 0 ? 'negativo' : ''}"><span class="rotulo-numero">saldo provisionado</span><strong>${sp < 0 ? '−' : ''}${formatar(Math.abs(sp))}</strong></div>`);
   }
 
-  const temPrevisao = p.faturas.length || p.aSair > 0 || proximas.length || entra;
+  const temPrevisao = p.faturas.length || p.aSair > 0 || proximas.length || entra || p.chegam?.length;
   const prev = p.previsto;
   const previstoHTML = temPrevisao
     ? `<div class="saldo-previsto ${prev < 0 ? 'negativo' : ''}">
@@ -699,11 +701,12 @@ function blocoDeCaixa(nome, p, total = false, conta = null, aEntrar = null, faix
 
   // O que ainda entra, e o previsto com isso: o alívio ao lado do aperto (D31).
   let aEntrarHTML = '';
-  if (entra) {
+  // O que já está no previsto (as transferências que chegam) não precisa de uma linha só para repetir o número.
+  if (entra && entra.total - Math.min(entra.chegam, p.totalChegam ?? 0) > 0) {
     const itens = entra.liquidos.map((x) => numeroEmLinha(`salário ${x.folha.nome} · ${diaCurto(x.data)}`, `+${x.estimado ? '~' : ''}${formatar(x.valor)}`, { conta: x.folha.id, mes: x.data.slice(0, 7) }));
     if (entra.receitas > 0) itens.push(numeroEmLinha('receitas', `+${entra.estimado ? '~' : ''}${formatar(entra.receitas)}`));
-    if (entra.chegam > 0) itens.push(numeroEmLinha('chega de outras contas', `+${formatar(entra.chegam)}`));
-    const comRenda = p.previsto + entra.total;
+    // As transferências que chegam já estão no previsto (ficam em "chega até"): não contam de novo.
+    const comRenda = p.previsto + entra.total - Math.min(entra.chegam, p.totalChegam ?? 0);
     itens.push(numeroEmLinha('previsto com a renda', `${comRenda < 0 ? '−' : ''}${p.estimado || entra.estimado ? '~' : ''}${formatar(Math.abs(comRenda))}`, null, 'com-renda'));
     aEntrarHTML = `<p class="composicao"><span class="chave">ainda entra</span> ${itens.join('')}</p>`;
   }
@@ -741,6 +744,7 @@ function blocoDeCaixa(nome, p, total = false, conta = null, aEntrar = null, faix
       ${previstoHTML}
     </div>
     ${aSair.length ? `<p class="composicao"><span class="chave">a sair até ${diaCurto(p.ate)}</span> ${aSair.join('')}</p>` : ''}
+    ${p.chegam?.length ? `<p class="composicao"><span class="chave">chega até ${diaCurto(p.ate)}</span> ${p.chegam.map((x) => numeroEmLinha(`de ${app.contas[x.origemId]?.nome ?? 'outra conta'} · ${diaCurto(x.data)}`, `+${formatar(x.valor)}`, { conta: x.origemId, mes: x.data.slice(0, 7) })).join('')}</p>` : ''}
     ${aEntrarHTML}
     ${repasse}
     ${movimento}
@@ -1561,6 +1565,7 @@ function cardDoAtivo(p, donos) {
       <span class="base-card-ativo"><span><span class="valor-card-ativo">${p.estimado && p.valorAtual ? '~' : ''}${formatar(p.valorAtual)}</span><span class="fino">${escapar(nota)}</span></span>${linhaDoRendimento(p)}</span>
     </button>
     ${fatias.length ? `<div class="donos-card">${fatias.join('')}</div>` : ''}
+    ${a.arquivado ? `<div class="acoes-card-ativo"><button type="button" class="elo" data-desarquivar-ativo="${escapar(a.id)}">desarquivar</button></div>` : ''}
   </article>`;
 }
 
@@ -2296,6 +2301,12 @@ document.addEventListener('click', async (e) => {
     confirmar.disabled = true;
     amortizando = null;
     await amortizar(app, { ...pedido, modo: confirmar.dataset.amConfirmar });
+    return;
+  }
+  const desarquivar = e.target.closest('[data-desarquivar-ativo]');
+  if (desarquivar) {
+    await estado.aplicarEvento('ativo.arquivado', { id: desarquivar.dataset.desarquivarAtivo, arquivado: false });
+    await pintar();
     return;
   }
   const abrirAtivo = e.target.closest('[data-ativo-abrir]');

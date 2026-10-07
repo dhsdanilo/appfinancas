@@ -273,8 +273,10 @@ export function valorDaSerie(r, daSerie, data = hoje()) {
  *   − recorrentes e agendados até o fim do mês
  *   = saldo previsto
  *
- * Só subtrai: receita futura não entra, porque dinheiro que ainda não chegou
- * não deve parecer disponível.
+ * Só subtrai, com uma exceção: a TRANSFERÊNCIA que ele mesmo agendou, de outra conta
+ * dele para esta, entra (é a movimentação que ele vai fazer de verdade para cobrir o
+ * saldo). Receita e salário futuros não entram, porque dinheiro que ainda não chegou
+ * não deve parecer disponível (eles aparecem à parte, em "ainda entra").
  */
 export function saldoPrevisto(estado, contaId, dia = hoje(), ids = null) {
   const real = saldoReal(estado, contaId);
@@ -322,6 +324,15 @@ export function saldoPrevisto(estado, contaId, dia = hoje(), ids = null) {
     }
   }
 
+  // Transferências agendadas de outra conta dele que chegam a esta até o fim do mês: o que já
+  // venceu e não foi confirmado também conta, como no "a sair". A de uma folha é salário (à parte).
+  const chegam = [];
+  const vemDeFora = (origemId) => origemId !== contaId && !interna(origemId) && estado.contas[origemId]?.tipo !== 'folha';
+  for (const l of visiveis(estado, dia)) {
+    if (l.confirmado || l.tipo !== 'transferencia' || l.contaDestinoId !== contaId || l.dataCaixa > ate || !vemDeFora(l.contaId)) continue;
+    chegam.push({ origemId: l.contaId, valor: l.valor, data: l.dataCaixa });
+  }
+
   // Recorrentes: as da própria conta e as dos cartões que ela paga.
   const cartoes = new Set(faturasDaConta.map((f) => f.cartao.id));
   for (const c of Object.values(estado.contas)) {
@@ -329,6 +340,10 @@ export function saldoPrevisto(estado, contaId, dia = hoje(), ids = null) {
   }
   let estimado = false;
   for (const o of ocorrenciasPrevistas(estado, inicioDoMes(dia), ate, dia)) {
+    if (o.tipo === 'transferencia' && o.contaDestinoId === contaId && vemDeFora(o.contaId)) {
+      chegam.push({ origemId: o.contaId, valor: o.valor, data: o.dataCaixa, recorrente: true });
+      continue;
+    }
     if (o.contaId !== contaId && !cartoes.has(o.contaId)) continue;
     if (interna(o.contaDestinoId)) continue;
     const saida = sinalDeSaida(o);
@@ -351,17 +366,21 @@ export function saldoPrevisto(estado, contaId, dia = hoje(), ids = null) {
   const totalFaturas = faturasDaConta.reduce((t, f) => t + f.valor, 0);
   const listaProximas = [...proximas.values()].filter((x) => x.valor + x.recorrentes > 0);
   const totalProximas = listaProximas.reduce((t, x) => t + x.valor + x.recorrentes, 0);
+  chegam.sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : 0));
+  const totalChegam = chegam.reduce((t, x) => t + x.valor, 0);
   return {
     real,
     faturas: faturasDaConta,
     proximas: listaProximas,
     totalProximas,
-    provisionado: real - totalFaturas - aSair - totalProximas,
+    provisionado: real - totalFaturas - aSair + totalChegam - totalProximas,
     aSair,
+    chegam,
+    totalChegam,
     partes,
     ate,
     estimado,
-    previsto: real - totalFaturas - aSair,
+    previsto: real - totalFaturas - aSair + totalChegam,
   };
 }
 
