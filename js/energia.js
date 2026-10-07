@@ -9,6 +9,7 @@ import {
   calculoDoMes, mesesDeEnergia, resumoDeEnergia, tarifaDeTexto, tarifaParaTexto, kwhDeTexto,
 } from './core/energia.js';
 import { linhas as graficoDeLinhas, cor } from './app/graficos.js';
+import { ligarSeletorDeMes } from './app/seletor-mes.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -134,6 +135,16 @@ let confirmaApagar = false;
 
 const campos = () => $('f-energia').elements;
 
+// O mês da fatura: o seletor de meses (sem dia), com ponto nos meses que já têm registro.
+const avisoDeExistente = () => {
+  const mes = campos().mes.value;
+  $('en-existe').hidden = !(mes && app?.energia?.[mes] && mes !== editando);
+};
+const seletor = ligarSeletorDeMes($('en-mes'), {
+  aoMudar: avisoDeExistente,
+  marcados: () => new Set(Object.keys(app?.energia ?? {})),
+});
+
 function lerRegistro() {
   const f = campos();
   const dinheiro = (t) => (t.trim() ? Math.abs(deTexto(t)) : 0);
@@ -170,7 +181,8 @@ function abrir(mes = null) {
   // Um mês novo: o seguinte ao último registrado (ou o atual), com as tarifas do último como ponto de partida.
   const ultimo = todos[todos.length - 1]?.registro;
   const base = existente ?? (ultimo ? { te6: ultimo.te6, tusd6: ultimo.tusd6, bandeira6: ultimo.bandeira6, ilum: ultimo.ilum } : {});
-  f.mes.value = existente ? existente.mes : ultimo ? somarMeses(`${ultimo.mes}-01`, 1).slice(0, 7) : hoje().slice(0, 7);
+  seletor.definir(existente ? existente.mes : ultimo ? somarMeses(`${ultimo.mes}-01`, 1).slice(0, 7) : hoje().slice(0, 7));
+  avisoDeExistente();
   f.consumo.value = existente ? campoKwh(existente.consumo) : '';
   f.injetado.value = existente ? campoKwh(existente.injetado) : '';
   f.producao.value = existente ? campoKwh(existente.producao) : '';
@@ -185,7 +197,7 @@ function abrir(mes = null) {
   $('en-aviso').hidden = true;
   pintarPrevia();
   $('dialogo-energia').showModal();
-  (existente ? f.consumo : f.consumo).focus();
+  f.consumo.focus();
 }
 
 const avisar = (t) => { $('en-aviso').textContent = t; $('en-aviso').hidden = !t; };

@@ -386,9 +386,14 @@
 <dialog id="dialogo-energia" class="dialogo-ciclo" data-area="energia" aria-labelledby="titulo-energia">
   <form class="formulario" id="f-energia" method="dialog">
     <p class="titulo-bloco" id="titulo-energia">Novo registro do mês</p>
-    <div class="campo">
-      <label for="en-mes">Mês da fatura</label>
-      <input type="month" id="en-mes" name="mes" required>
+    <div class="campo largo">
+      <span class="rotulo" id="en-mes-rotulo">Mês da fatura</span>
+      <div class="seletor-mes" id="en-mes">
+        <input type="hidden" name="mes">
+        <button type="button" class="seletor-mes-botao" aria-labelledby="en-mes-rotulo"></button>
+        <div class="seletor-mes-painel" hidden></div>
+      </div>
+      <p class="nota" id="en-existe" hidden>Este mês já tem registro: ao salvar, ele é substituído.</p>
     </div>
     <p class="titulo-bloco">leituras · kWh</p>
     <div class="campo">

@@ -1621,3 +1621,18 @@ a.dono-ativo:hover { text-decoration: underline; }
 .previa-energia .positivo { color: var(--positivo); }
 .previa-energia .negativo { color: var(--alerta); }
 #dialogo-energia .opcional { color: var(--tinta-fraca); font-weight: 400; }
+/* O seletor de mês (só mês e ano): o botão e a grade dos 12 meses logo abaixo. */
+.seletor-mes { display: flex; flex-direction: column; gap: var(--e2); }
+.seletor-mes-botao { display: flex; justify-content: space-between; align-items: center; width: 100%; min-height: 44px; padding: 0 var(--e3); border: 1px solid var(--borda); border-radius: var(--raio-controle); background: transparent; color: var(--tinta); font: inherit; text-align: left; cursor: pointer; }
+.seletor-mes-botao:hover { border-color: var(--acento); }
+.seletor-mes-painel { border: 1px solid var(--borda); border-radius: var(--raio-cartao); padding: var(--e3); background: var(--superficie); }
+.seletor-mes-painel[hidden] { display: none; }
+.seletor-ano { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--e2); }
+.seletor-ano button { flex: none; width: 40px; min-width: 40px; height: 40px; min-height: 40px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--tinta); font-size: 1.2rem; cursor: pointer; }
+.seletor-ano button:hover { background: var(--acento-fundo); }
+.seletor-grade { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--e2); }
+.seletor-grade button { position: relative; min-height: 44px; padding: 0; border: 1px solid transparent; border-radius: var(--raio-controle); background: transparent; color: var(--tinta); font: inherit; text-transform: capitalize; cursor: pointer; }
+.seletor-grade button:hover { background: var(--acento-fundo); }
+.seletor-grade button.este-mes { border-color: var(--borda); }
+.seletor-grade button[aria-pressed="true"] { background: var(--area, var(--acento)); border-color: var(--area, var(--acento)); color: #fff; font-weight: 600; }
+.seletor-grade button.registrado::after { content: ""; position: absolute; left: 50%; bottom: 5px; width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%; background: currentColor; opacity: 0.55; }
