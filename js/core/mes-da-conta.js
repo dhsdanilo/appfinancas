@@ -81,7 +81,7 @@ export function extratoDoMes(estado, ids, mes) {
  *
  * { liquidos: [{ folha, valor, data, estimado }], receitas, chegam, total, estimado }
  */
-export function entradasPrevistas(estado, ids, de, ate, dia = hoje()) {
+export function entradasPrevistas(estado, ids, de, ate, dia = hoje(), ignorarOrigem = null) {
   const liquidos = [];
   let receitas = 0;
   let chegam = 0;
@@ -105,6 +105,8 @@ export function entradasPrevistas(estado, ids, de, ate, dia = hoje()) {
     const daqui = ids.has(l.contaId);
     const praCa = ids.has(l.contaDestinoId);
     if (daqui && praCa) continue;
+    // Do mesmo conjunto (no Geral): o dinheiro só muda de conta, não chega de fora.
+    if (praCa && ignorarOrigem?.has(l.contaId)) continue;
     if (daqui && sinalDeSaida(l) < 0) receitas += l.valor;
     else if (praCa && ehFolha(estado, l.contaId)) {
       liquidos.push({ folha: estado.contas[l.contaId], valor: l.valor, data: l.dataCaixa, estimado: false });
@@ -118,6 +120,7 @@ export function entradasPrevistas(estado, ids, de, ate, dia = hoje()) {
     const daqui = ids.has(o.contaId);
     const praCa = ids.has(o.contaDestinoId);
     if (daqui && praCa) continue;
+    if (praCa && ignorarOrigem?.has(o.contaId)) continue;
     if (daqui && sinalDeSaida(o) < 0) receitas += o.valor;
     else if (praCa) chegam += o.valor;
     else continue;

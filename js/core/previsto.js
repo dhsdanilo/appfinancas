@@ -9,6 +9,7 @@
 import { hoje, inicioDoMes, fimDoMes, diaNoMes, proximoMes, somarMeses } from './datas.js';
 import { temCiclo, cicloDaCompra, vencimentoDoCiclo } from './cartao.js';
 import { visiveis, lancados, parcelasPorVir, saldoReal, sinalDeSaida } from './lancamentos.js';
+import { entradasPrevistas } from './mes-da-conta.js';
 
 // ── faturas ───────────────────────────────────────────────────────────────
 
@@ -271,12 +272,11 @@ export function valorDaSerie(r, daSerie, data = hoje()) {
  *   saldo real
  *   − cada fatura que ela paga (fechada + aberta, ainda não pagas)
  *   − recorrentes e agendados até o fim do mês
+ *   + o que está previsto entrar até o fim do mês (salário líquido, receitas, transferências)
  *   = saldo previsto
  *
- * Só subtrai, com uma exceção: a TRANSFERÊNCIA que ele mesmo agendou, de outra conta
- * dele para esta, entra (é a movimentação que ele vai fazer de verdade para cobrir o
- * saldo). Receita e salário futuros não entram, porque dinheiro que ainda não chegou
- * não deve parecer disponível (eles aparecem à parte, em "ainda entra").
+ * Previsto é TUDO o que está previsto, entrada e saída tratadas por igual (pedido dele,
+ * 07/10/2026): a pergunta é quanto sobra na conta no fim do mês.
  */
 export function saldoPrevisto(estado, contaId, dia = hoje(), ids = null) {
   const real = saldoReal(estado, contaId);
@@ -324,15 +324,6 @@ export function saldoPrevisto(estado, contaId, dia = hoje(), ids = null) {
     }
   }
 
-  // Transferências agendadas de outra conta dele que chegam a esta até o fim do mês: o que já
-  // venceu e não foi confirmado também conta, como no "a sair". A de uma folha é salário (à parte).
-  const chegam = [];
-  const vemDeFora = (origemId) => origemId !== contaId && !interna(origemId) && estado.contas[origemId]?.tipo !== 'folha';
-  for (const l of visiveis(estado, dia)) {
-    if (l.confirmado || l.tipo !== 'transferencia' || l.contaDestinoId !== contaId || l.dataCaixa > ate || !vemDeFora(l.contaId)) continue;
-    chegam.push({ origemId: l.contaId, valor: l.valor, data: l.dataCaixa });
-  }
-
   // Recorrentes: as da própria conta e as dos cartões que ela paga.
   const cartoes = new Set(faturasDaConta.map((f) => f.cartao.id));
   for (const c of Object.values(estado.contas)) {
@@ -340,10 +331,6 @@ export function saldoPrevisto(estado, contaId, dia = hoje(), ids = null) {
   }
   let estimado = false;
   for (const o of ocorrenciasPrevistas(estado, inicioDoMes(dia), ate, dia)) {
-    if (o.tipo === 'transferencia' && o.contaDestinoId === contaId && vemDeFora(o.contaId)) {
-      chegam.push({ origemId: o.contaId, valor: o.valor, data: o.dataCaixa, recorrente: true });
-      continue;
-    }
     if (o.contaId !== contaId && !cartoes.has(o.contaId)) continue;
     if (interna(o.contaDestinoId)) continue;
     const saida = sinalDeSaida(o);
@@ -363,24 +350,24 @@ export function saldoPrevisto(estado, contaId, dia = hoje(), ids = null) {
     if (o.estimado) estimado = true;
   }
 
+  // O que ainda vai entrar até o fim do mês: o mesmo "ainda entra" da tela. No Geral, a transferência que
+  // vem de outra conta do mesmo conjunto não é entrada (nem saída: ver `interna` acima).
+  const entradas = entradasPrevistas(estado, new Set([contaId]), inicioDoMes(dia), ate, dia, ids);
   const totalFaturas = faturasDaConta.reduce((t, f) => t + f.valor, 0);
   const listaProximas = [...proximas.values()].filter((x) => x.valor + x.recorrentes > 0);
   const totalProximas = listaProximas.reduce((t, x) => t + x.valor + x.recorrentes, 0);
-  chegam.sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : 0));
-  const totalChegam = chegam.reduce((t, x) => t + x.valor, 0);
   return {
     real,
     faturas: faturasDaConta,
     proximas: listaProximas,
     totalProximas,
-    provisionado: real - totalFaturas - aSair + totalChegam - totalProximas,
+    provisionado: real - totalFaturas - aSair + entradas.total - totalProximas,
+    entradas,
     aSair,
-    chegam,
-    totalChegam,
     partes,
     ate,
-    estimado,
-    previsto: real - totalFaturas - aSair + totalChegam,
+    estimado: estimado || entradas.estimado,
+    previsto: real - totalFaturas - aSair + entradas.total,
   };
 }
 

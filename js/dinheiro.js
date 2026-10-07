@@ -625,8 +625,6 @@ function pintarResumoDeCaixa(contas) {
       faturas: [{ cartao: { nome: 'faturas' }, valor: previstos.reduce((t, x) => t + x.p.faturas.reduce((u, f) => u + f.valor, 0), 0) }]
         .filter((f) => f.valor > 0),
       aSair: previstos.reduce((t, x) => t + x.p.aSair, 0),
-      chegam: previstos.flatMap((x) => x.p.chegam),
-      totalChegam: previstos.reduce((t, x) => t + x.p.totalChegam, 0),
       partes: {
         recorrentes: previstos.reduce((t, x) => t + x.p.partes.recorrentes, 0),
         agendados: previstos.reduce((t, x) => t + x.p.partes.agendados, 0),
@@ -690,7 +688,7 @@ function blocoDeCaixa(nome, p, total = false, conta = null, aEntrar = null, faix
     faixasSemCofrinho.push(`<div class="saldo-provisionado ${sp < 0 ? 'negativo' : ''}"><span class="rotulo-numero">saldo provisionado</span><strong>${sp < 0 ? '−' : ''}${formatar(Math.abs(sp))}</strong></div>`);
   }
 
-  const temPrevisao = p.faturas.length || p.aSair > 0 || proximas.length || entra || p.chegam?.length;
+  const temPrevisao = p.faturas.length || p.aSair > 0 || proximas.length || entra;
   const prev = p.previsto;
   const previstoHTML = temPrevisao
     ? `<div class="saldo-previsto ${prev < 0 ? 'negativo' : ''}">
@@ -699,16 +697,13 @@ function blocoDeCaixa(nome, p, total = false, conta = null, aEntrar = null, faix
       </div>`
     : '';
 
-  // O que ainda entra, e o previsto com isso: o alívio ao lado do aperto (D31).
+  // O que entra até o fim do mês: já está no previsto; a linha só mostra de onde vem.
   let aEntrarHTML = '';
-  // O que já está no previsto (as transferências que chegam) não precisa de uma linha só para repetir o número.
-  if (entra && entra.total - Math.min(entra.chegam, p.totalChegam ?? 0) > 0) {
+  if (entra) {
     const itens = entra.liquidos.map((x) => numeroEmLinha(`salário ${x.folha.nome} · ${diaCurto(x.data)}`, `+${x.estimado ? '~' : ''}${formatar(x.valor)}`, { conta: x.folha.id, mes: x.data.slice(0, 7) }));
     if (entra.receitas > 0) itens.push(numeroEmLinha('receitas', `+${entra.estimado ? '~' : ''}${formatar(entra.receitas)}`));
-    // As transferências que chegam já estão no previsto (ficam em "chega até"): não contam de novo.
-    const comRenda = p.previsto + entra.total - Math.min(entra.chegam, p.totalChegam ?? 0);
-    itens.push(numeroEmLinha('previsto com a renda', `${comRenda < 0 ? '−' : ''}${p.estimado || entra.estimado ? '~' : ''}${formatar(Math.abs(comRenda))}`, null, 'com-renda'));
-    aEntrarHTML = `<p class="composicao"><span class="chave">ainda entra</span> ${itens.join('')}</p>`;
+    if (entra.chegam > 0) itens.push(numeroEmLinha('chega de outras contas', `+${formatar(entra.chegam)}`));
+    aEntrarHTML = `<p class="composicao"><span class="chave">a entrar até ${diaCurto(p.ate)}</span> ${itens.join('')}</p>`;
   }
 
   // Quem comprou no cartão de outra pessoa: o que ainda é dela repassar e o que
@@ -744,7 +739,6 @@ function blocoDeCaixa(nome, p, total = false, conta = null, aEntrar = null, faix
       ${previstoHTML}
     </div>
     ${aSair.length ? `<p class="composicao"><span class="chave">a sair até ${diaCurto(p.ate)}</span> ${aSair.join('')}</p>` : ''}
-    ${p.chegam?.length ? `<p class="composicao"><span class="chave">chega até ${diaCurto(p.ate)}</span> ${p.chegam.map((x) => numeroEmLinha(`de ${app.contas[x.origemId]?.nome ?? 'outra conta'} · ${diaCurto(x.data)}`, `+${formatar(x.valor)}`, { conta: x.origemId, mes: x.data.slice(0, 7) })).join('')}</p>` : ''}
     ${aEntrarHTML}
     ${repasse}
     ${movimento}

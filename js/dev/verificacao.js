@@ -1150,8 +1150,8 @@ caso('previsto', 'saldo previsto = real − faturas − recorrentes e agendados'
   let e = await estado.calcular();
   let p = previsto.saldoPrevisto(e, 'k1', dia);
   igual([p.real, p.faturas.map((f) => f.valor), p.aSair, p.previsto, p.totalProximas, p.provisionado, p.ate],
-    [100000, [], 20000, 80000, 20000, 60000, '2027-03-31'],
-    'a fatura aberta vence em abril: é a próxima fatura, pesa só no provisionado; receita futura não entra');
+    [100000, [], 20000, 380000, 20000, 360000, '2027-03-31'],
+    'a fatura aberta vence em abril: é a próxima fatura, pesa só no provisionado; o salário previsto (3.000) entra igual às despesas');
 
   // Lançada a ocorrência do mês, ela deixa de ser prevista.
   await estado.aplicarEvento('lancamento.registrado', {
@@ -2621,22 +2621,25 @@ caso('dívida', 'o valor para quitar sai dos juros do contrato, não do valor to
   igual([foto.saldoDevedor, foto.estimado], [650000, false], 'o saldo que o banco mostra continua mandando');
 });
 
-caso('saldo previsto', 'a transferência agendada de outra conta dele conta no previsto; salário e conta do mesmo conjunto, não', async () => {
+caso('saldo previsto', 'previsto é tudo o que está previsto: entrada e saída por igual, e entre contas do mesmo conjunto nada muda', async () => {
   await limpar();
   await log.registrarAparelho('meu-pc');
   const ev = (t, d) => estado.aplicarEvento(t, d);
   await ev('conta.criada', { id: 'cc', nome: 'Corrente', tipo: 'corrente', saldoInicial: 100000, dataInicial: '2027-01-01' });
   await ev('conta.criada', { id: 'po', nome: 'Poupança', tipo: 'corrente', saldoInicial: 500000, dataInicial: '2027-01-01' });
   const agendado = (id, tipo, extra) => ev('lancamento.registrado', { id, tipo, dataCompetencia: '2027-03-20', dataCaixa: '2027-03-20', confirmado: false, ...extra });
+  const previstoDeCc = (ids = null) => previsto.saldoPrevisto(e, 'cc', '2027-03-10', ids);
+  let e;
   await agendado('desp', 'despesa', { contaId: 'cc', valor: 120000 });
-  let e = await estado.calcular();
-  igual(previstoDeCc(e).previsto, -20000, 'só a despesa agendada: o previsto fica negativo');
+  e = await estado.calcular();
+  igual(previstoDeCc().previsto, -20000, 'só a despesa prevista: 1.000 − 1.200');
+  await agendado('rec', 'receita', { contaId: 'cc', valor: 80000 });
+  e = await estado.calcular();
+  igual(previstoDeCc().previsto, 60000, 'a receita prevista entra igual à despesa: 1.000 − 1.200 + 800');
   await agendado('trf', 'transferencia', { contaId: 'po', contaDestinoId: 'cc', valor: 50000 });
   e = await estado.calcular();
-  const p = previstoDeCc(e);
-  igual([p.previsto, p.totalChegam, p.chegam.length, p.chegam[0].origemId], [30000, 50000, 1, 'po'], 'a transferência agendada cobre: −200 + 500 = 300');
-  igual(previsto.saldoPrevisto(e, 'cc', '2027-03-10', new Set(['cc', 'po'])).totalChegam, 0, 'no Geral, entre contas do mesmo conjunto não conta');
-  function previstoDeCc(est) { return previsto.saldoPrevisto(est, 'cc', '2027-03-10'); }
+  igual(previstoDeCc().previsto, 110000, 'a transferência agendada que chega também: + 500');
+  igual(previstoDeCc(new Set(['cc', 'po'])).previsto, 60000, 'no Geral, a transferência entre as contas do conjunto não é entrada');
 });
 
 async function limpar() {
