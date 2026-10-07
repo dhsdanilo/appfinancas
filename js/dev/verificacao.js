@@ -27,6 +27,7 @@ import * as pendencias from '../core/pendencias.js';
 import { categoriaNaArea, areasParaConta } from '../app/areas.js';
 import * as holerite from '../core/holerite.js';
 import * as divida from '../core/divida.js';
+import * as energia from '../core/energia.js';
 import * as contratoPuro from '../core/contrato.js';
 import * as investimentos from '../core/investimentos.js';
 import * as envelopes from '../core/envelopes.js';
@@ -2640,6 +2641,41 @@ caso('saldo previsto', 'previsto é tudo o que está previsto: entrada e saída 
   e = await estado.calcular();
   igual(previstoDeCc().previsto, 110000, 'a transferência agendada que chega também: + 500');
   igual(previstoDeCc(new Set(['cc', 'po'])).previsto, 60000, 'no Geral, a transferência entre as contas do conjunto não é entrada');
+});
+
+caso('energia', 'a conta do mês: consumo real = rede + produzido − injetado; custo integral; economia', async () => {
+  // Os números de uma fatura de verdade (setembro): 925 kWh da rede, 229 injetados, TE, TUSD, bandeira e iluminação.
+  const mes = {
+    mes: '2026-09', consumo: 925, injetado: 229, producao: 600,
+    te6: 338941, tusd6: 527568, bandeira6: 19943, ilum: 2139, conta: 66718,
+  };
+  const c = energia.calculoDoMes(mes);
+  igual([c.diretoFV, c.consumoReal, c.tarifa6, c.faturado], [371, 1296, 886452, 696], 'direto 600−229; real 925+371; tarifa TE+TUSD+bandeira');
+  igual(c.custoEnergia, Math.round((1296 * 886452) / 10000), 'custo da energia: 1.296 kWh × R$ 0,886452');
+  igual([c.custoIntegral, c.economia], [c.custoEnergia + 2139, c.custoEnergia + 2139 - 66718], 'custo integral soma a iluminação; economia = custo integral − conta paga');
+  igual(energia.calculoDoMes({ ...mes, conta: null }).economia, null, 'sem a conta paga, sem economia');
+  igual(energia.calculoDoMes({ ...mes, producao: null }), null, 'sem a produção não há conta');
+  const torto = energia.calculoDoMes({ ...mes, producao: 100 });
+  igual([torto.inconsistente, torto.diretoFV, torto.consumoReal], [true, 0, 925], 'injetou mais do que produziu: avisa e não inventa consumo');
+  igual([energia.tarifaDeTexto('0,338941'), energia.tarifaDeTexto('0,52'), energia.tarifaDeTexto('')], [338941, 520000, 0], 'a tarifa digitada em milionésimos de real');
+  igual([energia.kwhDeTexto('1.296,5'), energia.kwhDeTexto('925'), energia.kwhDeTexto('')], [1296.5, 925, null], 'o kWh digitado');
+});
+
+caso('energia', 'o registro do mês entra no estado, o último do mesmo mês vale, e dá para apagar', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const reg = (d) => estado.aplicarEvento('energia.registrada', d);
+  await reg({ mes: '2026-08', consumo: 800, injetado: 200, producao: 500, te6: 330000, tusd6: 520000, ilum: 2100 });
+  await reg({ mes: '2026-09', consumo: 925, injetado: 229, producao: 600, te6: 338941, tusd6: 527568, bandeira6: 19943, ilum: 2139, conta: 66718 });
+  await reg({ mes: '2026-09', consumo: 900, injetado: 229, producao: 600, te6: 338941, tusd6: 527568, bandeira6: 19943, ilum: 2139, conta: 66718 });
+  let e = await estado.calcular();
+  igual(energia.mesesDeEnergia(e).map((x) => [x.registro.mes, x.registro.consumo]), [['2026-08', 800], ['2026-09', 900]], 'um por mês, em ordem; regravar corrige');
+  const p = energia.resumoDeEnergia(energia.periodoDeEnergia(e, null, '2026-09'));
+  igual([p.meses, p.mesesComConta, p.consumo], [2, 1, 1700], 'o resumo conta os dois meses; a economia só onde há conta paga');
+  igual(energia.periodoDeEnergia(e, '2026-09', '2026-09').length, 1, 'o período recorta os meses');
+  await estado.aplicarEvento('energia.removida', { mes: '2026-08' });
+  e = await estado.calcular();
+  igual(energia.mesesDeEnergia(e).map((x) => x.registro.mes), ['2026-09'], 'apagado');
 });
 
 async function limpar() {

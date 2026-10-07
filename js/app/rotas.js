@@ -17,6 +17,7 @@ const TELAS = {
   // Um ativo de investimento (#/ativo/<id>): a página de leitura dele.
   ativo: { grupo: 'ativo', titulo: 'Ativo', sub: 'Resumo, gráfico e detalhes.' },
   envelopes: { grupo: 'envelopes', titulo: 'Envelopes', sub: 'O dinheiro guardado, e de quem ele é.' },
+  energia: { grupo: 'energia', titulo: 'Energia', sub: 'O sistema fotovoltaico, mês a mês: quanto a luz custaria sem ele.' },
   relatorios: { grupo: 'relatorios', titulo: 'Relatórios', sub: 'Em que foi, quando aperta, para onde vai e se estamos melhorando.' },
   configuracoes: {
     grupo: 'configuracoes',

@@ -1601,3 +1601,23 @@ a.dono-ativo:hover { text-decoration: underline; }
 .taxas-contrato { margin-top: var(--e3); }
 .taxas-contrato .linha-detalhe.economia span:last-child { color: var(--positivo); }
 .acoes-card-ativo { padding: 0 var(--e4) var(--e3); }
+
+/* Energia (sistema fotovoltaico). */
+.topo-energia { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--e2); margin: 0 0 var(--e3); }
+.rolagem-energia { overflow-x: auto; margin-top: var(--e3); }
+.tabela-energia { width: 100%; border-collapse: collapse; font-size: var(--t-apoio); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tabela-energia th, .tabela-energia td { padding: var(--e2) var(--e2); text-align: right; border-bottom: 1px solid var(--borda); }
+.tabela-energia th:first-child, .tabela-energia td:first-child { text-align: left; }
+.tabela-energia th { color: var(--tinta-fraca); font-weight: 400; }
+.tabela-energia tbody tr { cursor: pointer; }
+.tabela-energia tbody tr:hover { background: var(--acento-fundo); }
+.tabela-energia tfoot td { font-weight: 600; border-bottom: 0; }
+.tabela-energia td.positivo { color: var(--positivo); }
+.tabela-energia td.negativo { color: var(--alerta); }
+.tabela-energia tr.incompleto td { color: var(--tinta-fraca); text-align: left; }
+.aviso-mini { color: var(--alerta); font-weight: 600; }
+.previa-energia { display: flex; flex-wrap: wrap; gap: var(--e1) var(--e4); margin: var(--e2) 0; padding: var(--e2) var(--e3); border-radius: var(--raio-controle); background: var(--fundo); font-size: var(--t-apoio); color: var(--tinta-fraca); }
+.previa-energia strong { color: var(--tinta); }
+.previa-energia .positivo { color: var(--positivo); }
+.previa-energia .negativo { color: var(--alerta); }
+#dialogo-energia .opcional { color: var(--tinta-fraca); font-weight: 400; }

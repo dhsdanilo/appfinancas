@@ -64,6 +64,13 @@
   </section>
 </div>
 
+<!-- ── energia: o sistema fotovoltaico, mês a mês ────────────────────── -->
+<div data-grupo="energia" hidden>
+  <section class="cartao painel" id="painel-energia" data-area="energia">
+    <div id="corpo-energia"></div>
+  </section>
+</div>
+
 <!-- ── relatórios (design/12) ─────────────────────────────────────────── -->
 <div data-grupo="relatorios" hidden>
   <section class="cartao painel" id="painel-relatorios" data-area="relatorios">
@@ -376,6 +383,61 @@
   </form>
 </dialog>
 
+<dialog id="dialogo-energia" class="dialogo-ciclo" data-area="energia" aria-labelledby="titulo-energia">
+  <form class="formulario" id="f-energia" method="dialog">
+    <p class="titulo-bloco" id="titulo-energia">Novo registro do mês</p>
+    <div class="campo">
+      <label for="en-mes">Mês da fatura</label>
+      <input type="month" id="en-mes" name="mes" required>
+    </div>
+    <p class="titulo-bloco">leituras · kWh</p>
+    <div class="campo">
+      <label for="en-consumo">Consumo da concessionária</label>
+      <input type="text" id="en-consumo" name="consumo" inputmode="decimal" autocomplete="off" placeholder="925">
+    </div>
+    <div class="campo">
+      <label for="en-injetado">Injetado na rede</label>
+      <input type="text" id="en-injetado" name="injetado" inputmode="decimal" autocomplete="off" placeholder="229">
+    </div>
+    <div class="campo">
+      <label for="en-producao">Produzido pelo sistema (inversor)</label>
+      <input type="text" id="en-producao" name="producao" inputmode="decimal" autocomplete="off" placeholder="600">
+    </div>
+    <p class="titulo-bloco">tarifas · "preço unit. com tributos" da fatura</p>
+    <div class="campo">
+      <label for="en-te">TE (R$/kWh)</label>
+      <input type="text" id="en-te" name="te" inputmode="decimal" autocomplete="off" placeholder="0,338941">
+    </div>
+    <div class="campo">
+      <label for="en-tusd">TUSD (R$/kWh)</label>
+      <input type="text" id="en-tusd" name="tusd" inputmode="decimal" autocomplete="off" placeholder="0,527568">
+    </div>
+    <div class="campo">
+      <label for="en-bandeira">Bandeira (R$/kWh) <span class="opcional">· opcional</span></label>
+      <input type="text" id="en-bandeira" name="bandeira" inputmode="decimal" autocomplete="off" placeholder="0,019943">
+    </div>
+    <div class="campo">
+      <label for="en-ilum">Iluminação pública (R$) <span class="opcional">· opcional</span></label>
+      <input type="text" id="en-ilum" name="ilum" inputmode="decimal" autocomplete="off" placeholder="21,39">
+    </div>
+    <div class="campo">
+      <label for="en-conta">Conta paga (R$) <span class="opcional">· opcional</span></label>
+      <input type="text" id="en-conta" name="conta" inputmode="decimal" autocomplete="off" placeholder="667,18">
+    </div>
+    <p class="previa-energia" id="en-previa" hidden></p>
+    <p class="aviso erro" id="en-aviso" hidden></p>
+    <div class="campo acao">
+      <button type="submit" class="principal" value="salvar">Salvar</button>
+    </div>
+    <div class="campo acao">
+      <button type="submit" value="cancelar" formnovalidate>Cancelar</button>
+    </div>
+    <p class="zona-perigo fim-contrato">
+      <button type="button" class="elo perigo" id="en-apagar" hidden>apagar este mês</button>
+    </p>
+  </form>
+</dialog>
+
 <dialog id="dialogo-recorrencia" class="dialogo-ciclo" aria-labelledby="titulo-recorrencia">
   <form class="formulario" id="f-recorrencia">
     <p class="titulo-bloco" id="titulo-recorrencia">Nova recorrência</p>
@@ -481,6 +543,7 @@
   await import('./js/dinheiro.js');
   await import('./js/envelopes.js');
   await import('./js/relatorios.js');
+  await import('./js/energia.js');
   await import('./js/regras.js');
   await import('./js/gestao.js');
   await import('./js/recorrencias.js');

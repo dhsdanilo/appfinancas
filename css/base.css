@@ -40,6 +40,8 @@
   --area-folha: #5f5e5a;
   /* Envelopes: dinheiro com dono, fora das cinco e dos três tipos. */
   --area-envelopes: #a2386f;
+  /* Energia (sistema fotovoltaico). */
+  --area-energia: #1f7aa8;
 
   /* ── paleta dos gráficos (dataviz, validada no claro e no escuro) ─────── */
   /* A ORDEM é o que garante distinguir as vizinhas com daltonismo: usar
@@ -107,6 +109,7 @@
     --area-dividas: #f0997b;
     --area-folha: #b4b2a9;
     --area-envelopes: #e58bbd;
+    --area-energia: #6cc0e8;
     --serie-1: #3987e5;
     --serie-2: #d95926;
     --serie-3: #199e70;
@@ -126,6 +129,7 @@
 [data-area="dividas"] { --area: var(--area-dividas); }
 [data-area="folha"] { --area: var(--area-folha); }
 [data-area="envelopes"] { --area: var(--area-envelopes); }
+[data-area="energia"] { --area: var(--area-energia); }
 /* Relatórios olham todas as áreas: não têm cor de área, vestem a tinta. */
 [data-area="relatorios"] { --area: var(--tinta-fraca); }
 /* A transferência não é de área nenhuma: é dinheiro trocando de bolso, e leva

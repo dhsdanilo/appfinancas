@@ -25,7 +25,7 @@ export const AREAS_PADRAO = ['caixa', 'cartoes'];
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 25;
+export const VERSAO_ESTADO = 26;
 
 export function estadoVazio() {
   return {
@@ -51,6 +51,9 @@ export function estadoVazio() {
     // As seleções salvas do Explorar (design/14, D32): categorias, etiquetas,
     // descrições e contas com um nome. Só leitura de lançamento, nunca escrita.
     selecoes: {},
+    // Energia (sistema fotovoltaico): um registro por mês (AAAA-MM), digitado à mão — a leitura
+    // da concessionária, o injetado, o produzido e as tarifas. js/core/energia.js faz a conta.
+    energia: {},
     // Fusões feitas, com o que foi movido — é o que permite desfazer (02 §3.15).
     fusoes: {},
     // Tipos de evento que este app não conhece. Não é erro fatal (um aparelho
@@ -367,6 +370,29 @@ export const redutores = {
       data: d.data,
       removida: false,
     };
+  },
+
+  // ── energia (sistema fotovoltaico) ──────────────────────────────────────
+
+  // O mês inteiro de uma vez: gravar de novo o mesmo mês corrige, o último vale.
+  // kWh em número; tarifas em milionésimos de real (te6, tusd6, bandeira6); dinheiro em centavos.
+  'energia.registrada'(e, d) {
+    e.energia ??= {};
+    e.energia[d.mes] = {
+      mes: d.mes,
+      consumo: d.consumo ?? null,
+      injetado: d.injetado ?? null,
+      producao: d.producao ?? null,
+      te6: d.te6 ?? 0,
+      tusd6: d.tusd6 ?? 0,
+      bandeira6: d.bandeira6 ?? 0,
+      ilum: d.ilum ?? 0,
+      conta: d.conta ?? null,
+    };
+  },
+
+  'energia.removida'(e, d) {
+    if (e.energia) delete e.energia[d.mes];
   },
 
   'envelope.alocacaoRemovida'(e, d) {
