@@ -1645,3 +1645,7 @@ a.dono-ativo:hover { text-decoration: underline; }
 .tabela-compromisso th { color: var(--tinta-fraca); font-weight: 400; }
 .tabela-compromisso tr.futuro td { color: var(--tinta-fraca); }
 .alvo-card-envelope.compromisso.ruim { color: var(--alerta); }
+
+/* O carimbo da sincronização nas telas com abas no cabeçalho: fora do fluxo, na faixa livre acima das abas, à
+   direita. Dentro do fluxo ele quebrava para uma linha entre as abas e a caixa e descolava a ficha. */
+body.abas-no-topo .nuvem { position: absolute; top: var(--e1); right: 0; padding-top: 0; z-index: 3; }
