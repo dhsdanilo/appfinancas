@@ -25,7 +25,7 @@ export const AREAS_PADRAO = ['caixa', 'cartoes'];
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 26;
+export const VERSAO_ESTADO = 27;
 
 export function estadoVazio() {
   return {
@@ -54,6 +54,8 @@ export function estadoVazio() {
     // Energia (sistema fotovoltaico): um registro por mês (AAAA-MM), digitado à mão — a leitura
     // da concessionária, o injetado, o produzido e as tarifas. js/core/energia.js faz a conta.
     energia: {},
+    // O vínculo da Energia com um envelope (a economia vira compromisso dele) e com a conta que paga a fatura.
+    energiaConfig: null,
     // Fusões feitas, com o que foi movido — é o que permite desfazer (02 §3.15).
     fusoes: {},
     // Tipos de evento que este app não conhece. Não é erro fatal (um aparelho
@@ -368,6 +370,8 @@ export const redutores = {
       para: d.para ?? null,
       valor: d.valor,
       data: d.data,
+      // Só ao tirar do envelope da Energia: o dinheiro volta a ser cobrado (true) ou não (false); null = não se aplica.
+      repor: d.repor ?? null,
       removida: false,
     };
   },
@@ -390,7 +394,17 @@ export const redutores = {
       bandeira6: d.bandeira6 ?? 0,
       ilum: d.ilum ?? 0,
       conta: d.conta ?? null,
+      // O vencimento da fatura (AAAA-MM-DD): é a data da despesa que o app gera na conta que paga.
+      vencimento: d.vencimento ?? null,
     };
+  },
+
+  // O envelope que "cobra" a economia (e quantos meses depois), a partir de que mês de economia, e a conta em
+  // que a fatura vira despesa agendada. envelopeId nulo desliga o vínculo.
+  'energia.configurada'(e, d) {
+    e.energiaConfig = d.envelopeId
+      ? { envelopeId: d.envelopeId, desde: d.desde, defasagem: d.defasagem ?? 2, contaId: d.contaId ?? null }
+      : null;
   },
 
   'energia.removida'(e, d) {
@@ -702,6 +716,10 @@ export const redutores = {
       faturaDesloca: d.faturaDesloca ?? 0,
       estornoDe: d.estornoDe ?? null,
       custeadoPor: d.custeadoPor ?? null,
+      // O gasto pago com o envelope da Energia: volta a ser cobrado (true) ou foi do sistema elétrico (false).
+      reporEnvelope: d.reporEnvelope ?? null,
+      // A despesa da fatura que a Energia gerou: o mês de referência.
+      energiaMes: d.energiaMes ?? null,
       envelopeId: d.envelopeId ?? null,
       // De quem é o dinheiro que este movimento leva de um lugar a outro:
       // [{ envelopeId, valor }]. O resto é sem dono (design/11 §4).

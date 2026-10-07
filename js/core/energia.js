@@ -11,7 +11,7 @@
 // As tarifas são os "preços unitários com tributos" da fatura, em R$/kWh com 6 casas: guardam-se
 // em milionésimos de real (338941 = R$ 0,338941). Dinheiro continua em centavos inteiros.
 
-import { hoje } from './datas.js';
+import { hoje, nomeDoMes } from './datas.js';
 
 /** A fração de real de uma tarifa digitada ("0,338941" → 338941). */
 export const tarifaDeTexto = (texto) => {
@@ -111,5 +111,27 @@ export function resumoDeEnergia(meses) {
     conta: comConta.reduce((t, x) => t + x.calculo.conta, 0),
     economia: comConta.reduce((t, x) => t + x.calculo.economia, 0),
     mesesComConta: comConta.length,
+  };
+}
+
+/**
+ * A despesa que a fatura de um mês vira na conta que a paga, ou null quando não há de onde gerar (sem vínculo
+ * com conta, sem a conta paga ou sem o vencimento). Agendada na data do vencimento: ele confirma ao pagar.
+ * O id é fixo por mês, para corrigir o mês corrigir a mesma despesa.
+ */
+export function lancamentoDaFatura(config, r, categoriaId) {
+  if (!config?.contaId || !r?.conta || !r.vencimento) return null;
+  return {
+    id: `energia-${r.mes}`,
+    tipo: 'despesa',
+    valor: r.conta,
+    contaId: config.contaId,
+    categoriaId,
+    dataCompetencia: r.vencimento,
+    dataCaixa: r.vencimento,
+    dataVencimento: r.vencimento,
+    confirmado: false,
+    observacao: `Conta de energia · ${nomeDoMes(r.mes)}`,
+    energiaMes: r.mes,
   };
 }

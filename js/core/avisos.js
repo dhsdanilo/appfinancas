@@ -12,6 +12,7 @@ import { resumoDoCartao, saldoPrevisto } from './previsto.js';
 import { provisaoDoCartao } from './cofrinho.js';
 import { envelopesAtivos, donosNoDia, numerosDoEnvelope } from './envelopes.js';
 import { aReceber } from './repasse.js';
+import { compromissoDaEnergia } from './energia-envelope.js';
 
 const ORDEM = { ruim: 0, atencao: 1, info: 2 };
 const dias = (de, ate) => Math.round((Date.parse(ate) - Date.parse(de)) / 86400000);
@@ -87,6 +88,17 @@ export function avisosDoInicio(estado, dia = hoje(), { ultimaCopia } = {}) {
         para: { tela: 'cartoes' },
       });
     }
+  }
+
+  // O compromisso da Energia: o envelope cobra a economia dos meses que já venceram.
+  const comp = compromissoDaEnergia(estado, dia);
+  if (comp && comp.faltando > 0) {
+    lista.push({
+      nivel: 'atencao',
+      titulo: `${comp.envelope.nome}: faltam ${formatar(comp.faltando)} depositar`,
+      detalhe: 'compromisso da economia de energia',
+      para: { tela: `envelopes/${comp.envelope.id}` },
+    });
   }
 
   // Só cobra quem já tem o que perder: com contas cadastradas e sem cópia há mais de 14 dias.

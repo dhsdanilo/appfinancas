@@ -6,8 +6,9 @@ import * as estado from './core/estado.js';
 import { formatar, deTexto } from './core/dinheiro.js';
 import { hoje, nomeDoMes, somarMeses } from './core/datas.js';
 import {
-  calculoDoMes, mesesDeEnergia, resumoDeEnergia, tarifaDeTexto, tarifaParaTexto, kwhDeTexto, sugestaoDeSaldo,
+  calculoDoMes, mesesDeEnergia, resumoDeEnergia, tarifaDeTexto, tarifaParaTexto, kwhDeTexto, sugestaoDeSaldo, lancamentoDaFatura,
 } from './core/energia.js';
+import { envelopesAtivos } from './core/envelopes.js';
 import { linhas as graficoDeLinhas, cor } from './app/graficos.js';
 import { ligarSeletorDeMes } from './app/seletor-mes.js';
 
@@ -31,14 +32,27 @@ let app = null;
 
 // ── a tela ──────────────────────────────────────────────────────────────────
 
+/** A linha do vínculo: com que envelope e conta a Energia conversa, e o botão que abre a configuração. */
+function textoDoVinculo() {
+  const cfg = app.energiaConfig;
+  const envelope = cfg?.envelopeId ? app.envelopes?.[cfg.envelopeId] : null;
+  const conta = cfg?.contaId ? app.contas?.[cfg.contaId] : null;
+  const partes = envelope
+    ? [`A economia vira compromisso do envelope <strong>${esc(envelope.nome)}</strong>, ${cfg.defasagem ?? 2} meses depois, a partir de ${esc(mesCurto(cfg.desde))}`]
+    : ['A economia ainda não está ligada a nenhum envelope'];
+  if (conta) partes.push(`a fatura vira despesa agendada em <strong>${esc(conta.nome)}</strong>`);
+  return `<p class="vinculo-energia">${partes.join(' · ')}. <button type="button" class="elo" data-en-vinculo>${envelope || conta ? 'mudar' : 'ligar'}</button></p>`;
+}
+
 async function pintar() {
   if (!ativa) return;
   app = await estado.calcular();
   const todos = mesesDeEnergia(app);
   const corpo = $('corpo-energia');
   const novo = '<button type="button" class="principal" data-en-novo>Novo registro</button>';
+  const vinculo = textoDoVinculo();
   if (!todos.length) {
-    corpo.innerHTML = `<div class="topo-energia">${novo}</div>
+    corpo.innerHTML = `<div class="topo-energia">${novo}</div>${vinculo}
       <p class="nota-rel">Nenhum mês registrado ainda. A cada fatura, digite o consumo da concessionária, o que foi injetado, o que o sistema produziu e as tarifas: o app mostra quanto a luz custaria sem o sistema e quanto ele economizou.</p>`;
     return;
   }
@@ -87,7 +101,7 @@ async function pintar() {
         <td>${reais(resumo.custoIntegral)}</td><td>${resumo.mesesComConta ? reais(resumo.conta) : '—'}</td><td>${resumo.mesesComConta ? reais(resumo.economia) : '—'}</td><td></td></tr></tfoot>`
     : '';
 
-  corpo.innerHTML = `<div class="topo-energia">${periodos}${novo}</div>
+  corpo.innerHTML = `<div class="topo-energia">${periodos}${novo}</div>${vinculo}
     <div class="numeros-detalhe">${numerosHTML}</div>
     <div class="ferramentas-detalhe">${grandezas}</div>
     <div id="g-energia"></div>
@@ -168,6 +182,7 @@ function lerRegistro() {
     bandeira6: tarifaDeTexto(f.bandeira.value),
     ilum: dinheiro(f.ilum.value),
     conta: f.conta.value.trim() ? Math.abs(deTexto(f.conta.value)) : null,
+    vencimento: f.vencimento.value || null,
   };
 }
 
@@ -217,6 +232,12 @@ function abrir(mes = null) {
   f.bandeira.value = base.bandeira6 ? tarifaParaTexto(base.bandeira6) : '';
   f.ilum.value = campoReais(base.ilum);
   f.conta.value = existente?.conta != null ? campoReais(existente.conta) : '';
+  // O vencimento só aparece quando a fatura gera despesa numa conta; o do mês novo parte do anterior, um mês depois.
+  const gera = Boolean(app.energiaConfig?.contaId);
+  $('en-campo-vencimento').hidden = !gera;
+  $('en-lanca').hidden = !gera;
+  if (gera) $('en-lanca').textContent = `A conta paga vira despesa agendada em ${app.contas[app.energiaConfig.contaId]?.nome ?? 'a conta escolhida'}, na data do vencimento.`;
+  f.vencimento.value = existente?.vencimento ?? (ultimo?.vencimento ? somarMeses(ultimo.vencimento, 1) : '');
   $('titulo-energia').textContent = existente ? `Registro de ${nomeDoMes(existente.mes)}` : 'Novo registro do mês';
   $('en-apagar').hidden = !existente;
   $('en-apagar').textContent = 'apagar este mês';
@@ -235,10 +256,46 @@ async function salvar() {
   if (r.producao == null) return avisar('Falta o que o sistema produziu no mês, em kWh.');
   if (!r.te6 || !r.tusd6) return avisar('Faltam as tarifas TE e TUSD (R$/kWh, com tributos).');
   // Mudou o mês de um registro que já existia: o antigo sai, o novo entra.
-  if (editando && editando !== r.mes) await estado.aplicarEvento('energia.removida', { mes: editando });
+  if (editando && editando !== r.mes) {
+    await estado.aplicarEvento('energia.removida', { mes: editando });
+    await sincronizarFatura({ mes: editando, removido: true });
+  }
   await estado.aplicarEvento('energia.registrada', r);
+  await sincronizarFatura(r);
   $('dialogo-energia').close();
   await pintar();
+}
+
+// ── a despesa da fatura ──────────────────────────────────────────────────────
+
+/** A categoria "Energia elétrica": a que já existe, ou uma nova. */
+async function categoriaDaEnergia() {
+  const a = await estado.calcular();
+  const achada = Object.values(a.categorias).find((c) => !c.arquivada && c.natureza === 'despesa' && /energia/i.test(c.nome));
+  if (achada) return achada.id;
+  await estado.aplicarEvento('categoria.criada', { id: 'cat-energia', nome: 'Energia elétrica', natureza: 'despesa' });
+  return 'cat-energia';
+}
+
+/**
+ * Faz a despesa da fatura acompanhar o registro do mês: cria, corrige ou tira. Só mexe enquanto ela não foi
+ * confirmada (paga): depois de paga, é um fato da conta e fica como está.
+ */
+async function sincronizarFatura(registro) {
+  const a = await estado.calcular();
+  const id = `energia-${registro.mes}`;
+  const atual = a.lancamentos[id] && !a.lancamentos[id].removido ? a.lancamentos[id] : null;
+  const quer = !registro.removido && lancamentoDaFatura(a.energiaConfig, registro, null);
+  if (!quer) {
+    if (atual && !atual.confirmado) await estado.aplicarEvento('lancamento.removido', { id });
+    return;
+  }
+  const dados = lancamentoDaFatura(a.energiaConfig, registro, await categoriaDaEnergia());
+  if (!atual) await estado.aplicarEvento('lancamento.registrado', dados);
+  else if (!atual.confirmado) {
+    const { tipo, confirmado, energiaMes, ...campos } = dados;
+    await estado.aplicarEvento('lancamento.alterado', campos);
+  }
 }
 
 async function apagar() {
@@ -249,15 +306,67 @@ async function apagar() {
     return;
   }
   await estado.aplicarEvento('energia.removida', { mes: editando });
+  await sincronizarFatura({ mes: editando, removido: true });
   $('dialogo-energia').close();
   await pintar();
 }
+
+// ── o vínculo com o envelope e com a conta ────────────────────────────────────
+
+const seletorDesde = ligarSeletorDeMes($('env-desde'));
+const vinc = () => $('f-energia-vinculo').elements;
+
+function abrirVinculo() {
+  const cfg = app.energiaConfig;
+  const f = vinc();
+  $('env-envelope').innerHTML = `<option value="">nenhum (desligado)</option>${envelopesAtivos(app)
+    .map((v) => `<option value="${esc(v.id)}">${esc(v.nome)}</option>`).join('')}`;
+  f.envelope.value = cfg?.envelopeId ?? '';
+  const primeiro = mesesDeEnergia(app)[0]?.registro.mes ?? hoje().slice(0, 7);
+  seletorDesde.definir(cfg?.desde ?? primeiro);
+  f.meses.value = cfg?.defasagem ?? 2;
+  const contas = Object.values(app.contas).filter((c) => !c.arquivada && (c.tipo === 'corrente' || c.tipo === 'especie'))
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  $('env-conta').innerHTML = `<option value="">não gerar a despesa</option>${contas.map((c) => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join('')}`;
+  f.conta.value = cfg?.contaId ?? '';
+  $('env-aviso').hidden = true;
+  mostrarCamposDoVinculo();
+  $('dialogo-energia-vinculo').showModal();
+}
+
+function mostrarCamposDoVinculo() {
+  const ligado = Boolean(vinc().envelope.value);
+  $('env-campo-desde').hidden = !ligado;
+  $('env-campo-meses').hidden = !ligado;
+}
+
+async function salvarVinculo() {
+  const f = vinc();
+  const envelopeId = f.envelope.value || null;
+  if (envelopeId && !f.desde.value) { $('env-aviso').textContent = 'Escolha o mês de economia em que a cobrança começa.'; $('env-aviso').hidden = false; return; }
+  await estado.aplicarEvento('energia.configurada', {
+    envelopeId,
+    desde: f.desde.value || null,
+    defasagem: Math.max(0, Math.min(12, Number(f.meses.value) || 0)),
+    contaId: f.conta.value || null,
+  });
+  $('dialogo-energia-vinculo').close();
+  await pintar();
+}
+
+$('f-energia-vinculo')?.addEventListener('change', mostrarCamposDoVinculo);
+$('f-energia-vinculo')?.addEventListener('submit', async (e) => {
+  if (e.submitter?.value !== 'salvar') return;
+  e.preventDefault();
+  await salvarVinculo();
+});
 
 // ── ligações ─────────────────────────────────────────────────────────────────
 
 document.addEventListener('click', async (e) => {
   if (!ativa) return;
   if (e.target.closest('[data-en-novo]')) return abrir();
+  if (e.target.closest('[data-en-vinculo]')) return abrirVinculo();
   const per = e.target.closest('[data-en-periodo]');
   if (per) { periodo = per.dataset.enPeriodo; return pintar(); }
   const gr = e.target.closest('[data-en-grandeza]');

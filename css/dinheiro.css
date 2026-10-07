@@ -1636,3 +1636,12 @@ a.dono-ativo:hover { text-decoration: underline; }
 .seletor-grade button.este-mes { border-color: var(--borda); }
 .seletor-grade button[aria-pressed="true"] { background: var(--area, var(--acento)); border-color: var(--area, var(--acento)); color: #fff; font-weight: 600; }
 .seletor-grade button.registrado::after { content: ""; position: absolute; left: 50%; bottom: 5px; width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%; background: currentColor; opacity: 0.55; }
+/* O vínculo da Energia e o compromisso no envelope. */
+.vinculo-energia { margin: 0 0 var(--e3); font-size: var(--t-apoio); color: var(--tinta-fraca); }
+.compromisso-energia { margin: var(--e3) 0; }
+.tabela-compromisso { width: 100%; border-collapse: collapse; font-size: var(--t-apoio); font-variant-numeric: tabular-nums; margin-top: var(--e2); }
+.tabela-compromisso th, .tabela-compromisso td { padding: var(--e1) var(--e2); text-align: right; border-bottom: 1px solid var(--borda); }
+.tabela-compromisso th:first-child, .tabela-compromisso td:first-child { text-align: left; }
+.tabela-compromisso th { color: var(--tinta-fraca); font-weight: 400; }
+.tabela-compromisso tr.futuro td { color: var(--tinta-fraca); }
+.alvo-card-envelope.compromisso.ruim { color: var(--alerta); }

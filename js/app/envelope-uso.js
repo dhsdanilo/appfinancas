@@ -43,6 +43,8 @@ const MARCACAO = `
       <label class="campo-simples"><span class="miudo" data-pag="rotulo-resgate">resgatar a diferença de</span>
         <select data-pag="origem"></select></label>
     </div>
+    <label class="linha-check" data-pag="campo-repor" hidden><input type="checkbox" data-pag="repor" checked>
+      <span>Repor este dinheiro: volta a ser cobrado pelo compromisso da Energia (desmarque se foi para o sistema elétrico)</span></label>
     <p class="nota" data-pag="pista"></p>
     <p class="recado" data-pag="recado" hidden></p>
     <div class="acoes"><button type="button" class="principal" data-pag="b-ok">Pagar</button></div>
@@ -147,6 +149,9 @@ export function criarJanelasDeUso({ aoSalvar } = {}) {
       .sort((a, b) => (doEnvelope?.porLugar.get(b.id) ?? 0) - (doEnvelope?.porLugar.get(a.id) ?? 0) || a.nome.localeCompare(b.nome, 'pt-BR'));
     pag('conta').innerHTML = contas.map((c) => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join('');
     pintarCategorias();
+    // Só no envelope ligado à Energia: perguntar se o dinheiro volta a ser cobrado.
+    pag('campo-repor').hidden = app.energiaConfig?.envelopeId !== envelopeId;
+    pag('repor').checked = true;
     pag('valor').value = '';
     pag('descricao').value = '';
     pag('data').value = hoje();
@@ -214,7 +219,8 @@ export function criarJanelasDeUso({ aoSalvar } = {}) {
       if (!igual) await estado.aplicarEvento('detalhe.criado', { id: detalheId, nome: texto });
     }
     await estado.aplicarEvento('lancamento.registrado', {
-      id: novoId('lan'), tipo: 'despesa', valor, contaId, categoriaId, detalheId, custeadoPor: envelope.id, ...comum,
+      id: novoId('lan'), tipo: 'despesa', valor, contaId, categoriaId, detalheId, custeadoPor: envelope.id,
+      reporEnvelope: pag('campo-repor').hidden ? null : pag('repor').checked, ...comum,
     });
     pagJ.close();
     await depois();

@@ -16,6 +16,7 @@ import { periodo as periodoDe, PERIODOS } from './core/explorar.js';
 import { criarJanelasDeEnvelope } from './app/envelope.js';
 import { criarJanelasDeUso } from './app/envelope-uso.js';
 import { areas, pizza, cor } from './app/graficos.js';
+import { compromissoDaEnergia } from './core/energia-envelope.js';
 import { ICONES } from './app/marcacao-dinheiro.js';
 import { iniciaisDaConta, corDaConta } from './core/ordem.js';
 
@@ -254,6 +255,8 @@ function geral(lista, donos) {
     const atrasado = n.deveriaTer != null && r.total < n.deveriaTer;
     const cor = corDaConta(v.nome);
     const estado = f.texto || (n.alvo ? '' : 'sem alvo');
+    const comp = compromissoDaEnergia(app);
+    const falta = comp && comp.envelope.id === v.id ? comp.faltando : null;
     return { atrasado, html: `<button type="button" class="card-envelope" data-env-aba="${esc(v.id)}">
       <span class="topo-card-envelope">
         <span class="titulo-card-envelope">
@@ -264,6 +267,7 @@ function geral(lista, donos) {
       </span>
       <span class="valor-card-envelope">${formatar(r.total)}</span>
       ${n.alvo ? `<span class="alvo-card-envelope">de ${formatar(n.alvo)}${ehProjeto(v) && v.alvoData ? ` até ${mesAno(v.alvoData)}` : ''}</span>` : ''}
+      ${falta != null ? `<span class="alvo-card-envelope compromisso ${falta > 0 ? 'ruim' : ''}">${falta > 0 ? `faltam ${formatar(falta)} depositar` : falta < 0 ? `adiantado ${formatar(-falta)}` : 'compromisso em dia ✓'}</span>` : ''}
       ${miniLinha(series.get(v.id) ?? [], cor)}
     </button>` };
   }).sort((a, b) => Number(b.atrasado) - Number(a.atrasado));
@@ -323,6 +327,26 @@ function fechamento(v, r) {
       ${estouro}
       ${porCategoria ? `<p class="miudo titulo-linhas">onde foi</p>${porCategoria}` : ''}
     </div>`;
+}
+
+/** O compromisso da Energia, só no envelope ligado a ela: quanto foi cobrado, depositado e o que falta. */
+function compromissoHTML(v) {
+  const c = compromissoDaEnergia(app);
+  if (!c || c.envelope.id !== v.id) return '';
+  const situacao = c.faltando > 0 ? `faltam ${formatar(c.faltando)}` : c.faltando < 0 ? `adiantado ${formatar(-c.faltando)}` : 'em dia ✓';
+  const numero = (rotulo, valor, nota = '') => `<div class="numero-det"><span class="rotulo-numero">${esc(rotulo)}</span><span class="valor-numero">${valor}</span>${nota ? `<span class="fino">${esc(nota)}</span>` : ''}</div>`;
+  const itens = [...c.itens].reverse().slice(0, 6);
+  return `<div class="compromisso-energia">
+    <p class="classe-ativos"><span>compromisso da Energia</span><span class="${c.faltando > 0 ? 'negativo' : ''}">${situacao}</span></p>
+    <div class="numeros-detalhe">
+      ${numero('cobrado até agora', formatar(c.cobrado), 'a economia dos meses que já venceram')}
+      ${numero('depositado por você', formatar(c.depositado), 'sem contar o rendimento')}
+      ${c.reposicao ? numero('a repor', formatar(c.reposicao), 'o que você tirou marcando repor') : ''}
+    </div>
+    ${itens.length ? `<table class="tabela-compromisso"><thead><tr><th>economia de</th><th>cobra em</th><th>valor</th></tr></thead><tbody>${itens.map((i) =>
+      `<tr class="${i.vencido ? '' : 'futuro'}"><td>${esc(mesCurto(i.ref))}</td><td>${esc(mesCurto(i.cobraEm))}${i.vencido ? '' : ' · a vir'}</td><td>${formatar(i.valor)}</td></tr>`).join('')}</tbody></table>` : ''}
+    <p class="nota-rel">Nada vira transferência: deposite pelo "aportar". Só contam os depósitos; o rendimento não abate o compromisso.</p>
+  </div>`;
 }
 
 function doEnvelope(v, donos) {
@@ -390,6 +414,7 @@ function doEnvelope(v, donos) {
       ${barraDoAlvo(r.total, n.alvo)}
       <p class="nota-rel">${partes.join(' · ')}</p>
     </div>
+    ${compromissoHTML(v)}
     ${controlesDaEvolucao()}
     ${acoes}
     <div class="ativos">${ondeHTML}${fechamento(v, r)}</div>

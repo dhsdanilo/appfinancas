@@ -89,6 +89,8 @@ const MARCACAO = `
         <input type="date" data-mov="data"></label>
     </div>
     <p class="nota">Não mexe em conta nenhuma: o dinheiro continua onde está e só muda de dono.</p>
+    <label class="linha-check" data-mov="campo-repor" hidden><input type="checkbox" data-mov="repor" checked>
+      <span>Repor este dinheiro: volta a ser cobrado pelo compromisso da Energia (desmarque se foi para o sistema elétrico)</span></label>
     <p class="recado" data-mov="recado" hidden></p>
     <div class="acoes"><button type="button" class="principal" data-mov="b-ok">Tirar</button></div>
   </div>
@@ -353,6 +355,9 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
       .map((v) => `<option value="${esc(v.id)}">${esc(v.nome)}</option>`).join('')}`;
     mov('valor').value = '';
     mov('data').value = hoje();
+    // Só no envelope ligado à Energia: perguntar se o dinheiro volta a ser cobrado.
+    mov('campo-repor').hidden = app.energiaConfig?.envelopeId !== envelopeId;
+    mov('repor').checked = true;
     recado(mov('recado'), onde.length ? '' : 'Este envelope não tem dinheiro em lugar nenhum.');
     movJ.showModal();
     mov('valor').focus();
@@ -367,6 +372,7 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
     if (valor > tem) { recado(mov('recado'), `${tirandoDe.nome} tem ${formatar(tem)} em ${nomeDoLugar(app, lugar)}.`); return; }
     await estado.aplicarEvento('envelope.alocado', {
       id: novoId('alo'), lugarId: lugar, de: tirandoDe.id, para: mov('para').value || null, valor, data: mov('data').value || hoje(),
+      repor: mov('campo-repor').hidden ? null : mov('repor').checked,
     });
     movJ.close();
     await depois();

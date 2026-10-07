@@ -434,6 +434,11 @@
       <label for="en-conta">Conta paga (R$) <span class="opcional">· opcional</span></label>
       <input type="text" id="en-conta" name="conta" inputmode="decimal" autocomplete="off" placeholder="667,18">
     </div>
+    <div class="campo" id="en-campo-vencimento" hidden>
+      <label for="en-vencimento">Vencimento da fatura</label>
+      <input type="date" id="en-vencimento" name="vencimento">
+    </div>
+    <p class="nota" id="en-lanca" hidden></p>
     <p class="previa-energia" id="en-previa" hidden></p>
     <p class="aviso erro" id="en-aviso" hidden></p>
     <div class="campo acao">
@@ -445,6 +450,44 @@
     <p class="zona-perigo fim-contrato">
       <button type="button" class="elo perigo" id="en-apagar" hidden>apagar este mês</button>
     </p>
+  </form>
+</dialog>
+
+<dialog id="dialogo-energia-vinculo" class="dialogo-ciclo" data-area="energia" aria-labelledby="titulo-energia-vinculo">
+  <form class="formulario" id="f-energia-vinculo" method="dialog">
+    <p class="titulo-bloco" id="titulo-energia-vinculo">Vínculo com envelope e com a conta</p>
+    <p class="nota">
+      A economia de cada mês vira um <strong>compromisso</strong> do envelope, cobrado alguns meses depois (quando você paga a conta
+      daquele período). Nada vira transferência: depositar é decisão sua. O rendimento do envelope não abate o compromisso.
+    </p>
+    <div class="campo largo">
+      <label for="env-envelope">Envelope que cobra a economia</label>
+      <select id="env-envelope" name="envelope"></select>
+    </div>
+    <div class="campo largo" id="env-campo-desde">
+      <span class="rotulo" id="env-desde-rotulo">Começa a cobrar a partir da economia de</span>
+      <div class="seletor-mes" id="env-desde">
+        <input type="hidden" name="desde">
+        <button type="button" class="seletor-mes-botao" aria-labelledby="env-desde-rotulo"></button>
+        <div class="seletor-mes-painel" hidden></div>
+      </div>
+    </div>
+    <div class="campo estreito" id="env-campo-meses">
+      <label for="env-meses">Cobra quantos meses depois</label>
+      <input type="number" id="env-meses" name="meses" min="0" max="12" value="2">
+    </div>
+    <div class="campo largo">
+      <label for="env-conta">Gerar a despesa da fatura em</label>
+      <select id="env-conta" name="conta"></select>
+    </div>
+    <p class="nota">A despesa entra agendada na data do vencimento, na categoria Energia elétrica; você confirma quando pagar.</p>
+    <p class="aviso erro" id="env-aviso" hidden></p>
+    <div class="campo acao">
+      <button type="submit" class="principal" value="salvar">Salvar</button>
+    </div>
+    <div class="campo acao">
+      <button type="submit" value="cancelar" formnovalidate>Cancelar</button>
+    </div>
   </form>
 </dialog>
 

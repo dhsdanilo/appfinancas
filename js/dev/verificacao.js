@@ -28,6 +28,7 @@ import { categoriaNaArea, areasParaConta } from '../app/areas.js';
 import * as holerite from '../core/holerite.js';
 import * as divida from '../core/divida.js';
 import * as energia from '../core/energia.js';
+import * as compromissoEnergia from '../core/energia-envelope.js';
 import * as contratoPuro from '../core/contrato.js';
 import * as investimentos from '../core/investimentos.js';
 import * as envelopes from '../core/envelopes.js';
@@ -2692,6 +2693,66 @@ caso('energia', 'o registro do mês entra no estado, o último do mesmo mês val
   await estado.aplicarEvento('energia.removida', { mes: '2026-08' });
   e = await estado.calcular();
   igual(energia.mesesDeEnergia(e).map((x) => x.registro.mes), ['2026-09'], 'apagado');
+});
+
+caso('energia', 'o compromisso do envelope: a economia cobrada 2 meses depois, só os depósitos abatem, o rendimento não', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const ev = (t, d) => estado.aplicarEvento(t, d);
+  await ev('conta.criada', { id: 'cc', nome: 'Corrente', tipo: 'corrente', saldoInicial: 5000000, dataInicial: '2026-01-01' });
+  await ev('envelope.criado', { id: 'env', nome: 'Energia elétrica' });
+  await ev('conta.criada', { id: 'inv', nome: 'Banco', tipo: 'investimento', caixaEm: 'cc' });
+  await ev('ativo.criado', { id: 'cdb', contaId: 'inv', nome: 'CDB', classe: 'renda_fixa' });
+  await ev('lancamento.registrado', { id: 'ap', tipo: 'aplicacao', contaId: 'cc', ativoId: 'cdb', valor: 100000, dataCompetencia: '2026-10-01', dataCaixa: '2026-10-01', confirmado: true });
+  await ev('ativo.avaliado', { id: 'cdb', data: '2026-10-01', valor: 100000 });
+  // Tarifa de R$ 1,00/kWh e sem consumo da rede: o custo integral é a produção × 100 centavos. Agosto: custo 600, conta 100 → economia 500.
+  const mes = (m, producao, conta) => ev('energia.registrada', { mes: m, consumo: 0, injetado: 0, producao, te6: 500000, tusd6: 500000, ilum: 0, conta });
+  await mes('2026-08', 600, 10000);
+  await mes('2026-09', 300, 15000);
+  await ev('energia.configurada', { envelopeId: 'env', desde: '2026-08', defasagem: 2, contaId: 'cc' });
+  const aloc = (id, data, valor, extra = {}) => ev('envelope.alocado', { id, lugarId: 'cdb', de: null, para: 'env', valor, data, ...extra });
+  await aloc('a1', '2026-10-05', 30000);
+  let e = await estado.calcular();
+  const em = (dia) => compromissoEnergia.compromissoDaEnergia(e, dia);
+  igual([em('2026-09-30').cobrado, em('2026-09-30').faltando], [0, 0], 'em setembro ninguém foi cobrado nem depositou ainda');
+  const outubro = em('2026-10-20');
+  igual([outubro.cobrado, outubro.depositado, outubro.faltando], [50000, 30000, 20000], 'outubro: a economia de agosto (500) menos os 300 depositados');
+  const novembro = em('2026-11-10');
+  igual([novembro.cobrado, novembro.faltando, novembro.itens.map((i) => [i.ref, i.cobraEm, i.valor, i.vencido])],
+    [65000, 35000, [['2026-08', '2026-10', 50000, true], ['2026-09', '2026-11', 15000, true]]], 'novembro soma a de setembro (150): faltam 200 + 150 = 350');
+  igual(em('2026-10-20').itens.find((i) => i.ref === '2026-09').vencido, false, 'a de setembro ainda não venceu em outubro');
+
+  // O rendimento não abate: o valor do envelope sobe, o depositado e o que falta não mudam.
+  await ev('ativo.avaliado', { id: 'cdb', data: '2026-11-01', valor: 110000 });
+  e = await estado.calcular();
+  igual(envelopes.donosNoDia(e, '2026-11-10').porEnvelope.get('env').total, 33000, 'o envelope rendeu: 300 viraram 330');
+  igual([em('2026-11-10').depositado, em('2026-11-10').faltando], [30000, 35000], 'o rendimento não abate: só o que ele depositou conta');
+
+  // Tirar do envelope: com repor, volta a ser cobrado; sem repor (sistema elétrico) ou sem marcação, não.
+  await ev('envelope.alocado', { id: 't1', lugarId: 'cdb', de: 'env', para: null, valor: 10000, data: '2026-11-05', repor: true });
+  await ev('envelope.alocado', { id: 't2', lugarId: 'cdb', de: 'env', para: null, valor: 5000, data: '2026-11-06', repor: false });
+  await ev('envelope.alocado', { id: 't3', lugarId: 'cdb', de: 'env', para: null, valor: 2000, data: '2026-11-07' });
+  e = await estado.calcular();
+  igual([em('2026-11-10').reposicao, em('2026-11-10').faltando], [10000, 45000], 'só o que foi tirado marcando "repor" volta a ser cobrado');
+
+  // Pagar com o envelope: o gasto marcado para repor também volta. O dinheiro do envelope sai do ativo para a conta e é gasto.
+  await ev('lancamento.registrado', { id: 'rg', tipo: 'resgate', valor: 6000, contaId: 'cc', ativoId: 'cdb', categoriaId: null, donos: [{ envelopeId: 'env', valor: 6000 }], dataCompetencia: '2026-11-08', dataCaixa: '2026-11-08', confirmado: true });
+  await ev('lancamento.registrado', { id: 'g1', tipo: 'despesa', valor: 4000, contaId: 'cc', categoriaId: null, custeadoPor: 'env', reporEnvelope: true, dataCompetencia: '2026-11-08', dataCaixa: '2026-11-08', confirmado: true });
+  e = await estado.calcular();
+  igual(em('2026-11-10').reposicao, 14000, 'o gasto com o envelope marcado para repor soma na reposição');
+  igual(compromissoEnergia.compromissoDaEnergia({ ...e, energiaConfig: null }, '2026-11-10'), null, 'sem vínculo, nada');
+});
+
+caso('energia', 'a despesa da fatura: agendada no vencimento, na conta escolhida, com id fixo por mês', async () => {
+  const r = { mes: '2026-09', conta: 66718, vencimento: '2026-10-28' };
+  const cfg = { envelopeId: 'env', desde: '2026-08', defasagem: 2, contaId: 'cc' };
+  const l = energia.lancamentoDaFatura(cfg, r, 'cat');
+  igual([l.id, l.tipo, l.valor, l.contaId, l.categoriaId, l.dataCaixa, l.confirmado, l.energiaMes],
+    ['energia-2026-09', 'despesa', 66718, 'cc', 'cat', '2026-10-28', false, '2026-09'], 'despesa agendada no vencimento, na conta, sem confirmar');
+  igual(energia.lancamentoDaFatura({ ...cfg, contaId: null }, r, 'cat'), null, 'sem conta escolhida, não gera');
+  igual(energia.lancamentoDaFatura(cfg, { ...r, conta: null }, 'cat'), null, 'sem a conta paga, não gera');
+  igual(energia.lancamentoDaFatura(cfg, { ...r, vencimento: null }, 'cat'), null, 'sem o vencimento, não gera');
+  igual(energia.lancamentoDaFatura(null, r, 'cat'), null, 'sem vínculo, não gera');
 });
 
 async function limpar() {
