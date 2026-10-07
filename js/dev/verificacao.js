@@ -2661,6 +2661,22 @@ caso('energia', 'a conta do mês: consumo real = rede + produzido − injetado; 
   igual([energia.kwhDeTexto('1.296,5'), energia.kwhDeTexto('925'), energia.kwhDeTexto('')], [1296.5, 925, null], 'o kWh digitado');
 });
 
+caso('energia', 'o saldo de créditos: a sobra do mês e a sugestão a partir do último saldo registrado', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const reg = (d) => estado.aplicarEvento('energia.registrada', { te6: 338941, tusd6: 527568, producao: 1500, ...d });
+  await reg({ mes: '2026-08', consumo: 900, injetado: 900, saldo: 0 });
+  await reg({ mes: '2026-09', consumo: 925, injetado: 1200, saldo: 275 });
+  const e = await estado.calcular();
+  igual(energia.calculoDoMes(e.energia['2026-09']).sobra, 275, 'injetou 1.200 e consumiu 925: sobram 275 kWh de crédito');
+  igual(energia.calculoDoMes(e.energia['2026-08']).sobra, 0, 'injetou o mesmo que consumiu: sem sobra');
+  igual(energia.sugestaoDeSaldo(e, '2026-10', 500, 400), { anterior: 275, sugerido: 175 }, 'consumiu 100 a mais do que injetou: gasta do saldo');
+  igual(energia.sugestaoDeSaldo(e, '2026-10', 1000, 400).sugerido, 0, 'o saldo não fica negativo');
+  igual(energia.sugestaoDeSaldo(e, '2026-08', 900, 900), { anterior: 0, sugerido: 0 }, 'sem saldo anterior registrado, parte de zero');
+  igual(energia.sugestaoDeSaldo(e, '2026-10', null, 0), null, 'sem consumo não sugere');
+  igual(e.energia['2026-09'].saldo, 275, 'o saldo digitado fica guardado');
+});
+
 caso('energia', 'o registro do mês entra no estado, o último do mesmo mês vale, e dá para apagar', async () => {
   await limpar();
   await log.registrarAparelho('meu-pc');

@@ -383,6 +383,8 @@ export const redutores = {
       consumo: d.consumo ?? null,
       injetado: d.injetado ?? null,
       producao: d.producao ?? null,
+      // O saldo de créditos de kWh no fim do mês (o que sobrou de injetar mais do que consumir), digitado da fatura.
+      saldo: d.saldo ?? null,
       te6: d.te6 ?? 0,
       tusd6: d.tusd6 ?? 0,
       bandeira6: d.bandeira6 ?? 0,

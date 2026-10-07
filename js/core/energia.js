@@ -61,7 +61,26 @@ export function calculoDoMes(r) {
     conta,
     economia: conta != null ? custoIntegral - conta : null,
     inconsistente,
+    // Injetou mais do que consumiu: o que passa disso vira crédito de kWh para os meses seguintes.
+    sobra: Math.max(0, injetado - r.consumo),
+    saldo: r.saldo ?? null,
   };
+}
+
+/**
+ * O saldo de créditos que as leituras sugerem para o fim de `mes`: o último saldo registrado antes dele
+ * (0 se nunca houve) + o injetado − o consumo, sem passar de zero. É só uma sugestão: vale o que a fatura diz
+ * (a concessionária pode descontar o custo de disponibilidade e as regras de cada tipo de geração).
+ * Devolve { anterior, sugerido } ou null sem consumo.
+ */
+export function sugestaoDeSaldo(estado, mes, consumo, injetado) {
+  if (consumo == null) return null;
+  const antes = Object.values(estado.energia ?? {})
+    .filter((r) => r.mes < mes && r.saldo != null)
+    .sort((a, b) => (a.mes < b.mes ? -1 : 1))
+    .pop();
+  const anterior = antes?.saldo ?? 0;
+  return { anterior, sugerido: Math.max(0, anterior + (injetado ?? 0) - consumo) };
 }
 
 /** Os meses registrados, do mais antigo ao mais novo, já com a conta de cada um. */

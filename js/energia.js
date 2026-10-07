@@ -6,7 +6,7 @@ import * as estado from './core/estado.js';
 import { formatar, deTexto } from './core/dinheiro.js';
 import { hoje, nomeDoMes, somarMeses } from './core/datas.js';
 import {
-  calculoDoMes, mesesDeEnergia, resumoDeEnergia, tarifaDeTexto, tarifaParaTexto, kwhDeTexto,
+  calculoDoMes, mesesDeEnergia, resumoDeEnergia, tarifaDeTexto, tarifaParaTexto, kwhDeTexto, sugestaoDeSaldo,
 } from './core/energia.js';
 import { linhas as graficoDeLinhas, cor } from './app/graficos.js';
 import { ligarSeletorDeMes } from './app/seletor-mes.js';
@@ -62,7 +62,11 @@ async function pintar() {
       resumo.economia > 0 ? 'positivo' : ''),
     numero('custo integral', resumo.meses ? reais(resumo.custoIntegral) : '—', 'o que a luz custaria sem o sistema'),
     numero('consumo real', resumo.meses ? kwh(resumo.consumoReal / resumo.meses) : '—', 'média por mês (rede + FV direto)'),
-  ].join('');
+  ];
+  // O saldo de créditos: o do último mês que o registrou.
+  const comSaldo = [...doPeriodo].reverse().find((x) => x.registro.saldo != null);
+  if (comSaldo) numeros.push(numero('saldo de créditos', kwh(comSaldo.registro.saldo), `no fim de ${mesCurto(comSaldo.registro.mes)}`));
+  const numerosHTML = numeros.join('');
 
   const periodos = `<span class="seg-det" role="group" aria-label="Período">${PERIODOS.map(([id, nome]) =>
     `<button type="button" data-en-periodo="${id}" aria-pressed="${id === periodo}">${nome}</button>`).join('')}</span>`;
@@ -75,19 +79,20 @@ async function pintar() {
         <td>${esc(mesCurto(r.mes))}${c.inconsistente ? ' <span class="aviso-mini" title="Injetou mais do que produziu: confira as leituras">!</span>' : ''}</td>
         <td>${kwh(c.consumoReal)}</td><td>${kwh(c.consumo)}</td><td>${kwh(c.injetado)}</td><td>${kwh(c.diretoFV)}</td>
         <td>${reais(c.custoIntegral)}</td><td>${c.conta != null ? reais(c.conta) : '—'}</td>
-        <td class="${c.economia > 0 ? 'positivo' : c.economia < 0 ? 'negativo' : ''}">${c.economia != null ? reais(c.economia) : '—'}</td></tr>`
-    : `<tr data-en-mes="${esc(r.mes)}" tabindex="0" class="incompleto"><td>${esc(mesCurto(r.mes))}</td><td colspan="7">faltam dados para a conta · toque para completar</td></tr>`).join('');
+        <td class="${c.economia > 0 ? 'positivo' : c.economia < 0 ? 'negativo' : ''}">${c.economia != null ? reais(c.economia) : '—'}</td>
+        <td>${c.saldo != null ? kwh(c.saldo) : '—'}</td></tr>`
+    : `<tr data-en-mes="${esc(r.mes)}" tabindex="0" class="incompleto"><td>${esc(mesCurto(r.mes))}</td><td colspan="8">faltam dados para a conta · toque para completar</td></tr>`).join('');
   const rodape = resumo.meses
     ? `<tfoot><tr><td>no período</td><td>${kwh(resumo.consumoReal)}</td><td>${kwh(resumo.consumo)}</td><td>${kwh(resumo.injetado)}</td><td>${kwh(resumo.diretoFV)}</td>
-        <td>${reais(resumo.custoIntegral)}</td><td>${resumo.mesesComConta ? reais(resumo.conta) : '—'}</td><td>${resumo.mesesComConta ? reais(resumo.economia) : '—'}</td></tr></tfoot>`
+        <td>${reais(resumo.custoIntegral)}</td><td>${resumo.mesesComConta ? reais(resumo.conta) : '—'}</td><td>${resumo.mesesComConta ? reais(resumo.economia) : '—'}</td><td></td></tr></tfoot>`
     : '';
 
   corpo.innerHTML = `<div class="topo-energia">${periodos}${novo}</div>
-    <div class="numeros-detalhe">${numeros}</div>
+    <div class="numeros-detalhe">${numerosHTML}</div>
     <div class="ferramentas-detalhe">${grandezas}</div>
     <div id="g-energia"></div>
     <div class="rolagem-energia"><table class="tabela-energia">
-      <thead><tr><th>mês</th><th>consumo real</th><th>da concessionária</th><th>injetado</th><th>FV direto</th><th>custo integral</th><th>conta paga</th><th>economia</th></tr></thead>
+      <thead><tr><th>mês</th><th>consumo real</th><th>da concessionária</th><th>injetado</th><th>FV direto</th><th>custo integral</th><th>conta paga</th><th>economia</th><th>saldo de créditos</th></tr></thead>
       <tbody>${linhasDaTabela}</tbody>${rodape}</table></div>
     <p class="nota-rel">Consumo real = consumo da concessionária + o que o sistema produziu e foi consumido na hora (produzido − injetado). Custo integral = consumo real × (TE + TUSD + bandeira) + iluminação pública. Economia = custo integral − conta paga.</p>`;
   desenhar(calendario, porMes);
@@ -105,6 +110,9 @@ function desenhar(calendario, porMes) {
       { nome: 'abatimento (injetado)', cor: cor(2), valores: calendario.map((m) => valor(m, (r) => r.injetado)) },
       { nome: 'consumo real', cor: cor(3), valores: calendario.map((m) => valor(m, real)) },
       { nome: 'produção do sistema', cor: cor(4), fina: true, valores: calendario.map((m) => valor(m, (r) => r.producao)) },
+      ...(registrados.some((m) => porMes.get(m).registro.saldo != null)
+        ? [{ nome: 'saldo de créditos', cor: cor(5), fina: true, valores: calendario.map((m) => valor(m, (r) => r.saldo)) }]
+        : []),
     ]
     : [
       { nome: 'custo integral', cor: cor(1), valores: calendario.map((m) => valor(m, (r, c) => c?.custoIntegral ?? null)) },
@@ -120,6 +128,7 @@ function desenhar(calendario, porMes) {
       const { registro: r, calculo: c } = x;
       const partes = [`consumo da concessionária ${kwh(r.consumo ?? 0)}`, `abatido ${kwh(r.injetado ?? 0)}`, `produzido ${kwh(r.producao ?? 0)}`];
       if (c) partes.unshift(`consumo real ${kwh(c.consumoReal)} (FV direto ${kwh(c.diretoFV)})`);
+      if (r.saldo != null) partes.push(`saldo de créditos ${kwh(r.saldo)}`);
       const dinheiro = c ? [`custo integral ${reais(c.custoIntegral)}`, c.conta != null ? `conta paga ${reais(c.conta)}` : '', c.economia != null ? `economia ${reais(c.economia)}` : ''].filter(Boolean) : [];
       return `<strong>${esc(nomeDoMes(calendario[i]))}</strong>${[...partes, ...dinheiro].map((t) => `<span class="fino">${esc(t)}</span>`).join('')}`;
     },
@@ -153,6 +162,7 @@ function lerRegistro() {
     consumo: kwhDeTexto(f.consumo.value),
     injetado: kwhDeTexto(f.injetado.value) ?? 0,
     producao: kwhDeTexto(f.producao.value),
+    saldo: kwhDeTexto(f.saldo.value),
     te6: tarifaDeTexto(f.te.value),
     tusd6: tarifaDeTexto(f.tusd.value),
     bandeira6: tarifaDeTexto(f.bandeira.value),
@@ -163,13 +173,28 @@ function lerRegistro() {
 
 /** A conta ao vivo, embaixo dos campos, enquanto se digita. */
 function pintarPrevia() {
+  pintarSugestao();
   const c = calculoDoMes(lerRegistro());
   const saida = $('en-previa');
   if (!c) { saida.hidden = true; return; }
   saida.hidden = false;
   saida.innerHTML = `<span>direto do FV <strong>${kwh(c.diretoFV)}</strong></span><span>consumo real <strong>${kwh(c.consumoReal)}</strong></span>
     <span>custo integral <strong>${reais(c.custoIntegral)}</strong></span>${c.economia != null ? `<span>economia <strong class="${c.economia >= 0 ? 'positivo' : 'negativo'}">${reais(c.economia)}</strong></span>` : ''}
+    ${c.sobra > 0 ? `<span>injetou ${kwh(c.sobra)} a mais do que consumiu: vira crédito</span>` : ''}
     ${c.inconsistente ? '<span class="negativo">Injetou mais do que produziu: confira as leituras.</span>' : ''}`;
+}
+
+/** Sob o campo do saldo: o que as leituras sugerem, com um toque para usar. */
+function pintarSugestao() {
+  const f = campos();
+  const consumo = kwhDeTexto(f.consumo.value);
+  const s = f.mes.value && consumo != null ? sugestaoDeSaldo(app, f.mes.value, consumo, kwhDeTexto(f.injetado.value) ?? 0) : null;
+  const saida = $('en-sugestao');
+  if (!s) { saida.hidden = true; return; }
+  const injetado = kwhDeTexto(f.injetado.value) ?? 0;
+  saida.hidden = false;
+  saida.innerHTML = `Pelas leituras: saldo anterior ${kwh(s.anterior)} + injetado ${kwh(injetado)} − consumo ${kwh(consumo)} = <strong>${kwh(s.sugerido)}</strong>.
+    <button type="button" class="elo" data-en-usar="${s.sugerido}">usar</button> <span class="fino">O que vale é o saldo que a fatura mostra.</span>`;
 }
 
 function abrir(mes = null) {
@@ -186,6 +211,7 @@ function abrir(mes = null) {
   f.consumo.value = existente ? campoKwh(existente.consumo) : '';
   f.injetado.value = existente ? campoKwh(existente.injetado) : '';
   f.producao.value = existente ? campoKwh(existente.producao) : '';
+  f.saldo.value = existente ? campoKwh(existente.saldo) : '';
   f.te.value = base.te6 ? tarifaParaTexto(base.te6) : '';
   f.tusd.value = base.tusd6 ? tarifaParaTexto(base.tusd6) : '';
   f.bandeira.value = base.bandeira6 ? tarifaParaTexto(base.bandeira6) : '';
@@ -252,6 +278,12 @@ $('f-energia')?.addEventListener('submit', async (e) => {
   await salvar();
 });
 $('en-apagar')?.addEventListener('click', apagar);
+$('en-sugestao')?.addEventListener('click', (e) => {
+  const usar = e.target.closest('[data-en-usar]');
+  if (!usar) return;
+  campos().saldo.value = campoKwh(Number(usar.dataset.enUsar));
+  pintarPrevia();
+});
 
 document.addEventListener('app:tela', (e) => {
   ativa = e.detail.tela === 'energia';
