@@ -90,10 +90,21 @@ export const NOVA_CONTA = `
         <label for="div-ja-pagas">Já pagas</label>
         <input type="number" id="div-ja-pagas" name="jaPagas" min="0" max="600" data-papel="ja-pagas">
       </div>
-      <div class="campo estreito">
-        <label for="div-taxa">Taxa % a.m.</label>
-        <input type="text" id="div-taxa" name="taxa" inputmode="decimal" autocomplete="off" placeholder="opcional">
+      <div class="campo taxa-com-unidade">
+        <label for="div-taxa">Juros do contrato</label>
+        <span class="valor-e-unidade">
+          <input type="text" id="div-taxa" name="taxa" inputmode="decimal" autocomplete="off" placeholder="1,59">
+          <select name="taxaUn" aria-label="Juros do contrato: ao mês ou ao ano"><option value="m">% ao mês</option><option value="a">% ao ano</option></select>
+        </span>
       </div>
+      <div class="campo taxa-com-unidade">
+        <label for="div-cet">CET <span class="opcional">· opcional</span></label>
+        <span class="valor-e-unidade">
+          <input type="text" id="div-cet" name="cet" inputmode="decimal" autocomplete="off" placeholder="1,98">
+          <select name="cetUn" aria-label="CET: ao mês ou ao ano"><option value="m">% ao mês</option><option value="a">% ao ano</option></select>
+        </span>
+      </div>
+      <p class="conferencia-taxas" data-papel="conferencia-taxas" hidden></p>
       <div class="campo">
         <label for="div-paga">Paga com</label>
         <select id="div-paga" name="pagaComDivida" data-papel="paga-divida"></select>
@@ -180,10 +191,21 @@ export const CONTRATO = `
         <label for="ct-ja-pagas">Já pagas</label>
         <input type="number" id="ct-ja-pagas" name="jaPagas" min="0" max="600" data-papel="ja-pagas">
       </div>
-      <div class="campo estreito">
-        <label for="ct-taxa">Taxa % a.m.</label>
-        <input type="text" id="ct-taxa" name="taxa" inputmode="decimal" autocomplete="off" placeholder="opcional">
+      <div class="campo taxa-com-unidade">
+        <label for="ct-taxa">Juros do contrato</label>
+        <span class="valor-e-unidade">
+          <input type="text" id="ct-taxa" name="taxa" inputmode="decimal" autocomplete="off" placeholder="1,59">
+          <select name="taxaUn" aria-label="Juros do contrato: ao mês ou ao ano"><option value="m">% ao mês</option><option value="a">% ao ano</option></select>
+        </span>
       </div>
+      <div class="campo taxa-com-unidade">
+        <label for="ct-cet">CET <span class="opcional">· opcional</span></label>
+        <span class="valor-e-unidade">
+          <input type="text" id="ct-cet" name="cet" inputmode="decimal" autocomplete="off" placeholder="1,98">
+          <select name="cetUn" aria-label="CET: ao mês ou ao ano"><option value="m">% ao mês</option><option value="a">% ao ano</option></select>
+        </span>
+      </div>
+      <p class="conferencia-taxas" data-papel="conferencia-taxas" hidden></p>
       <div class="campo">
         <label for="ct-paga">Paga com</label>
         <select id="ct-paga" name="pagaComDivida" data-papel="paga-divida"></select>
@@ -194,8 +216,10 @@ export const CONTRATO = `
       <input type="text" id="ct-foto" name="foto" inputmode="decimal" autocomplete="off" placeholder="o que o banco mostra">
     </div>
     <p class="dica">
-      Sem a taxa, o app usa a que está embutida no contrato (valor, parcelas e prestação), ou a
-      observada entre duas fotos do saldo. O saldo que o banco mostra, quando informado, manda.
+      Os <strong>juros do contrato</strong> (juros remuneratórios) são a taxa com que o banco calcula o valor para
+      quitar. O <strong>CET</strong> (juros mais IOF, tarifas e seguros) só mostra o custo real: não entra nessa conta.
+      Sem os juros, o app usa a taxa embutida no contrato (valor, parcelas e prestação), ou a observada entre duas
+      fotos do saldo. O saldo que o banco mostra, quando informado, manda.
     </p>
     <p class="aviso erro" id="aviso-contrato" hidden></p>
     <div class="campo acao">

@@ -1073,6 +1073,11 @@ function peDaFolha(c) {
 // a foto do banco.
 
 const pct = (taxa) => `${(taxa * 100).toFixed(2).replace('.', ',')}% ao mês`;
+/** "1,59% a.m. · 20,8% a.a." — o equivalente ao ano é o digitado, se o contrato foi lançado ao ano. */
+const taxaNosDois = (mensal, ano = null) => {
+  const anual = ano ?? (1 + mensal) ** 12 - 1;
+  return `${(mensal * 100).toFixed(2).replace('.', ',')}% a.m. · ${(anual * 100).toFixed(1).replace('.', ',')}% a.a.`;
+};
 const mesAno = (dia) => `${dia.slice(5, 7)}/${dia.slice(0, 4)}`;
 
 // O que está aberto em cada cartão: o cronograma, e o contrato sendo amortizado.
@@ -1138,9 +1143,10 @@ const dataCheia = (dia) => `${dia.slice(8, 10)}/${dia.slice(5, 7)}/${dia.slice(0
 const detalhesAbertos = new Set();
 
 /**
- * O cartão do contrato: só os quatro números que ele quer ver primeiro —
- * parcela, quantas, saldo devedor e a última parcela. O resto (juros, taxa,
- * cronograma, amortizar, foto, corrigir) mora em "detalhes".
+ * O cartão do contrato: o que ele quer ver primeiro — parcela, quantas, o valor para
+ * quitar hoje, quanto custa pagar até o fim e a última parcela —, com os juros do contrato,
+ * o CET e a economia de quitar hoje. O resto (análise, cronograma, amortizar, foto,
+ * corrigir) mora em "detalhes".
  */
 function blocoDeDivida(c) {
   const s = situacao(app, c.id);
@@ -1169,11 +1175,18 @@ function blocoDeDivida(c) {
   const aberto = detalhesAbertos.has(c.id);
   const cronogramaAberto = aberto && cronogramasAbertos.has(c.id);
   const emAmortizacao = aberto && amortizando === c.id && !s.quitada;
+  const linhaTaxa = (rotulo, valor, classe = '') => `<div class="linha-detalhe ${classe}"><span>${escapar(rotulo)}</span><span>${escapar(valor)}</span></div>`;
   const numeros = `<div class="numeros-contrato">
       ${numeroDaFaixa('parcela', s.restantes ? formatar(s.valorParcela) : '—')}
       ${numeroDaFaixa('parcelas', `${s.parcelasPagas} de ${s.parcelasTotal}`)}
-      ${numeroDaFaixa('saldo devedor', `${s.estimado ? '~' : ''}${formatar(s.saldoDevedor)}`)}
+      ${numeroDaFaixa('para quitar hoje', `${s.estimado ? '~' : ''}${formatar(s.saldoDevedor)}`)}
+      ${numeroDaFaixa('pagando até o fim', formatar(s.somaRestante))}
       ${numeroDaFaixa('última parcela', s.termina ? dataCheia(s.termina) : '—')}
+    </div>
+    <div class="taxas-contrato">
+      ${linhaTaxa(s.origemTaxa === 'contratual' ? 'juros do contrato' : s.origemTaxa === 'observada' ? 'juros (observados nas fotos)' : 'juros (implícitos no contrato)', taxaNosDois(s.taxa, s.origemTaxa === 'contratual' ? s.taxaAno : null))}
+      ${s.cet != null ? linhaTaxa('CET', taxaNosDois(s.cet, s.cetAno)) : ''}
+      ${s.restantes && s.jurosFuturos ? linhaTaxa('economia ao quitar hoje', `${s.estimado ? '~' : ''}${formatar(s.jurosFuturos)}`, 'economia') : ''}
     </div>`;
   const semPagadora = pagadora
     ? ''

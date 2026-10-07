@@ -634,3 +634,10 @@ input[type="text"].observacao {
 .repete-transf { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e2) var(--e4); }
 .repete-transf label { display: inline-flex; align-items: center; gap: var(--e1); min-height: 36px; }
 .repete-transf .fino { flex-basis: 100%; color: var(--tinta-fraca); font-size: var(--t-miudo); }
+
+/* Juros do contrato e CET: o número e "ao mês / ao ano" lado a lado. */
+.taxa-com-unidade .valor-e-unidade { display: flex; gap: var(--e2); }
+.taxa-com-unidade .valor-e-unidade input { flex: 1 1 90px; min-width: 0; }
+.taxa-com-unidade .valor-e-unidade select { flex: none; width: auto; }
+.taxa-com-unidade .opcional { color: var(--tinta-fraca); font-weight: 400; }
+.conferencia-taxas { margin: 0; font-size: var(--t-apoio); color: var(--tinta-fraca); grid-column: 1 / -1; }

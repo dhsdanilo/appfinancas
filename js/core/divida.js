@@ -75,6 +75,19 @@ export function cronograma(estado, dividaId) {
   const desde = caiAPartirDe(estado, conta);
   const marcos = marcosDaDivida(estado, conta);
 
+  // Juros do contrato informados e nenhuma foto nem amortização: o cronograma sai do fim para o começo, pelo
+  // valor presente das parcelas, e fecha em zero na última (igual ao saldo devedor de cima).
+  if (c.taxa != null && marcos.length === 0) {
+    const cal = calendarioDaDivida(estado, conta);
+    const depois = new Array(cal.length + 1).fill(0);
+    for (let k = cal.length - 1; k >= 0; k -= 1) depois[k] = (depois[k + 1] + cal[k].valor) / (1 + taxa);
+    const parcelas = cal.map((p, k) => {
+      const juros = Math.min(p.valor, Math.round(depois[k] * taxa));
+      return { ...p, juros, amortizacao: p.valor - juros, saldoDepois: Math.round(depois[k + 1]), antesDoApp: p.data < desde };
+    });
+    return { parcelas, marcos, taxa };
+  }
+
   let saldo = c.valorTomado;
   let m = 0;
   const parcelas = [];
@@ -104,12 +117,29 @@ function marcosDaDivida(estado, conta) {
 }
 
 /**
+ * O valor, hoje, de parcelas futuras à taxa `i` ao mês: a primeira vale um mês à frente. É assim
+ * que o banco calcula o valor para quitar (os juros das parcelas que faltam saem do valor).
+ */
+function valorPresente(valores, i) {
+  let pv = 0;
+  for (let m = valores.length; m >= 1; m -= 1) pv = (pv + valores[m - 1]) / (1 + i);
+  return pv;
+}
+
+/**
  * O saldo devedor num dia, andando pelo cronograma: a última foto até ali, e
  * as parcelas e amortizações depois dela. A parcela do dia vem antes dos
  * marcos do dia — a foto daquele dia já a inclui.
  */
 function saldoNoDia(estado, conta, taxa, dia) {
   const c = conta.contrato;
+  // Com os juros do contrato informados e sem foto do banco, o saldo é o que falta pagar trazido a valor de
+  // hoje por esses juros: não depende do "valor tomado" (que pode ser o líquido, sem o IOF e as tarifas).
+  const temFoto = marcosDaDivida(estado, conta).some((m) => m.foto != null && m.data <= dia);
+  if (c.taxa != null && !temFoto) {
+    const restantes = calendarioDaDivida(estado, conta).filter((p) => p.data > dia).map((p) => p.valor);
+    return Math.round(valorPresente(restantes, taxa));
+  }
   const marcos = [
     ...calendarioDaDivida(estado, conta).map((p) => ({ data: p.data, parcela: p.valor, ordem: 0, lc: 0 })),
     ...marcosDaDivida(estado, conta).map((m) => ({ ...m, ordem: 1 })),
@@ -183,6 +213,10 @@ export function situacao(estado, dividaId, dia = hoje()) {
     taxa,
     origemTaxa,
     mesesObservados,
+    // O CET (opcional) só mostra o custo real; não entra no saldo. `taxaAno`/`cetAno`: como foram digitados.
+    cet: c.cet ?? null,
+    cetAno: c.cetAno ?? null,
+    taxaAno: c.taxaAno ?? null,
     proxima: porVir[0]?.data ?? null,
     termina: calendario[calendario.length - 1]?.data ?? null,
     quitada: porVir.length === 0 || saldo === 0,

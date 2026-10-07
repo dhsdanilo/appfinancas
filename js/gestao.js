@@ -29,7 +29,7 @@ import { NOVA_CONTA, CICLO, CONTRATO, EDITAR_CONTA } from './app/marcacao-gestao
 import { AREAS, areaDaConta, AREAS_COM_CATEGORIA, opcoesDeConta } from './app/areas.js';
 import { salvarContrato, fotografar, excluirDivida } from './app/contrato.js';
 import { situacao, saldoDevedor } from './core/divida.js';
-import { calendarioDePagamento } from './core/contrato.js';
+import { calendarioDePagamento, taxaImplicita } from './core/contrato.js';
 import { somarMeses, inicioDoMes } from './core/datas.js';
 import { porOrdemDaConta } from './core/ordem.js';
 import { escolhasDeIcone } from './core/icones-conta.js';
@@ -827,7 +827,8 @@ function lerContrato(campos) {
   const valorTomado = Math.abs(deTexto(campos.tomado.value));
   const primeira = campos.primeira.value;
   const taxaTexto = campos.taxa.value.trim();
-  const algum = parcelas || valorParcela || valorTomado || primeira || taxaTexto;
+  const cetTexto = campos.cet?.value.trim() ?? '';
+  const algum = parcelas || valorParcela || valorTomado || primeira || taxaTexto || cetTexto;
   if (!algum) return { valor: null };
   if (!valorTomado) return { erro: 'Falta o valor tomado do empréstimo.' };
   if (!parcelas) return { erro: 'Falta o número de parcelas.' };
@@ -840,10 +841,62 @@ function lerContrato(campos) {
       parcelas,
       valorParcela,
       primeira: primeiraConferida(campos),
-      // "1,82" % ao mês → 0,0182. Vazio: o app usa a observada ou a implícita.
-      taxa: taxaTexto ? Math.abs(deTexto(taxaTexto)) / 10000 : null,
+      // Os juros do contrato ("1,82" % ao mês → 0,0182) e o CET, em decimal ao mês; o que foi
+      // digitado ao ano também fica (`taxaAno`, `cetAno`) para reabrir como o contrato diz.
+      // Vazio: o app usa a observada ou a implícita.
+      ...taxaDeTexto('taxa', taxaTexto, campos.taxaUn?.value),
+      ...taxaDeTexto('cet', cetTexto, campos.cetUn?.value),
     },
   };
+}
+
+/** "20,8" ao ano → { taxa: 0,0159…, taxaAno: 0,208 }; ao mês → { taxa: 0,0159 }. Vazio → { taxa: null }. */
+function taxaDeTexto(chave, texto, unidade) {
+  if (!texto) return { [chave]: null };
+  const x = Math.abs(deTexto(texto)) / 10000;
+  if (unidade === 'a') return { [chave]: (1 + x) ** (1 / 12) - 1, [`${chave}Ano`]: x };
+  return { [chave]: x };
+}
+
+/** A taxa de um contrato como o formulário a mostra: { texto, unidade }. */
+function taxaParaTexto(contrato, chave) {
+  const mensal = contrato?.[chave];
+  if (mensal == null) return { texto: '', unidade: 'm' };
+  const ano = contrato[`${chave}Ano`];
+  const v = ano != null ? ano * 100 : mensal * 100;
+  return { texto: String(v.toFixed(2)).replace('.', ','), unidade: ano != null ? 'a' : 'm' };
+}
+
+/** Embaixo dos campos de taxa: o equivalente ao ano (ou ao mês) e o aviso de CET menor que os juros. */
+function conferirTaxas(form) {
+  const campos = form.elements;
+  const saida = form.querySelector('[data-papel="conferencia-taxas"]');
+  if (!saida || !campos.cet) return;
+  const mensal = (texto, un) => {
+    if (!texto.trim()) return null;
+    const x = Math.abs(deTexto(texto)) / 10000;
+    return un === 'a' ? (1 + x) ** (1 / 12) - 1 : x;
+  };
+  const p = (v) => `${(v * 100).toFixed(2).replace('.', ',')}%`;
+  const juros = mensal(campos.taxa.value, campos.taxaUn.value);
+  const cet = mensal(campos.cet.value, campos.cetUn.value);
+  const partes = [];
+  const par = (nome, v, un) => `${nome}: ${p(v)} ao mês ≈ ${p((1 + v) ** 12 - 1)} ao ano`;
+  if (juros != null) partes.push(par('Juros', juros));
+  if (cet != null) partes.push(par('CET', cet));
+  const aviso = juros != null && cet != null && cet < juros
+    ? ' O CET inclui os juros, então costuma ser maior. Confira se os dois não estão trocados.'
+    : '';
+  // Os juros iguais à taxa implícita no contrato, sem CET informado: pode ser o CET digitado no lugar.
+  const tomado = Math.abs(deTexto(campos.tomado?.value ?? ''));
+  const parcelas = Number(campos.parcelas.value) || 0;
+  const parcela = Math.abs(deTexto(campos.valorParcela?.value ?? ''));
+  const implicita = tomado && parcelas && parcela ? taxaImplicita(tomado, parcelas, parcela) : 0;
+  const dica = juros != null && cet == null && implicita && Math.abs(implicita - juros) < 0.0003
+    ? ` A taxa que o valor, as parcelas e a prestação implicam é ${p(implicita)} ao mês, igual a esta. Se este número for o CET, ponha ele no campo do CET.`
+    : '';
+  saida.innerHTML = `${partes.map(escapar).join(' · ')}${escapar(aviso)}${escapar(dica)}`;
+  saida.hidden = !saida.innerHTML;
 }
 
 // ── "pelo calendário, 18 de 42 já pagas" (design/10 §4.4) ─────────────────
@@ -905,6 +958,7 @@ for (const form of [$('f-conta'), $('f-contrato')]) {
   form?.addEventListener('input', (e) => {
     if (e.target.name === 'jaPagas') e.target.dataset.mexido = '1';
     if (['primeira', 'parcelas', 'jaPagas'].includes(e.target.name)) conferirContrato(form);
+    if (['taxa', 'taxaUn', 'cet', 'cetUn', 'tomado', 'parcelas', 'valorParcela'].includes(e.target.name)) conferirTaxas(form);
   });
 }
 
@@ -925,12 +979,18 @@ function abrirContrato(id) {
   f.parcelas.value = ct.parcelas ?? '';
   f.valorParcela.value = ct.valorParcela ? formatarSimples(ct.valorParcela).replace('R$ ', '') : '';
   f.primeira.value = ct.primeira ?? '';
-  f.taxa.value = ct.taxa != null ? String((ct.taxa * 100).toFixed(2)).replace('.', ',') : '';
+  const juros = taxaParaTexto(ct, 'taxa');
+  const cet = taxaParaTexto(ct, 'cet');
+  f.taxa.value = juros.texto;
+  f.taxaUn.value = juros.unidade;
+  f.cet.value = cet.texto;
+  f.cetUn.value = cet.unidade;
   f.foto.value = '';
   pintarPagadoras();
   f.pagaComDivida.value = c.pagaCom ?? '';
   $('aviso-contrato').hidden = true;
   conferirContrato($('f-contrato'));
+  conferirTaxas($('f-contrato'));
   pintarFimDoContrato();
   $('dialogo-contrato').showModal();
   f.tomado.focus();

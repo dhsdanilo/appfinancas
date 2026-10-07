@@ -1597,3 +1597,6 @@ a.dono-ativo:hover { text-decoration: underline; }
 /* Os donos do dinheiro na página do ativo: o nome na lista da pizza é link para o envelope. */
 .lista-pizza a.nome-fatia { color: var(--tinta); text-decoration: underline; text-decoration-color: var(--borda); }
 .lista-pizza a.nome-fatia:hover { text-decoration-color: var(--acento); }
+/* Os juros do contrato, o CET e a economia, no cartão da dívida. */
+.taxas-contrato { margin-top: var(--e3); }
+.taxas-contrato .linha-detalhe.economia span:last-child { color: var(--positivo); }

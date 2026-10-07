@@ -27,6 +27,7 @@ import * as pendencias from '../core/pendencias.js';
 import { categoriaNaArea, areasParaConta } from '../app/areas.js';
 import * as holerite from '../core/holerite.js';
 import * as divida from '../core/divida.js';
+import * as contratoPuro from '../core/contrato.js';
 import * as investimentos from '../core/investimentos.js';
 import * as envelopes from '../core/envelopes.js';
 import * as relatorios from '../core/relatorios.js';
@@ -2592,6 +2593,32 @@ caso('investimento', 'o rendimento do ativo no período: sobre o que estava post
   const curto = investimentos.rendimentoDoAtivo(e, 'petr', '2025-03-20', '2025-04-05');
   igual([curto.mensal, curto.anual], [null, null], 'menos de 1 mês: sem média nem anual');
   igual(investimentos.rendimentoDoAtivo(e, 'petr', '2000-01-01', '2025-01-01'), null, 'antes da primeira compra');
+});
+
+caso('dívida', 'o valor para quitar sai dos juros do contrato, não do valor tomado, e o CET não entra', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  // 12 parcelas de uma Price de R$ 10.000 a 2% ao mês; o "valor tomado" é o líquido (R$ 9.000: sem IOF e tarifas).
+  const i = 0.02;
+  const parcela = Math.round(contratoPuro.parcelaPrice(1000000, i, 12));
+  const base = { valorTomado: 900000, data: '2027-01-01', parcelas: 12, valorParcela: parcela, primeira: '2027-02-10', taxa: i };
+  await estado.aplicarEvento('conta.criada', { id: 'emp', nome: 'Empréstimo', tipo: 'divida', contrato: base });
+  await estado.aplicarEvento('conta.criada', { id: 'cet', nome: 'Com CET', tipo: 'divida', contrato: { ...base, cet: 0.03 } });
+  const e = await estado.calcular();
+  const antes = divida.situacao(e, 'emp', '2027-01-15');
+  verdade(Math.abs(antes.saldoDevedor - 1000000) < 100, `antes da 1ª parcela deve R$ 10.000 (valor financiado), deu ${antes.saldoDevedor}`);
+  const meio = divida.situacao(e, 'emp', '2027-06-15'); // 5 pagas, 7 restantes
+  const esperado = Math.round(contratoPuro.saldoPrice(1000000, i, parcela, 5));
+  verdade(Math.abs(meio.saldoDevedor - esperado) < 100, `depois de 5 parcelas: ${meio.saldoDevedor} contra ${esperado}`);
+  igual(divida.situacao(e, 'cet', '2027-06-15').saldoDevedor, meio.saldoDevedor, 'o CET não muda o valor para quitar');
+  igual(divida.situacao(e, 'cet', '2027-06-15').cet, 0.03, 'o CET fica guardado para mostrar');
+  const cr = divida.cronograma(e, 'emp');
+  igual(cr.parcelas[cr.parcelas.length - 1].saldoDepois, 0, 'o cronograma fecha em zero na última parcela');
+  const foto = await (async () => {
+    await estado.aplicarEvento('conta.fotografada', { id: 'emp', data: '2027-06-15', valor: 650000 });
+    return divida.situacao(await estado.calcular(), 'emp', '2027-06-15');
+  })();
+  igual([foto.saldoDevedor, foto.estimado], [650000, false], 'o saldo que o banco mostra continua mandando');
 });
 
 async function limpar() {
