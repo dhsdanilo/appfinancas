@@ -472,12 +472,14 @@ export async function criarFormulario({
   );
 
   /**
-   * Aparelho com dono, lançamento novo: "cartão de crédito" mostra só cartões;
-   * "conta corrente", só as contas de caixa dela (as de ninguém também). Sem dono
-   * ou na correção, nada muda.
+   * Aparelho com dono, lançamento novo, NO CADASTRO RÁPIDO (a fila do mercado):
+   * "cartão de crédito" mostra só cartões; "conta corrente", só as contas de caixa
+   * dela (as de ninguém também). No cadastro completo (o do PC) qualquer conta
+   * serve, até a de outra pessoa (pedido dele, 08/10/2026). Sem dono ou na
+   * correção, nada muda.
    */
   let modoPagamento = null;
-  const comModo = () => Boolean(pessoaDoAparelho()) && !editando;
+  const comModo = () => rapido && Boolean(pessoaDoAparelho()) && !editando;
   function filtrarPorModo(lista) {
     if (!comModo() || !modoPagamento) return lista;
     const dona = pessoaDoAparelho();
@@ -608,8 +610,10 @@ export async function criarFormulario({
     // Gastar mais do que o disponível: só então aparece um aviso.
     const conta = app.contas[contaId];
     const v = valor.centavos();
+    // Gasto dela: a conta de caixa dela (ou de ninguém) e o cartão de outra pessoa; lançar na conta de caixa de outra pessoa não gasta o disponível dela.
     const gasta = tipo === 'despesa' && v > 0 && conta && (
-      conta.tipo === 'corrente' || conta.tipo === 'especie' || (conta.tipo === 'cartao' && conta.titular && conta.titular !== dona)
+      ((conta.tipo === 'corrente' || conta.tipo === 'especie') && (!conta.titular || conta.titular === dona))
+      || (conta.tipo === 'cartao' && conta.titular && conta.titular !== dona)
     );
     const passa = gasta && v > d.disponivel ? v - Math.max(0, d.disponivel) : 0;
     const bloco3 = (rotulo, centavos, classe = '') =>
@@ -624,7 +628,10 @@ export async function criarFormulario({
 
   function pintarConta() {
     pintarModo();
-    const contas = contasDaEscolha();
+    // Num aparelho com dono, a conta de outra pessoa leva o nome dela, para não ser confundida.
+    const dona = pessoaDoAparelho();
+    const contas = contasDaEscolha().map((c) => (dona && c.titular && c.titular !== dona && app.pessoas?.[c.titular]
+      ? { ...c, nome: `${c.nome} · ${app.pessoas[c.titular].nome}` } : c));
     el('conta').innerHTML = contas.length
       ? opcoesDeConta(contas, contaId)
       : '<option value="">nenhuma conta</option>';
