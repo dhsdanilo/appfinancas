@@ -257,7 +257,7 @@ export async function criarFormulario({
 }) {
   raiz.innerHTML = (ordemDoApp ? MARCACAO_DO_APP : MARCACAO).replace('<div class="refino" data-papel="refino" hidden>', `<div class="refino" data-papel="refino" hidden>${P.fatura}`);
   raiz.classList.toggle('formulario-app', ordemDoApp);
-  if (ordemDoApp) raiz.querySelector('[data-papel="nova-categoria"]').placeholder = 'buscar ou criar categoria';
+  raiz.querySelector('[data-papel="nova-categoria"]').placeholder = 'buscar ou criar categoria';
   const dedo = matchMedia('(pointer: coarse)').matches;
   const el = (papel) => raiz.querySelector(`[data-papel="${papel}"]`);
 
@@ -367,20 +367,14 @@ export async function criarFormulario({
     if (!todasCategorias) return;
     const ehGrupo = (c) => Object.values(app.categorias).some((o) => o.pai === c.id);
     const todas = categoriasDaVez(ehGrupo).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
-    if (ordemDoApp) return pintarListaDoApp(todas);
-    el('lista-todas-cat').innerHTML = todas.length
-      ? todas
-          .map(
-            (c) =>
-              `<button type="button" data-id="${escapar(c.id)}" aria-pressed="${c.id === categoriaId}">${escapar(c.nome)}</button>`
-          )
-          .join('')
-      : '<span class="vazio">nenhuma ainda</span>';
+    pintarListaDoApp(todas);
   }
 
   /**
-   * "outras ▾" no app: a lista inteira, filtrada pelo que se digita, e no fim
-   * "+ criar" — com o que foi digitado, ou para começar a digitar.
+   * "outras ▾" no app e "+ todas" no térreo: a lista inteira, filtrada pelo que
+   * se digita, com "+ criar" — com o que foi digitado, ou para começar a
+   * digitar. Criar é um botão (o Enter do teclado do celular não é confiável).
+   * No app ele fica no fim da lista; no térreo, no começo, onde o dedo está.
    */
   function pintarListaDoApp(todas) {
     // "saude" acha "Saúde": sem acento e sem caixa.
@@ -391,10 +385,10 @@ export async function criarFormulario({
     const criar = busca && !exata
       ? `<button type="button" class="criar-categoria" data-criar-categoria>+ criar “${escapar(el('nova-categoria').value.trim())}”</button>`
       : busca ? '' : '<button type="button" class="criar-categoria" data-criar-categoria>+ criar categoria</button>';
-    el('lista-todas-cat').innerHTML =
-      achadas
-        .map((c) => `<button type="button" data-id="${escapar(c.id)}" aria-pressed="${c.id === categoriaId}">${escapar(c.nome)}</button>`)
-        .join('') + criar;
+    const itens = achadas
+      .map((c) => `<button type="button" data-id="${escapar(c.id)}" aria-pressed="${c.id === categoriaId}">${escapar(c.nome)}</button>`)
+      .join('');
+    el('lista-todas-cat').innerHTML = ordemDoApp ? itens + criar : criar + itens;
   }
 
   async function criarCategoria(texto) {
@@ -1437,7 +1431,7 @@ export async function criarFormulario({
   el('b-refino').addEventListener('click', () => {
     refinoAberto = !refinoAberto;
     pintarRefino();
-    if (refinoAberto) el('novo-detalhe').focus();
+    if (refinoAberto && !dedo) el('novo-detalhe').focus();
   });
 
   el('parcelas').addEventListener('input', pintarParcelas);
@@ -1612,7 +1606,8 @@ export async function criarFormulario({
   el('b-todas-cat').addEventListener('click', () => {
     todasCategorias = !todasCategorias;
     pintarTodasCategorias();
-    if (todasCategorias) el('nova-categoria').focus();
+    // No dedo o teclado esconderia a lista: ele sobe quando se toca em "criar".
+    if (todasCategorias && !dedo) el('nova-categoria').focus();
   });
 
   el('lista-todas-cat').addEventListener('click', async (e) => {
@@ -1622,16 +1617,14 @@ export async function criarFormulario({
       el('nova-categoria').value = '';
       todasCategorias = false;
       await criarCategoria(texto);
-      if (ordemDoApp && !dedo) valor.focar();
+      if (ordemDoApp && !dedo) valor.focar(); else valor.desfocar();
       return;
     }
     const b = e.target.closest('button[data-id]');
     if (!b) return;
     escolherCategoria(b.dataset.id);
-    if (ordemDoApp) {
-      todasCategorias = false;
-      el('nova-categoria').value = '';
-    }
+    todasCategorias = false;
+    el('nova-categoria').value = '';
     pintarCategorias();
     pintarRefino();
     if (ordemDoApp && !dedo) valor.focar(); else valor.desfocar();
@@ -1639,9 +1632,7 @@ export async function criarFormulario({
   });
 
   // No app, o campo da lista filtra enquanto se digita.
-  el('nova-categoria').addEventListener('input', () => {
-    if (ordemDoApp) pintarTodasCategorias();
-  });
+  el('nova-categoria').addEventListener('input', pintarTodasCategorias);
 
   el('nova-categoria').addEventListener('keydown', async (e) => {
     if (e.key !== 'Enter') return;
@@ -1650,24 +1641,19 @@ export async function criarFormulario({
     e.stopPropagation();
     const campo = el('nova-categoria');
     const texto = campo.value;
-    if (ordemDoApp) {
-      // Enter escolhe a primeira achada; sem nenhuma, cria.
-      const primeira = el('lista-todas-cat').querySelector('button[data-id]');
-      campo.value = '';
-      todasCategorias = false;
-      if (primeira && texto.trim()) {
-        escolherCategoria(primeira.dataset.id);
-        pintarCategorias();
-        pintarRefino();
-      } else {
-        await criarCategoria(texto);
-      }
-      if (!dedo) valor.focar();
-      valor.pintar();
-      return;
-    }
+    // Enter escolhe a primeira achada; sem nenhuma, cria.
+    const primeira = el('lista-todas-cat').querySelector('button[data-id]');
     campo.value = '';
-    await criarCategoria(texto);
+    todasCategorias = false;
+    if (primeira && texto.trim()) {
+      escolherCategoria(primeira.dataset.id);
+      pintarCategorias();
+      pintarRefino();
+    } else {
+      await criarCategoria(texto);
+    }
+    if (ordemDoApp && !dedo) valor.focar(); else if (dedo) campo.blur();
+    valor.pintar();
   });
 
   await recarregar();

@@ -45,6 +45,25 @@
   padding: 0 var(--e4) var(--e4);
 }
 
+/* A tela rola por inteiro, e o "Lançar" fica preso embaixo. Antes só a lista de
+   categorias rolava, por dentro: abrir "+ todas" ou "detalhes" empurrava o botão
+   para fora da tela e o dedo não tinha onde rolar, só fechando o que abriu. */
+.terreo { height: 100dvh; }
+.terreo .captura {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 0;
+}
+.terreo .categorias { flex: none; overflow: visible; }
+.terreo .acoes {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin-top: var(--e2);
+  padding: var(--e2) 0 max(var(--e4), env(safe-area-inset-bottom, 0));
+  background: var(--fundo);
+}
+
 /* ── PC ─────────────────────────────────────────────────────────────────── */
 /* Celular e PC usam o MESMO mecanismo de entrada: o teclado do aparelho. Aqui
    só muda a respiração, porque sobra tela. */

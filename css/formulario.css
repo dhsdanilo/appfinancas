@@ -542,7 +542,8 @@ input[type="text"].observacao {
 }
 /* O campo de criar não estica: numa coluna flex, a regra genérica de input o
    faria crescer até ocupar a tela. */
-.todas-categorias input[type="text"].nova-etiqueta { flex: none; min-height: 40px; }
+.todas-categorias input[type="text"].nova-etiqueta { flex: none; min-height: 40px; order: -1; }
+.todas-categorias .criar-categoria { border-style: dashed; color: var(--acento); }
 
 /* ── reajuste (design/10 §7) ────────────────────────────────────────────── */
 .reajuste, .reajuste-fila {
