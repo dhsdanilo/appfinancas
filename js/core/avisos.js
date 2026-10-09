@@ -45,7 +45,7 @@ export function avisosDoInicio(estado, dia = hoje(), { ultimaCopia } = {}) {
     if (p && p.falta > 0 && p.alvo > 0) {
       lista.push({
         nivel: venceEm != null && venceEm <= 10 ? 'atencao' : 'info',
-        titulo: `Cofrinho cobre ${Math.round((p.provisionado / p.alvo) * 100)}% do ${c.nome}`,
+        titulo: `${p.cofrinho.nome} cobre ${Math.round((p.provisionado / p.alvo) * 100)}% do ${c.nome}`,
         detalhe: `faltam ${formatar(p.falta)}`,
         para: { conta: c.id, mes: (r?.aberta?.vencimento ?? '').slice(0, 7) || null },
       });
