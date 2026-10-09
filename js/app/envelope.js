@@ -245,17 +245,20 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
     semDono = Math.max(0, r?.semDono ?? 0);
     const ativo = app.ativos?.[lugarId];
     document.getElementById('titulo-distribuir').textContent = `Distribuir · ${nomeDoLugar(app, lugarId)}`;
-    dist('cabeca').textContent = `${ativo ? `${app.contas[ativo.contaId]?.nome ?? ''} · ` : ''}Arraste ou digite quanto vai para cada envelope. Cada linha vira um aporte; nada sai do lugar.`;
+    dist('cabeca').textContent = `${ativo ? `${app.contas[ativo.contaId]?.nome ?? ''} · ` : ''}${envelopeId ? 'Arraste ou digite quanto vai para o envelope.' : 'Arraste ou digite quanto vai para cada envelope.'} Cada linha vira um aporte; nada sai do lugar.`;
     dist('disponivel').textContent = formatar(semDono);
     // O passo da barra: de real em real até R$ 1.000; acima, de 10 em 10.
     const passo = semDono > 100000 ? 1000 : 100;
 
     // "Inteiro" só onde rende: a previdência que é toda da aposentadoria.
-    const rende = r?.lugar.tipo === 'fracao';
+    // Vindo da ficha de um envelope, só ele aparece: não há o que escolher.
+    const rende = r?.lugar.tipo === 'fracao' && !envelopeId;
     dist('campo-inteiro').hidden = !rende;
-    const lista = envelopesAtivos(app);
-    const dono = lista.find((v) => (v.inteiros ?? []).includes(lugarId));
-    dist('inteiro').innerHTML = `<option value="">— cada aporte decide</option>${lista.map((v) => `<option value="${esc(v.id)}"${v === dono ? ' selected' : ''}>${esc(v.nome)}</option>`).join('')}`;
+    const todos = envelopesAtivos(app);
+    const lista = envelopeId ? todos.filter((v) => v.id === envelopeId) : todos;
+    if (envelopeId && lista[0]) document.getElementById('titulo-distribuir').textContent = `Aportar em ${lista[0].nome} · ${nomeDoLugar(app, lugarId)}`;
+    const dono = todos.find((v) => (v.inteiros ?? []).includes(lugarId));
+    dist('inteiro').innerHTML = `<option value="">— cada aporte decide</option>${todos.map((v) => `<option value="${esc(v.id)}"${v === dono ? ' selected' : ''}>${esc(v.nome)}</option>`).join('')}`;
 
     const totais = donosNoDia(app).porEnvelope;
     dist('linhas').innerHTML = lista.map((v, i) => {
@@ -318,8 +321,9 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
     const linhas = lerLinhas();
     const total = linhas.reduce((t, x) => t + x.valor, 0);
     const app = await estado.calcular();
-    const inteiro = dist('campo-inteiro').hidden ? null : dist('inteiro').value || null;
     const antes = envelopesAtivos(app).find((v) => (v.inteiros ?? []).includes(lugarId))?.id ?? null;
+    // Campo escondido (lugar que não rende, ou aporte vindo da ficha): não mexe no "inteiro".
+    const inteiro = dist('campo-inteiro').hidden ? antes : dist('inteiro').value || null;
     if (total > semDono) { recado(dist('recado'), `Há ${formatar(semDono)} sem dono aqui: não dá para aportar ${formatar(total)}.`); return; }
     if (!linhas.length && inteiro === antes) { distJ.close(); return; }
     const data = dist('data').value || hoje();
