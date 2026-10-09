@@ -33,6 +33,7 @@ import { calendarioDePagamento, taxaImplicita } from './core/contrato.js';
 import { somarMeses, inicioDoMes } from './core/datas.js';
 import { porOrdemDaConta } from './core/ordem.js';
 import { escolhasDeIcone } from './core/icones-conta.js';
+import { envelopesAtivos } from './core/envelopes.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -1079,7 +1080,7 @@ function abrirEditarConta(id) {
     f.limite.value = c.limite ? formatarSimples(c.limite).replace('R$ ', '') : '';
     pintarPagadoras();
     f.pagaCom.value = c.pagaCom ?? '';
-    f.cofrinho.value = c.cofrinhoAtivoId ? `ativo:${c.cofrinhoAtivoId}` : c.cofrinhoId ? `conta:${c.cofrinhoId}` : '';
+    f.cofrinho.value = c.cofrinhoEnvelopeId ? `envelope:${c.cofrinhoEnvelopeId}` : c.cofrinhoAtivoId ? `ativo:${c.cofrinhoAtivoId}` : c.cofrinhoId ? `conta:${c.cofrinhoId}` : '';
   }
   $('ec-campo-caixa').hidden = c.tipo !== 'investimento';
   if (c.tipo === 'investimento') {
@@ -1179,7 +1180,8 @@ $('f-editar-conta')?.addEventListener('submit', async (e) => {
       diaVencimento: Number(f.vencimento.value) || null,
       limite: deTexto(f.limite.value) || null,
       pagaCom: f.pagaCom.value || null,
-      // "ativo:ID" ou "conta:ID": um só vale, o outro é limpo.
+      // "envelope:ID", "ativo:ID" ou "conta:ID": um só vale, os outros são limpos.
+      cofrinhoEnvelopeId: f.cofrinho.value.startsWith('envelope:') ? f.cofrinho.value.slice(9) : null,
       cofrinhoAtivoId: f.cofrinho.value.startsWith('ativo:') ? f.cofrinho.value.slice(6) : null,
       cofrinhoId: f.cofrinho.value.startsWith('conta:') ? f.cofrinho.value.slice(6) : null,
     };
@@ -1291,7 +1293,9 @@ function pintarPagadoras() {
     const ativos = Object.values(app.ativos ?? {})
       .filter((a) => !a.arquivado && app.contas[a.contaId] && !app.contas[a.contaId].arquivada)
       .sort((a, b) => (a.nome < b.nome ? -1 : 1));
+    const envelopes = envelopesAtivos(app);
     select.innerHTML = '<option value="">nenhum</option>' +
+      (envelopes.length ? `<optgroup label="Envelopes">${envelopes.map((v) => `<option value="envelope:${escapar(v.id)}">${escapar(v.nome)}</option>`).join('')}</optgroup>` : '') +
       (ativos.length ? `<optgroup label="Ativos">${ativos.map((a) => `<option value="ativo:${escapar(a.id)}">${escapar(a.nome)} · ${escapar(app.contas[a.contaId].nome)}</option>`).join('')}</optgroup>` : '') +
       `<optgroup label="Contas">${cofrinhos.map((c) => `<option value="conta:${escapar(c.id)}">${escapar(c.nome)}</option>`).join('')}</optgroup>`;
     select.value = antes;

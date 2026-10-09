@@ -20,6 +20,7 @@ import { VERSAO_ESTADO } from '../core/redutores.js';
 import * as cartao from '../core/cartao.js';
 import * as previsto from '../core/previsto.js';
 import * as cofrinho from '../core/cofrinho.js';
+import * as mesDaConta from '../core/mes-da-conta.js';
 import * as cotacoes from '../core/cotacoes.js';
 import * as repasse from '../core/repasse.js';
 import * as datas from '../core/datas.js';
@@ -1218,6 +1219,45 @@ caso('previsto', '★ cofrinho do cartão: alvo = limite usado + previstas da fa
   igual([p.cofrinho.nome, p.provisionado, p.falta], ['Cofrinho', 200000, 43990 - 200000], 'o ativo do cofrinho é a provisão; o resto da conta não conta');
   await estado.aplicarEvento('conta.alterada', { id: 'c1', cofrinhoId: null, cofrinhoAtivoId: null });
   igual(cofrinho.provisaoDoCartao(await estado.calcular(), 'c1', dia), null, 'sem vínculo, não há provisão');
+});
+
+caso('previsto', '★ cofrinho como envelope: só o envelope conta, e abate a fatura aberta no mês seguinte (piso zero)', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const dia = '2027-03-05';
+  const ev = (t, d) => estado.aplicarEvento(t, d);
+  await ev('conta.criada', { id: 'k1', nome: 'Corrente', tipo: 'corrente', saldoInicial: 1000000 });
+  await ev('conta.criada', { id: 'inv', nome: 'Banco', tipo: 'investimento', caixaEm: 'k1' });
+  await ev('ativo.criado', { id: 'cdb', contaId: 'inv', nome: 'CDB', classe: 'renda_fixa' });
+  await ev('conta.criada', { id: 'c1', nome: 'Cartão', tipo: 'cartao', diaFechamento: 3, diaVencimento: 10, pagaCom: 'k1' });
+  await ev('envelope.criado', { id: 'fat', nome: 'Fatura do cartão' });
+  await ev('envelope.criado', { id: 'outro', nome: 'Reserva' });
+  await ev('lancamento.registrado', { id: 'ap', tipo: 'aplicacao', valor: 800000, contaId: null, ativoId: 'cdb', dataCompetencia: '2027-03-01', confirmado: true });
+  await ev('envelope.alocado', { id: 'x1', lugarId: 'cdb', de: null, para: 'fat', valor: 400000, data: '2027-03-01' });
+  await ev('envelope.alocado', { id: 'x2', lugarId: 'cdb', de: null, para: 'outro', valor: 300000, data: '2027-03-01' });
+  // Fatura aberta (fecha 03/04, vence 10/04): 3.000 lançados.
+  await ev('lancamento.registrado', {
+    id: 'b', tipo: 'despesa', valor: 300000, contaId: 'c1', categoriaId: 'x',
+    dataCompetencia: dia, dataCaixa: dia, confirmado: true,
+  });
+  await ev('conta.alterada', { id: 'c1', cofrinhoEnvelopeId: 'fat' });
+  let e = await estado.calcular();
+  let p = cofrinho.provisaoDoCartao(e, 'c1', dia);
+  igual([p.cofrinho.nome, p.provisionado, p.alvo], ['Fatura do cartão', 400000, 300000], 'só o que é do envelope conta, não o CDB inteiro');
+  const abril = () => mesDaConta.saidasDoMes(e, new Set(['k1']), '2027-04', dia);
+  let sai = abril();
+  igual([sai.faturas[0].valor, sai.faturas[0].abatido, sai.total], [300000, 300000, 0],
+    'envelope maior que a fatura: abate a fatura inteira e para em zero (nunca vira entrada)');
+  // Menos no envelope que na fatura: abate só o que há.
+  await ev('envelope.alocado', { id: 'x3', lugarId: 'cdb', de: 'fat', para: null, valor: 300000, data: '2027-03-02' });
+  e = await estado.calcular();
+  sai = abril();
+  igual([sai.faturas[0].abatido, sai.total], [100000, 200000], 'envelope com 1.000 abate 1.000 da fatura de 3.000');
+  // Só a aberta: a do mês seguinte ao seguinte não é abatida, e sem vínculo nada abate.
+  igual(mesDaConta.saidasDoMes(e, new Set(['k1']), '2027-05', dia).total, 0, 'só a fatura aberta é abatida');
+  await ev('conta.alterada', { id: 'c1', cofrinhoEnvelopeId: null });
+  e = await estado.calcular();
+  igual(abril().total, 300000, 'sem cofrinho, a fatura pesa inteira');
 });
 
 caso('investimento', '★ cotação automática: o vínculo vira série; o preço entra como avaliação, sem pisar na manual', async () => {

@@ -13,6 +13,7 @@ import { hoje, inicioDoMes, fimDoMes, proximoMes, somarDias } from './datas.js';
 import { visiveis, sinalDeSaida } from './lancamentos.js';
 import { ocorrenciasPrevistas, faturas } from './previsto.js';
 import { liquidoPrevisto } from './holerite.js';
+import { provisaoDoCartao, temCofrinho } from './cofrinho.js';
 
 const ehFolha = (estado, id) => estado.contas[id]?.tipo === 'folha';
 
@@ -137,7 +138,12 @@ export function entradasPrevistas(estado, ids, de, ate, dia = hoje(), ignorarOri
  * vencem nele (com as recorrentes do cartão que caem nelas), as recorrentes,
  * as parcelas de dívida e os agendados.
  *
- * { faturas: [{ cartao, valor, recorrentes, vencimento, estimado }], recorrentes, parcelas, agendados, total, estimado }
+ * { faturas: [{ cartao, valor, recorrentes, abatido, vencimento, estimado }], recorrentes, parcelas, agendados, total, estimado }
+ *
+ * `abatido`: a fatura ABERTA (a que se forma hoje) já está provisionada no
+ * cofrinho do cartão, e a provisão sai do que pesa na conta. No máximo a
+ * própria fatura: o cofrinho também guarda parcelas futuras, e o que passa
+ * disso não vira entrada — o piso é zero.
  */
 export function saidasDoMes(estado, ids, mes, dia = hoje()) {
   const de = `${mes}-01`;
@@ -152,11 +158,16 @@ export function saidasDoMes(estado, ids, mes, dia = hoje()) {
 
   const cartoes = Object.values(estado.contas).filter((c) => c.tipo === 'cartao' && ids.has(c.pagaCom));
   const daFatura = (cartao) => {
-    if (!porCartao.has(cartao.id)) porCartao.set(cartao.id, { cartao, valor: 0, recorrentes: 0, vencimento: null, estimado: false });
+    if (!porCartao.has(cartao.id)) porCartao.set(cartao.id, { cartao, valor: 0, recorrentes: 0, abatido: 0, vencimento: null, estimado: false });
     return porCartao.get(cartao.id);
   };
+  // A fatura aberta de cada cartão e o que dela já é lançado/previsto, para o abatimento.
+  const abertas = new Map();
   for (const c of cartoes) {
-    for (const f of faturas(estado, c.id, dia) ?? []) {
+    const lista = faturas(estado, c.id, dia) ?? [];
+    const aberta = lista.find((f) => f.situacao === 'aberta');
+    if (aberta) abertas.set(c.id, { fechamento: aberta.fechamento, aPagar: aberta.aPagar, recorrentes: 0, vence: aberta.vencimento >= de && aberta.vencimento <= ate });
+    for (const f of lista) {
       if (f.aPagar <= 0 || f.vencimento < de || f.vencimento > ate) continue;
       const x = daFatura(c);
       x.valor += f.aPagar;
@@ -177,6 +188,8 @@ export function saidasDoMes(estado, ids, mes, dia = hoje()) {
       x.recorrentes += sinalDeSaida(o);
       x.vencimento ??= o.dataCaixa;
       if (o.estimado) x.estimado = estimado = true;
+      const aberta = abertas.get(cartao.id);
+      if (aberta && o.cicloFatura === aberta.fechamento) aberta.recorrentes += sinalDeSaida(o);
       continue;
     }
     if (!ids.has(o.contaId) || ids.has(o.contaDestinoId)) continue;
@@ -194,8 +207,20 @@ export function saidasDoMes(estado, ids, mes, dia = hoje()) {
     if (saida > 0) agendados += saida;
   }
 
+  // O abatimento: o cofrinho cobre primeiro as fechadas que ainda faltam pagar,
+  // e o que sobra abate a aberta — até o valor dela, nunca além.
+  for (const [cartaoId, aberta] of abertas) {
+    const x = porCartao.get(cartaoId);
+    const cartao = estado.contas[cartaoId];
+    if (!x || !aberta.vence || !temCofrinho(cartao)) continue;
+    const prov = provisaoDoCartao(estado, cartaoId, dia);
+    if (!prov) continue;
+    const fechadas = (faturas(estado, cartaoId, dia) ?? []).filter((f) => f.situacao === 'fechada').reduce((t, f) => t + f.aPagar, 0);
+    x.abatido = Math.max(0, Math.min(prov.provisionado - fechadas, aberta.aPagar + aberta.recorrentes));
+  }
+
   const lista = [...porCartao.values()].filter((x) => x.valor > 0 || x.recorrentes > 0);
-  const total = lista.reduce((t, x) => t + x.valor + x.recorrentes, 0) + recorrentes + parcelas + agendados;
+  const total = lista.reduce((t, x) => t + x.valor + x.recorrentes - x.abatido, 0) + recorrentes + parcelas + agendados;
   return { faturas: lista, recorrentes, parcelas, agendados, total, estimado, estimadoDespesas };
 }
 

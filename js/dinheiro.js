@@ -830,9 +830,9 @@ function blocoDoMesSeguinte(nome, r, mes) {
   // A fatura que vence no mês, com as recorrentes do cartão já somadas.
   const faturas = sai.faturas;
   if (faturas.length) {
-    const total = faturas.reduce((t, f) => t + f.valor + f.recorrentes, 0);
+    const total = faturas.reduce((t, f) => t + f.valor + f.recorrentes - f.abatido, 0);
     const vence = faturas.length === 1 && faturas[0].vencimento ? ` · vence ${diaCurto(faturas[0].vencimento)}` : '';
-    const partes = faturas.map((f) => `${f.cartao.nome}${f.vencimento ? ` (vence ${diaCurto(f.vencimento)})` : ''}: ${formatar(f.valor + f.recorrentes)}`).join(' · ');
+    const partes = faturas.map((f) => `${f.cartao.nome}${f.vencimento ? ` (vence ${diaCurto(f.vencimento)})` : ''}: ${formatar(f.valor + f.recorrentes)}${f.abatido > 0 ? ` − ${formatar(f.abatido)} no cofrinho` : ''}`).join(' · ');
     const para = { conta: faturas[0].cartao.id, mes: faturas[0].vencimento?.slice(0, 7) ?? mes };
     numeros.push(numeroDaFaixa(`fatura prevista${vence}`, menos(total, faturas.some((f) => f.estimado)), para, partes));
   }

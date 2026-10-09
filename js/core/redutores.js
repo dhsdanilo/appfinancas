@@ -144,6 +144,7 @@ export const redutores = {
       // O cofrinho que guarda, de antemão, o que o cartão deve (design/11 §9).
       'cofrinhoId',
       'cofrinhoAtivoId',
+      'cofrinhoEnvelopeId',
       // A ordem das abas da área, escolhida por ele (js/core/ordem.js).
       'ordem',
       // O ícone escolhido ("i:banco", "b:caixa"); sem ele, a inicial (js/core/icones-conta.js).

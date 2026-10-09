@@ -8,6 +8,7 @@ import { temCiclo, cicloDaCompra } from './cartao.js';
 import { saldoReal, sinalDeSaida } from './lancamentos.js';
 import { resumoDoCartao, faturasNoPeriodo } from './previsto.js';
 import { resumoDaConta, posicao } from './investimentos.js';
+import { donosNoDia } from './envelopes.js';
 
 /** O que há no cofrinho: o valor da conta de investimento, ou o saldo da de caixa. */
 export function valorDoCofrinho(estado, cofrinhoId, dia = hoje()) {
@@ -16,11 +17,17 @@ export function valorDoCofrinho(estado, cofrinhoId, dia = hoje()) {
   return conta.tipo === 'investimento' ? resumoDaConta(estado, conta, dia).valorAtual : saldoReal(estado, cofrinhoId);
 }
 
-/** O cartão tem cofrinho? Um ativo de investimento ou uma conta de caixa. */
-export const temCofrinho = (cartao) => Boolean(cartao?.cofrinhoAtivoId || cartao?.cofrinhoId);
+/** O cartão tem cofrinho? Um envelope, um ativo de investimento ou uma conta de caixa. */
+export const temCofrinho = (cartao) => Boolean(cartao?.cofrinhoEnvelopeId || cartao?.cofrinhoAtivoId || cartao?.cofrinhoId);
 
 /** O que o cofrinho do cartão é: { nome, provisionado }, ou null se sumiu. */
 function cofrinhoDoCartao(estado, cartao, dia) {
+  // O envelope: só o que é dele conta, o resto da conta onde ele mora fica de fora.
+  if (cartao.cofrinhoEnvelopeId) {
+    const envelope = estado.envelopes?.[cartao.cofrinhoEnvelopeId];
+    if (!envelope || envelope.arquivado || envelope.encerradoEm) return null;
+    return { nome: envelope.nome, provisionado: donosNoDia(estado, dia).porEnvelope.get(envelope.id)?.total ?? 0 };
+  }
   if (cartao.cofrinhoAtivoId) {
     const ativo = estado.ativos?.[cartao.cofrinhoAtivoId];
     if (!ativo || ativo.arquivado) return null;
