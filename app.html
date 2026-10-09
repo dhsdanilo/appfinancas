@@ -92,6 +92,9 @@
   <button type="button" role="tab" id="aba-detalhes" data-aba="detalhes" aria-controls="painel-detalhes" aria-selected="false" tabindex="-1">
     Descrições <span class="contador" data-contador="detalhes"></span>
   </button>
+  <button type="button" role="tab" id="aba-pessoas" data-aba="pessoas" aria-controls="painel-pessoas" aria-selected="false" tabindex="-1">
+    Pessoas <span class="contador" data-contador="pessoas"></span>
+  </button>
   <button type="button" role="tab" id="aba-recorrencias" data-aba="recorrencias" aria-controls="painel-recorrencias" aria-selected="false" tabindex="-1">
     Recorrências
   </button>
@@ -204,6 +207,16 @@
   <ul class="itens" id="lista-detalhes"></ul>
 </section>
 
+
+<!-- ── pessoas ────────────────────────────────────────────────────────── -->
+<section class="cartao painel" role="tabpanel" id="painel-pessoas" aria-labelledby="aba-pessoas" data-painel="pessoas" hidden>
+  <p class="nota">
+    Quem aparece como dono de uma conta ou como quem comprou no cartão de outra pessoa. Duas
+    com o mesmo nome (com e sem acento, por exemplo) se juntam em "fundir": as contas e as compras
+    marcadas vão para a que fica, e dá para desfazer.
+  </p>
+  <ul class="itens" id="lista-pessoas"></ul>
+</section>
 
 <!-- ── regras (design/13 §2) ──────────────────────────────────────────── -->
 <section class="cartao painel" role="tabpanel" id="painel-regras" aria-labelledby="aba-regras" data-painel="regras" hidden>

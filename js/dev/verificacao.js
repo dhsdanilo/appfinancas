@@ -1450,6 +1450,35 @@ caso('fusão', 'fundir categoria leva o histórico e se desfaz', async () => {
   igual(doZero.lancamentos.l1.categoriaId, 'a', 'e o recálculo do zero concorda');
 });
 
+caso('fusão', '★ fundir pessoa: contas e compras marcadas vão junto, a marca some no cartão dela mesma, e desfaz', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const ev = (t, d) => estado.aplicarEvento(t, d);
+  await ev('pessoa.criada', { id: 'p1', nome: 'Ana' });
+  await ev('pessoa.criada', { id: 'p2', nome: 'Aná' });
+  await ev('pessoa.criada', { id: 'p3', nome: 'Beto' });
+  await ev('conta.criada', { id: 'cc', nome: 'Corrente', tipo: 'corrente', titular: 'p2' });
+  await ev('conta.criada', { id: 'ct', nome: 'Cartão', tipo: 'cartao', diaFechamento: 3, diaVencimento: 10, titular: 'p3' });
+  await ev('conta.criada', { id: 'cp', nome: 'Cartão da Ana', tipo: 'cartao', diaFechamento: 3, diaVencimento: 10, titular: 'p1' });
+  const compra = (id, contaId, compradoPor) => ev('lancamento.registrado', {
+    id, tipo: 'despesa', valor: 1000, contaId, categoriaId: 'x', compradoPor,
+    dataCompetencia: '2027-03-10', dataCaixa: '2027-03-10', confirmado: true,
+  });
+  await compra('l1', 'ct', 'p2');
+  await compra('l2', 'cp', 'p2');
+  igual(listas.acharPorNome((await estado.calcular()).pessoas, 'ANA')?.id, 'p1', 'a busca por nome ignora acento e caixa');
+  await ev('pessoa.fundida', { id: 'f1', de: 'p2', para: 'p1' });
+  let e = await estado.calcular();
+  verdade(!e.pessoas.p2, 'a de origem some');
+  igual([e.contas.cc.titular, e.lancamentos.l1.compradoPor, e.lancamentos.l2.compradoPor], ['p1', 'p1', null],
+    'a conta e a compra vão junto; no cartão dela mesma a marca some');
+  await ev('fusao.desfeita', { id: 'f1' });
+  e = await estado.calcular();
+  igual([e.pessoas.p2?.nome, e.contas.cc.titular, e.lancamentos.l1.compradoPor, e.lancamentos.l2.compradoPor], ['Aná', 'p2', 'p2', 'p2'], 'desfazer devolve tudo');
+  const doZero = await estado.recalcular();
+  igual([doZero.contas.cc.titular, doZero.lancamentos.l2.compradoPor], ['p2', 'p2'], 'e o recálculo do zero concorda');
+});
+
 caso('fusão', 'fundir etiqueta não duplica quem já tinha as duas', async () => {
   await limpar();
   await log.registrarAparelho('meu-pc');

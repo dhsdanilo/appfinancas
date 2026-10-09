@@ -33,6 +33,7 @@ import { calendarioDePagamento, taxaImplicita } from './core/contrato.js';
 import { somarMeses, inicioDoMes } from './core/datas.js';
 import { porOrdemDaConta } from './core/ordem.js';
 import { escolhasDeIcone } from './core/icones-conta.js';
+import { pessoaDoAparelho, definirPessoaDoAparelho } from './core/repasse.js';
 import { envelopesAtivos } from './core/envelopes.js';
 
 const $ = (id) => document.getElementById(id);
@@ -95,7 +96,7 @@ function montarArea(area) {
   if (app) pintar();
 }
 
-const SINGULAR = { contas: 'conta', categorias: 'categoria', etiquetas: 'etiqueta', detalhes: 'detalhe' };
+const SINGULAR = { contas: 'conta', categorias: 'categoria', etiquetas: 'etiqueta', detalhes: 'detalhe', pessoas: 'pessoa' };
 
 /** O nome do evento: "detalhe" é masculino, as outras listas são femininas. */
 const evento = (especie, acao) =>
@@ -160,6 +161,7 @@ function pintar() {
   if ($('lista-categorias')) pintarCategorias();
   if ($('lista-etiquetas')) pintarEtiquetas();
   if ($('lista-detalhes')) pintarDetalhes();
+  if ($('lista-pessoas')) pintarPessoas();
   if ($('donos')) pintarDonos();
   pintarContadores();
 }
@@ -170,6 +172,7 @@ function pintarContadores() {
     categorias: Object.values(app.categorias).filter((c) => !c.arquivada).length,
     etiquetas: Object.values(app.etiquetas).filter((t) => !t.arquivada).length,
     detalhes: Object.values(app.detalhes ?? {}).filter((d) => !d.arquivado).length,
+    pessoas: Object.keys(app.pessoas ?? {}).length,
   };
   for (const [especie, n] of Object.entries(quantos)) {
     const contador = document.querySelector(`[data-contador="${especie}"]`);
@@ -396,6 +399,36 @@ function pintarDetalhes() {
 }
 
 /**
+ * Pessoas: de quem são as contas e quantas compras levam a marca dela. Não se
+ * arquiva nem se apaga — duas pessoas iguais se juntam ("fundir"), e o
+ * histórico vai todo para a que fica.
+ */
+function pintarPessoas() {
+  const pessoas = Object.values(app.pessoas ?? {});
+  const doAparelho = pessoaDoAparelho();
+  $('lista-pessoas').innerHTML = pessoas.length
+    ? cabecalhoDeColunas(['pessoa', 'contas', '', 'uso']) +
+      pessoas.sort(porNome).map((p) => {
+        const contas = Object.values(app.contas).filter((c) => c.titular === p.id).map((c) => c.nome);
+        const compras = contagem.pessoas.get(p.id) ?? 0;
+        const partes = [];
+        if (contas.length) partes.push(`${contas.length} conta${contas.length > 1 ? 's' : ''}`);
+        const comprasMarcadas = compras - contas.length;
+        if (comprasMarcadas > 0) partes.push(`${comprasMarcadas} compra${comprasMarcadas > 1 ? 's' : ''} marcada${comprasMarcadas > 1 ? 's' : ''}`);
+        if (p.id === doAparelho) partes.push('este aparelho');
+        return linha({
+          especie: 'pessoas',
+          id: p.id,
+          nome: p.nome,
+          meta: escapar(contas.join(' · ')),
+          uso: partes.length ? escapar(partes.join(' · ')) : '<span class="sem-uso">sem uso</span>',
+          sempreAtiva: true,
+        });
+      }).join('')
+    : vazio('Nenhuma ainda. Elas nascem quando se dá um dono a uma conta.');
+}
+
+/**
  * Ativas primeiro, arquivadas num bloco próprio no fim. Arquivada misturada no
  * meio é ruído: ela não aparece mais nas telas de lançamento, e quem está
  * organizando a lista quer ver o que está em uso.
@@ -413,7 +446,7 @@ function emBlocos(itens, desenhar) {
 }
 
 /** Uma linha da lista: nome editável, o uso à vista e as ações. */
-function linha({ especie, id, nome, meta = '', valor = null, uso, arquivada = false, extras = '', simples = false }) {
+function linha({ especie, id, nome, meta = '', valor = null, uso, arquivada = false, extras = '', simples = false, sempreAtiva = false }) {
   const confirmar = confirmando === `${especie}:${id}`;
   const fundir = fundindo === `${especie}:${id}`;
   const destinos = especie === 'contas' ? [] : destinosDeFusao(especie, id);
@@ -430,8 +463,8 @@ function linha({ especie, id, nome, meta = '', valor = null, uso, arquivada = fa
       '<button type="button" class="elo" data-acao="apagar-nao">não</button>'
     : extras +
       (destinos.length ? '<button type="button" class="elo" data-acao="fundir">fundir</button>' : '') +
-      `<button type="button" class="elo" data-acao="${arquivada ? 'desarquivar' : 'arquivar'}">${arquivada ? 'desarquivar' : 'arquivar'}</button>` +
-      '<button type="button" class="elo" data-acao="apagar">apagar</button>';
+      (sempreAtiva ? '' : `<button type="button" class="elo" data-acao="${arquivada ? 'desarquivar' : 'arquivar'}">${arquivada ? 'desarquivar' : 'arquivar'}</button>` +
+      '<button type="button" class="elo" data-acao="apagar">apagar</button>');
 
   // Categoria e etiqueta não têm detalhe nem valor: duas colunas vazias no meio
   // só deixariam um rastro de espaço entre o nome e o uso.
@@ -473,10 +506,12 @@ async function fundirItem(especie, id, item) {
   const movidos = contagem[especie].get(id) ?? 0;
   const idFusao = novoId('fus');
   await estado.aplicarEvento(evento(especie, 'fundida'), { id: idFusao, de: id, para });
+  // O aparelho era dela? Passa a ser da que ficou.
+  if (especie === 'pessoas' && pessoaDoAparelho() === id) definirPessoaDoAparelho(para);
   fundindo = null;
   await recarregar();
   avisarComAcao(
-    `"${nomeDe}" agora faz parte de "${nomePara}"${movidos ? ` — ${movidos} lançamento${movidos > 1 ? 's' : ''} foram junto` : ''}.`,
+    `"${nomeDe}" agora faz parte de "${nomePara}"${movidos ? (especie === 'pessoas' ? ' — as contas e as compras dela vieram junto' : ` — ${movidos} lançamento${movidos > 1 ? 's' : ''} foram junto`) : ''}.`,
     `<button type="button" class="elo" data-desfazer-fusao="${escapar(idFusao)}">desfazer</button>`
   );
 }
@@ -559,6 +594,13 @@ function renomear(especie, id, item) {
     fechado = true;
     const novo = campo.value.trim();
     if (!salvar || !novo || novo === antes) return pintar();
+    if (especie === 'pessoas') {
+      const igual = acharPorNome(app.pessoas, novo);
+      if (igual && igual.id !== id) {
+        avisar(`Já existe "${igual.nome}". Para juntar as duas, use "fundir".`);
+        return pintar();
+      }
+    }
     await estado.aplicarEvento(evento(especie, 'alterada'), { id, nome: novo });
     avisar('');
     await recarregar();
@@ -1462,6 +1504,7 @@ for (const [lista, especie] of [
   ['lista-categorias', 'categorias'],
   ['lista-etiquetas', 'etiquetas'],
   ['lista-detalhes', 'detalhes'],
+  ['lista-pessoas', 'pessoas'],
 ]) {
   if ($(lista)) ligarLista(lista, especie);
 }

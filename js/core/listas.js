@@ -19,6 +19,7 @@ export function usos(estado) {
   const contas = new Map();
   const etiquetas = new Map();
   const detalhes = new Map();
+  const pessoas = new Map();
   const soma = (mapa, chave) => {
     if (chave) mapa.set(chave, (mapa.get(chave) || 0) + 1);
   };
@@ -29,9 +30,11 @@ export function usos(estado) {
     // A transferência toca duas contas, e pesa nas duas.
     soma(contas, l.contaDestinoId);
     soma(detalhes, l.detalheId);
+    soma(pessoas, l.compradoPor);
     for (const etiqueta of l.etiquetas ?? []) soma(etiquetas, etiqueta);
   }
-  return { categorias, contas, etiquetas, detalhes };
+  for (const c of Object.values(estado.contas)) soma(pessoas, c.titular);
+  return { categorias, contas, etiquetas, detalhes, pessoas };
 }
 
 /**
@@ -67,9 +70,11 @@ export function podeArquivarConta(estado, id) {
  * dali pra frente, sem nunca pedir isso a quem está cadastrando a conta.
  */
 export function acharPorNome(colecao, nome) {
-  const chave = String(nome).trim().toLocaleLowerCase('pt-BR');
+  const chave = chaveDoNome(nome);
   if (!chave) return null;
-  return (
-    Object.values(colecao).find((i) => i.nome.trim().toLocaleLowerCase('pt-BR') === chave) ?? null
-  );
+  return Object.values(colecao).find((i) => chaveDoNome(i.nome) === chave) ?? null;
 }
+
+/** O nome sem caixa, sem espaço nas pontas e sem acento: "Aná" e "ana" são a mesma. */
+export const chaveDoNome = (nome) =>
+  String(nome).normalize('NFD').replace(/\p{Diacritic}/gu, '').trim().toLocaleLowerCase('pt-BR');

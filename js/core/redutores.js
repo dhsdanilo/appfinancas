@@ -644,6 +644,7 @@ export const redutores = {
   'categoria.fundida'(e, d) { fundir(e, 'categorias', 'categoriaId', d); },
   'etiqueta.fundida'(e, d) { fundir(e, 'etiquetas', 'etiquetas', d); },
   'detalhe.fundido'(e, d) { fundir(e, 'detalhes', 'detalheId', d); },
+  'pessoa.fundida'(e, d) { fundirPessoa(e, d); },
 
   'fusao.desfeita'(e, d) {
     const f = e.fusoes[d.id];
@@ -670,6 +671,14 @@ export const redutores = {
     for (const id of f.recorrencias ?? []) {
       const r = e.recorrencias[id];
       if (r && r[f.campo] === f.para) r[f.campo] = f.item.id;
+    }
+    // Pessoa: as contas voltam ao titular de antes, e as compras que a fusão
+    // limpou (comprou no cartão dela mesma) voltam a levar a marca.
+    for (const id of f.contas ?? []) {
+      if (e.contas[id]?.titular === f.para) e.contas[id].titular = f.item.id;
+    }
+    for (const id of f.anulados ?? []) {
+      if (e.lancamentos[id] && !e.lancamentos[id].compradoPor) e.lancamentos[id].compradoPor = f.item.id;
     }
     f.desfeita = true;
   },
@@ -789,6 +798,32 @@ export function aplicar(rascunho, evento) {
   }
   redutor(rascunho, evento.dados ?? {}, evento);
   return true;
+}
+
+/**
+ * Fundir uma pessoa em outra: o titular das contas e o `compradoPor` das
+ * compras passam para quem fica. Compra marcada como de quem agora é o titular
+ * do próprio cartão deixa de levar a marca (ninguém repassa a si mesmo).
+ */
+function fundirPessoa(e, d) {
+  const item = e.pessoas[d.de];
+  if (!item || !e.pessoas[d.para] || d.de === d.para) return;
+  const contas = [];
+  for (const c of Object.values(e.contas)) {
+    if (c.titular === d.de) { c.titular = d.para; contas.push(c.id); }
+  }
+  const movidos = [];
+  const anulados = [];
+  for (const l of Object.values(e.lancamentos)) {
+    if (l.compradoPor !== d.de) continue;
+    if (e.contas[l.contaId]?.titular === d.para) { l.compradoPor = null; anulados.push(l.id); }
+    else { l.compradoPor = d.para; movidos.push(l.id); }
+  }
+  delete e.pessoas[d.de];
+  e.fusoes[d.id] = {
+    id: d.id, especie: 'pessoas', campo: 'compradoPor', item, para: d.para,
+    lancamentos: movidos, substituiu: [], recorrencias: [], contas, anulados, desfeita: false,
+  };
 }
 
 /**
