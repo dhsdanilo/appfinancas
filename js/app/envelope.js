@@ -59,7 +59,7 @@ const MARCACAO = `
     <!-- O disponível fica parado: é a referência de quanto dá para pôr
          (pedido dele, 05/10/2026). A barra enche com cada envelope. -->
     <div class="disponivel-dist">
-      <span class="miudo">disponível neste lugar</span>
+      <span class="miudo" data-dist="rotulo-disp">disponível neste lugar</span>
       <strong data-dist="disponivel"></strong>
       <div class="barra-dist" data-dist="barra" aria-hidden="true"></div>
       <p class="fica-sem-dono" data-dist="sobra"></p>
@@ -204,6 +204,9 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
 
   let lugarId = null;
   let semDono = 0;
+  // Ajustar: o que cada envelope tem NESTE lugar vira o ponto de partida, e o
+  // total a repartir é o do lugar (menos o que é de envelope fora da lista).
+  let modoAjuste = false;
 
   function lerLinhas() {
     return [...dist('linhas').querySelectorAll('[data-dist-env]')]
@@ -241,6 +244,9 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
   async function abrirDistribuir(idDoLugar, { envelopeId = null } = {}) {
     const app = await estado.calcular();
     lugarId = idDoLugar;
+    modoAjuste = false;
+    dist('rotulo-disp').textContent = 'disponível neste lugar';
+    dist('b-ok').textContent = 'Distribuir';
     const r = donosNoDia(app).porLugar.get(lugarId);
     semDono = Math.max(0, r?.semDono ?? 0);
     const ativo = app.ativos?.[lugarId];
@@ -293,6 +299,49 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
     alvo?.focus();
   }
 
+  /**
+   * Ajustar o que já foi distribuído de um lugar: cada envelope com o quanto tem
+   * aqui, e o sem dono fecha a conta. Salvar grava só as diferenças — aporte do
+   * sem dono, resgate para ele, ou remanejamento direto entre dois envelopes.
+   */
+  async function abrirAjustar(idDoLugar) {
+    const app = await estado.calcular();
+    lugarId = idDoLugar;
+    modoAjuste = true;
+    const r = donosNoDia(app).porLugar.get(lugarId);
+    const todos = envelopesAtivos(app);
+    const aqui = (v) => Math.round(r?.donos.get(v.id) ?? 0);
+    const dosListados = todos.reduce((t, v) => t + aqui(v), 0);
+    const doRestoDosDonos = [...(r?.donos.values() ?? [])].reduce((t, v) => t + Math.round(v), 0) - dosListados;
+    semDono = Math.max(0, Math.round(r?.valor ?? 0) - doRestoDosDonos);
+    document.getElementById('titulo-distribuir').textContent = `Ajustar · ${nomeDoLugar(app, lugarId)}`;
+    dist('cabeca').textContent = 'Arraste ou digite quanto de cada envelope está aqui. O que não for de nenhum fica sem dono. Cada diferença vira um aporte ou um resgate.';
+    dist('rotulo-disp').textContent = 'total para repartir';
+    dist('b-ok').textContent = 'Ajustar';
+    dist('disponivel').textContent = formatar(semDono);
+    dist('campo-inteiro').hidden = true;
+    const passo = semDono > 100000 ? 1000 : 100;
+    const totais = donosNoDia(app).porEnvelope;
+    const linhas = todos.map((v, i) => {
+      const ali = aqui(v);
+      const tem = totais.get(v.id)?.total ?? 0;
+      return `<li class="linha-distribuir com-barra"${ali > 0 ? '' : ' data-fora style="display:none"'}>
+        <span class="nome-dist">${esc(v.nome)}<span class="fino">${esc(`tem ${formatar(tem)}${ali ? ` (${formatar(ali)} aqui)` : ''}`)}</span></span>
+        <input type="text" inputmode="decimal" autocomplete="off" placeholder="0,00" data-dist-env="${esc(v.id)}" value="${ali > 0 ? campoReais(ali) : ''}" aria-label="Quanto de ${esc(v.nome)} está aqui">
+        <input type="range" class="faixa-dist" min="0" max="${semDono}" step="${passo}" value="${ali}" data-dist-faixa="${esc(v.id)}"
+          style="--cor:var(--serie-${(i % 8) + 1})" aria-label="Arrastar quanto de ${esc(v.nome)} está aqui">
+        <span class="atalhos-dist"><button type="button" class="elo" data-por="${esc(v.id)}" data-quanto="tudo">tudo que sobra</button></span>
+      </li>`;
+    });
+    const escondidos = todos.filter((v) => aqui(v) <= 0).length;
+    dist('linhas').innerHTML = (linhas.join('') + (escondidos ? '<li class="vazio"><button type="button" class="elo" data-mostrar-outros>+ outro envelope</button></li>' : ''))
+      || '<li class="vazio">Nenhum envelope ainda.</li>';
+    dist('data').value = hoje();
+    recado(dist('recado'), '');
+    pintarSobra();
+    distJ.showModal();
+  }
+
   // Arrastar acerta o campo; digitar acerta a barra. Nenhum dos dois passa do
   // que está livre — o disponível do alto continua sendo a referência.
   dist('linhas').addEventListener('input', (e) => {
@@ -301,7 +350,9 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
     const campo = e.target.closest('[data-dist-env]');
     if (campo) {
       const id = campo.dataset.distEnv;
-      faixaDe(id).value = String(Math.min(Math.abs(deTexto(campo.value)), livrePara(id)));
+      // Não se digita além do que está livre: passou, o campo volta ao máximo.
+      if (Math.abs(deTexto(campo.value)) > livrePara(id)) { definir(id, Infinity); return; }
+      faixaDe(id).value = String(Math.abs(deTexto(campo.value)));
       pintarSobra();
     }
   });
@@ -311,6 +362,11 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
     if (campo && Math.abs(deTexto(campo.value)) > livrePara(campo.dataset.distEnv)) definir(campo.dataset.distEnv, Infinity);
   });
   dist('linhas').addEventListener('click', (e) => {
+    if (e.target.closest('[data-mostrar-outros]')) {
+      for (const li of dist('linhas').querySelectorAll('[data-fora]')) li.style.display = '';
+      e.target.closest('li').remove();
+      return;
+    }
     const b = e.target.closest('[data-por]');
     if (!b) return;
     definir(b.dataset.por, b.dataset.quanto === 'tudo' ? Infinity : Number(b.dataset.quanto));
@@ -318,6 +374,7 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
   dist('linhas').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.matches('input')) { e.preventDefault(); dist('b-ok').click(); } });
 
   dist('b-ok').addEventListener('click', async () => {
+    if (modoAjuste) { await salvarAjuste(); return; }
     const linhas = lerLinhas();
     const total = linhas.reduce((t, x) => t + x.valor, 0);
     const app = await estado.calcular();
@@ -342,6 +399,37 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
     distJ.close();
     await depois();
   });
+
+  async function salvarAjuste() {
+    const app = await estado.calcular();
+    const r = donosNoDia(app).porLugar.get(lugarId);
+    const novos = new Map(lerLinhas().map((x) => [x.envelopeId, x.valor]));
+    const soma = [...novos.values()].reduce((t, v) => t + v, 0);
+    if (soma > semDono) { recado(dist('recado'), `O total passa de ${formatar(semDono)}: não há tanto neste lugar.`); return; }
+    const data = dist('data').value || hoje();
+    const saem = [];
+    const entram = [];
+    for (const v of envelopesAtivos(app)) {
+      const d = (novos.get(v.id) ?? 0) - Math.round(r?.donos.get(v.id) ?? 0);
+      if (d < 0) saem.push({ id: v.id, valor: -d });
+      else if (d > 0) entram.push({ id: v.id, valor: d });
+    }
+    const gravar = (de, para, valor) => estado.aplicarEvento('envelope.alocado', { id: novoId('alo'), lugarId, de, para, valor, data });
+    // Quem perde e quem ganha se acertam direto (remanejar); o resto vai e volta do sem dono.
+    for (const s of saem) {
+      for (const e of entram) {
+        const q = Math.min(s.valor, e.valor);
+        if (q <= 0) continue;
+        await gravar(s.id, e.id, q);
+        s.valor -= q;
+        e.valor -= q;
+      }
+    }
+    for (const s of saem) if (s.valor > 0) await gravar(s.id, null, s.valor);
+    for (const e of entram) if (e.valor > 0) await gravar(null, e.id, e.valor);
+    distJ.close();
+    await depois();
+  }
 
   // ── tirar do envelope: devolver ao sem dono ou passar a outro ────────────
 
@@ -383,7 +471,7 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
   });
   mov('valor').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); mov('b-ok').click(); } });
 
-  janelas = { abrirFicha, abrirDistribuir, abrirTirar };
+  janelas = { abrirFicha, abrirDistribuir, abrirAjustar, abrirTirar };
   return janelas;
 }
 

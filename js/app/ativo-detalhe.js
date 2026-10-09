@@ -8,7 +8,8 @@ import { hoje, diaCurto, somarMeses } from '../core/datas.js';
 import { visiveis } from '../core/lancamentos.js';
 import { nomeDaClasse, posicao, serieDoAtivo, rendimentoDoAtivo } from '../core/investimentos.js';
 import { liquidoDaVenda } from '../core/ir-venda.js';
-import { donosNoDia } from '../core/envelopes.js';
+import { donosNoDia, envelopesAtivos } from '../core/envelopes.js';
+import { criarJanelasDeEnvelope } from './envelope.js';
 import { areas, pizza, cor, COR_NEUTRA } from './graficos.js';
 import { graficoDeLinha } from './grafico.js';
 
@@ -131,7 +132,7 @@ export function iniciarPaginaDoAtivo({ aoRegistrar, aoEditar, aoCorrigir } = {})
       fatiasDonos = [...lugar.donos.entries()].filter(([id]) => app.envelopes[id]).sort((a, b) => b[1] - a[1])
         .map(([id, v], i) => ({ nome: app.envelopes[id].nome, valor: v, cor: cor(i + 1), href: `#/envelopes/${id}` }));
       if (lugar.semDono > 0) fatiasDonos.push({ nome: 'sem dono', valor: lugar.semDono, cor: COR_NEUTRA });
-      blocos.push('<div><p class="miudo titulo-linhas">de quem é este dinheiro</p><div data-det="donos"></div></div>');
+      blocos.push(`<div><p class="miudo titulo-linhas">de quem é este dinheiro${envelopesAtivos(app).length ? ' <button type="button" class="elo" data-det="b-ajustar-donos">ajustar</button>' : ''}</p><div data-det="donos"></div></div>`);
     }
 
     // Os últimos movimentos: só as operações; a lista completa e a correção ficam na janela de alteração.
@@ -225,6 +226,7 @@ export function iniciarPaginaDoAtivo({ aoRegistrar, aoEditar, aoCorrigir } = {})
     if (op) { if (aoCorrigir) await aoCorrigir(aberto, op.dataset.detOp); return; }
     if (e.target.closest('[data-det="b-ver-tudo"]')) { todosOsMovimentos = !todosOsMovimentos; await pintar(); return; }
     if (e.target.closest('[data-det="b-registrar"]')) { if (aoRegistrar) await aoRegistrar(aberto); return; }
+    if (e.target.closest('[data-det="b-ajustar-donos"]')) { criarJanelasDeEnvelope().abrirAjustar(aberto); return; }
     if (e.target.closest('[data-det="b-editar"]')) { if (aoEditar) await aoEditar(aberto); return; }
     if (e.target.closest('[data-det="b-arquivar"]')) {
       const ativo = (await estado.calcular()).ativos[aberto];
