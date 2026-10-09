@@ -321,7 +321,10 @@ const ICONE_DO_AVISO = { ruim: '!', atencao: '◷', info: 'i' };
 
 /** A faixa de avisos: até quatro, os que mais pedem atenção primeiro. */
 function avisosHTML() {
-  const lista = avisosDoInicio(app, hoje(), { ultimaCopia: ultimaCopia() });
+  // A cópia de segurança se faz só no PC: no celular (ponteiro por toque) o
+  // aviso não aparece, e sem `ultimaCopia` o app nem o calcula.
+  const noPC = matchMedia('(pointer: fine)').matches;
+  const lista = avisosDoInicio(app, hoje(), noPC ? { ultimaCopia: ultimaCopia() } : {});
   if (!lista.length) return '';
   const cartoes = lista.slice(0, 4).map((a, k) => {
     const alvo = a.para.conta ? `data-ir-conta="${escapar(a.para.conta)}"${a.para.mes ? ` data-ir-mes="${escapar(a.para.mes)}"` : ''}`

@@ -5,6 +5,12 @@ name: cotacoes
 on:
   schedule:
     - cron: '30 23 * * 1-5'   # 20h30 em Brasília: o arquivo do dia já saiu
+    # O GitHub atrasa o agendamento em horas (a das 20h30 saiu depois da meia-noite): mais
+    # horários dão mais chances de uma execução cedo. Sem mudança, a execução só encerra.
+    - cron: '17 22 * * 1-5'
+    - cron: '47 22 * * 1-5'
+    - cron: '17 23 * * 1-5'
+    - cron: '47 23 * * 1-5'
     - cron: '0 11 * * 2-6'    # de manhã, caso o da noite tenha falhado
   workflow_dispatch:
   push:

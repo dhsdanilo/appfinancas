@@ -112,11 +112,20 @@ def sem_acento(texto):
     return unicodedata.normalize('NFKD', texto).encode('ascii', 'ignore').decode().lower()
 
 
+def dia_do_pregao(agora):
+    """O pregão a que `agora` pertence e se ele já fechou. O GitHub atrasa o agendamento em
+    horas: uma execução das 20h30 que sai depois da meia-noite ainda é do pregão de ontem."""
+    if agora.hour < 6:
+        return (agora - timedelta(days=1)).date(), True
+    return agora.date(), agora.hour * 60 + agora.minute >= FECHA_O_PREGAO
+
+
 def fechamento_do_tesouro(chaves, itens, agora=None):
     """{chave: centavos} do preço de resgate de agora, só depois que o pregão fechou em dia
     útil (de manhã o site ainda mostra o de ontem). `chaves` são as do arquivo ("Tipo|AAAA-MM-DD")."""
     agora = agora or datetime.now(BRT)
-    if agora.weekday() >= 5 or agora.hour * 60 + agora.minute < FECHA_O_PREGAO:
+    dia, fechou = dia_do_pregao(agora)
+    if dia.weekday() >= 5 or not fechou:
         return {}
     achados = {}
     for x in itens:
@@ -161,7 +170,7 @@ def tesouro(antigo=None):
 
     # Os preços de fim de dia: os que já estavam guardados e o de hoje, se o pregão fechou.
     fechamentos = {k: dict(v) for k, v in ((antigo or {}).get('fechamento') or {}).items()}
-    hoje_brt = datetime.now(BRT).date().isoformat()
+    hoje_brt = dia_do_pregao(datetime.now(BRT))[0].isoformat()
     try:
         vivos = fechamento_do_tesouro(list(p), json.loads(baixar(TESOURO_VIVO))['items'])
     except Exception as erro:  # noqa: BLE001 — sem o preço de fim de dia, vale o da manhã
