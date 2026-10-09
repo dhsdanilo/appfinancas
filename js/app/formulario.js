@@ -90,6 +90,11 @@ const P = {
     <button type="button" data-modo="cartao" aria-pressed="false">cartão de crédito</button>
     <button type="button" data-modo="conta" aria-pressed="false">conta corrente</button>
   </div>
+  <!-- Cartão que tem titular, com mais de uma pessoa: quem comprou (design/16 §2.2). -->
+  <div class="quem-comprou" data-papel="quem-comprou" hidden>
+    <span class="miudo">comprado por</span>
+    <div class="pilulas" role="group" aria-label="Quem comprou"></div>
+  </div>
   <div class="linha-conta">
     <label class="escolha-conta" data-papel="escolha-conta">
       <span class="miudo"><span class="ponto-area" aria-hidden="true"></span>conta</span>
@@ -304,6 +309,8 @@ export async function criarFormulario({
   // lembrada por categoria é sugestão, nunca teima).
   let contaTocada = false;
   let todasCategorias = false;
+  // Quem comprou, quando se escolheu à mão (um lançamento só); null = o padrão do aparelho.
+  let escolhaComprador = null;
   const aparelho = (await log.aparelho())?.id ?? null;
 
   // ── valor ───────────────────────────────────────────────────────────────
@@ -620,6 +627,44 @@ export async function criarFormulario({
     bloco.title = d.aRepassar > 0 ? `O disponível já desconta ${formatar(d.aRepassar)} a repassar.` : '';
   }
 
+  /**
+   * Quem comprou, no cartão que tem titular: o padrão é o de sempre (quem
+   * lança, se for de outra pessoa que o titular); a escolha vale só para este
+   * lançamento. Serve para lançar no seu aparelho a compra que ela esqueceu.
+   */
+  function compradoresDaVez() {
+    const conta = app?.contas[contaId];
+    const pessoas = Object.values(app?.pessoas ?? {});
+    if (tipo !== 'despesa' || !conta || conta.tipo !== 'cartao' || !conta.titular || pessoas.length < 2) return null;
+    const padrao = editando ? (editando.compradoPor ?? conta.titular) : (compradoPorDaCompra(app, contaId) ?? conta.titular);
+    return { conta, padrao, pessoas };
+  }
+
+  /** Quem está marcado agora: a escolha, ou o padrão. */
+  const compradorAgora = () => {
+    const c = compradoresDaVez();
+    return c ? escolhaComprador ?? c.padrao : null;
+  };
+
+  /** O que gravar em `compradoPor`: nada quando quem comprou é o próprio titular. */
+  function compradoPorAgora() {
+    const c = compradoresDaVez();
+    if (!c) return null;
+    const quem = escolhaComprador ?? c.padrao;
+    return quem === c.conta.titular ? null : quem;
+  }
+
+  function pintarComprador() {
+    const bloco = el('quem-comprou');
+    const c = compradoresDaVez();
+    bloco.hidden = !c;
+    if (!c) { escolhaComprador = null; return; }
+    const quem = escolhaComprador ?? c.padrao;
+    bloco.querySelector('.pilulas').innerHTML = c.pessoas
+      .map((x) => `<button type="button" data-quem="${escapar(x.id)}" aria-pressed="${x.id === quem}">${escapar(x.nome)}</button>`)
+      .join('');
+  }
+
   function pintarConta() {
     pintarModo();
     // Num aparelho com dono, a conta de outra pessoa leva o nome dela, para não ser confundida.
@@ -637,6 +682,7 @@ export async function criarFormulario({
    * — valor e botão de salvar (09-identidade §3).
    */
   function pintarArea() {
+    pintarComprador();
     const area = areaDaConta(app.contas[contaId]);
     el('escolha-conta').dataset.area = area;
     // A janela em volta (o diálogo do PC) veste a mesma área.
@@ -1067,6 +1113,8 @@ export async function criarFormulario({
       observacao: el('observacao').value.trim(),
       faturaDesloca: app.contas[contaId]?.tipo === 'cartao' ? faturaDesloca : 0,
       custeadoPor: tipo === 'despesa' ? custeadoPor : null,
+      // Só se mexe na marca quando o cartão tem titular e há mais de uma pessoa.
+      compradoPor: compradoresDaVez() ? compradoPorAgora() : undefined,
       dataCaixa: data,
     });
     // Gasto pago por envelope é extraordinário por construção (D19).
@@ -1157,7 +1205,7 @@ export async function criarFormulario({
       faturaDesloca: noCartao ? faturaDesloca : 0,
       custeadoPor: tipo === 'despesa' ? custeadoPor : null,
       // Num cartão de outra pessoa, o aparelho com dono marca quem comprou.
-      compradoPor: tipo === 'despesa' ? compradoPorDaCompra(app, contaId) : null,
+      compradoPor: tipo === 'despesa' ? (compradoresDaVez() ? compradoPorAgora() : compradoPorDaCompra(app, contaId)) : null,
       ...procedencia(),
     };
 
@@ -1210,6 +1258,7 @@ export async function criarFormulario({
     repete = 'nao';
     faturaDesloca = 0;
     custeadoPor = null;
+    escolhaComprador = null;
     if (ordemDoApp) categoriaId = null;
     await recarregar();
     valor.limpar();
@@ -1393,6 +1442,13 @@ export async function criarFormulario({
     pintarRefino();
   });
 
+  el('quem-comprou').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-quem]');
+    if (!b) return;
+    escolhaComprador = b.dataset.quem;
+    pintarComprador();
+  });
+
   el('tipo-pagamento').addEventListener('click', async (e) => {
     const b = e.target.closest('[data-modo]');
     if (!b) return;
@@ -1497,6 +1553,7 @@ export async function criarFormulario({
     if (!botao) return;
     tipo = botao.dataset.tipo;
     pintarTipo();
+    pintarComprador();
     categoriaId = null;
     pintarCategorias();
     pintarEnvelope();
@@ -1681,6 +1738,7 @@ export async function criarFormulario({
       refinoAberto = true;
       etiquetas = [...(l.etiquetas ?? [])];
       custeadoPor = l.custeadoPor ?? null;
+      escolhaComprador = null;
       valor.definir(l.valor);
       el('desfazer').hidden = true;
       el('nova-etiqueta').value = '';
@@ -1790,6 +1848,7 @@ export async function criarFormulario({
       previstoDe = null;
       contaTocada = false;
       todasCategorias = false;
+      escolhaComprador = null;
       etiquetas = [];
       detalheId = null;
       repete = 'nao';

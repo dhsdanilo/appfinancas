@@ -465,6 +465,10 @@ input[type="text"].observacao {
 
 /* O simulador de saldo e os botões crédito × conta (design/16 §2.1). */
 .tipo-pagamento { margin: 0 0 var(--e2); }
+.quem-comprou { display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap; margin-top: var(--e3); }
+.quem-comprou[hidden] { display: none; }
+.quem-comprou .pilulas { flex: 1 1 auto; }
+.quem-comprou .pilulas button { min-height: 36px; }
 .ordem-conta .botoes-ordem { display: flex; flex-wrap: wrap; gap: var(--e2); }
 .ordem-conta button { min-height: 40px; }
 .ordem-conta button:disabled { opacity: 0.4; }
