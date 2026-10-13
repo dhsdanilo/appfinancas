@@ -299,7 +299,8 @@ export function resumoDaConta(estado, conta, dia = hoje()) {
   const ativos = ativosDaConta(estado, conta.id);
   const posicoes = ativos.map((a) => posicao(estado, a.id, dia)).filter(Boolean);
   const proprio = !conta.caixaEm;
-  let caixa = proprio ? saldoReal(estado, conta.id) : 0;
+  // Num dia do passado, o saldo daquele dia — não o de hoje (auditoria I1).
+  let caixa = proprio ? (dia >= hoje() ? saldoReal(estado, conta.id) : saldoAte(estado, conta.id, dia)) : 0;
   let rendeuCaixa = 0;
   let foto = null;
 

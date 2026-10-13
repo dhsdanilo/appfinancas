@@ -1116,6 +1116,16 @@ export async function criarFormulario({
       el('novo-detalhe').value = '';
       await escolherDetalhe(escrita);
     }
+    if (!editando && tipo === 'despesa' && !custeadoPor && data <= hoje()) {
+      const lugar = lugarDaConta(app, contaId);
+      const r = lugar ? envelopesNoLugar(app, lugar.id) : null;
+      const excesso = r?.envelopes.length ? valor.centavos() - Math.max(0, r.semDono) : 0;
+      if (excesso > 0 && !confirm(`Esta despesa passa de ${formatar(Math.max(0, r.semDono))}, o que não tem dono em ${app.contas[contaId].nome}: ${formatar(excesso)} vão sair de dinheiro de envelope (${r.envelopes.map((x) => x.envelope.nome).join(', ')}).
+
+Use "envelope" em mais para dizer de quem é.
+
+Gravar assim?`)) return false;
+    }
     return editando ? salvarCorrecao() : registrar();
   }
 

@@ -71,6 +71,8 @@ export function avisosDoInicio(estado, dia = hoje(), { ultimaCopia } = {}) {
   for (const v of envelopesAtivos(estado)) {
     const total = donos.porEnvelope.get(v.id)?.total ?? 0;
     const n = numerosDoEnvelope(v, total, dia);
+    // Projeto que já está pagando (IPVA pago pelo envelope) não está "atrasado" (auditoria I7).
+    if ((donos.porEnvelope.get(v.id)?.custo ?? 0) > 0) continue;
     if (n.deveriaTer != null && total < n.deveriaTer) {
       lista.push({
         nivel: 'atencao',
@@ -79,6 +81,16 @@ export function avisosDoInicio(estado, dia = hoje(), { ultimaCopia } = {}) {
         para: { tela: 'envelopes' },
       });
     }
+  }
+
+  // O furo: dinheiro de envelope que já não existe no lugar (auditoria I5).
+  for (const x of donos.furos) {
+    lista.push({
+      nivel: 'ruim',
+      titulo: `${x.lugar.nome}: os envelopes têm ${formatar(x.furo)} a mais do que há aqui`,
+      detalhe: 'confira os aportes e os gastos pagos com envelope',
+      para: { tela: 'envelopes' },
+    });
   }
 
   for (const pessoaId of Object.keys(estado.pessoas ?? {})) {

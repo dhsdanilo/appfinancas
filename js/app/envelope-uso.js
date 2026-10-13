@@ -65,6 +65,7 @@ const MARCACAO = `
     <label class="campo-simples campo-data-dist"><span class="miudo">encerrado em</span>
       <input type="date" data-enc="data"></label>
     <p class="nota">Encerrado não some: fica no fim do Geral com o fechamento do projeto, e pode ser reaberto.</p>
+    <p class="recado" data-enc="recado" hidden></p>
     <div class="acoes"><button type="button" class="principal" data-enc="b-ok">Encerrar</button></div>
   </div>
 </dialog>`;
@@ -253,6 +254,7 @@ export function criarJanelasDeUso({ aoSalvar } = {}) {
     enc('campo-destino').hidden = !total;
     pintarDestinos(proximo);
     enc('data').value = hoje();
+    recado(enc('recado'), '');
     encJ.showModal();
   }
 
@@ -266,6 +268,15 @@ export function criarJanelasDeUso({ aoSalvar } = {}) {
 
   enc('b-ok').addEventListener('click', umaVez(async () => {
     const data = enc('data').value || hoje();
+    // O que sobra é o que o envelope tem NA DATA do encerramento: se depois dela ainda
+    // entrou ou saiu dinheiro, o que ficaria preso no encerrado não é o que a janela mostra (auditoria I6).
+    const novo = await estado.calcular();
+    const mexeuDepois = (donosNoDia(novo).porEnvelope.get(encerrando.id)?.extrato ?? []).some((x) => x.data > data);
+    if (mexeuDepois) {
+      recado(enc('recado'), `Depois de ${data.split('-').reverse().join('/')} o envelope ainda mexeu: escolha uma data a partir do último movimento.`);
+      return;
+    }
+    recado(enc('recado'), '');
     let destino = enc('destino').value || null;
     if (enc('proximo').checked && ehProjeto(encerrando)) {
       const id = novoId('env');

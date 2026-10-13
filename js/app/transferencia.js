@@ -360,6 +360,12 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
   async function salvarAgora() {
     if (!pronto()) return false;
     if (daParcela) return salvarParcela();
+    if (!editando) {
+      const aviso = donos.aviso(valor.centavos());
+      if (aviso && !confirm(`${aviso}
+
+Gravar assim?`)) return false;
+    }
     return editando ? salvarCorrecao() : registrar();
   }
 

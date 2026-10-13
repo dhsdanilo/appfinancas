@@ -60,7 +60,25 @@ export function lugarDaConta(estado, contaId) {
   if (c.tipo !== 'investimento' || c.caixaEm) return null;
   // Na própria corretora: com ativos, o que sobra é caixa parado; sem ativos
   // (poupança), a conta inteira rende.
-  return ativosDaConta(estado, c.id).length ? { id: c.id, tipo: 'caixa' } : { id: c.id, tipo: 'fracao' };
+  return ativosEmUso(estado, c.id).length ? { id: c.id, tipo: 'caixa' } : { id: c.id, tipo: 'fracao' };
+}
+
+/**
+ * Os ativos da conta que já tiveram alguma coisa (operação ou valor informado):
+ * um ativo recém-criado e vazio não transforma a poupança em caixa (auditoria I3).
+ */
+const ativosComMovimento = new WeakMap();
+function ativosEmUso(estado, contaId) {
+  const ativos = ativosDaConta(estado, contaId);
+  if (!ativos.length) return ativos;
+  // O estado pode ser o mesmo objeto, avançado por eventos: a chave é também até onde ele já leu.
+  let c = ativosComMovimento.get(estado);
+  if (!c || c.ateLc !== estado.ateLc) {
+    c = { ateLc: estado.ateLc, usados: new Set(visiveis(estado).map((l) => l.ativoId).filter(Boolean)) };
+    ativosComMovimento.set(estado, c);
+  }
+  const usados = c.usados;
+  return ativos.filter((a) => usados.has(a.id) || (a.avaliacoes ?? []).length);
 }
 
 /** Todos os lugares onde pode haver dinheiro de envelope, com o nome e o valor no dia. */
@@ -144,10 +162,13 @@ function movimentoDe(estado, l) {
  * mudanças de lugar (§3, o "fluxo organizado" que ele pediu).
  */
 export function donosNoDia(estado, dia = hoje()) {
-  const inteiroDe = new Map();
-  for (const v of Object.values(estado.envelopes ?? {})) {
-    for (const lugarId of v.inteiros ?? []) inteiroDe.set(lugarId, v.id);
-  }
+  // O envelope dono de um lugar inteiro NAQUELE dia: vale de quando foi marcado
+  // em diante (auditoria I2); o último registro até o dia manda.
+  const inteiroAte = (lugarId, d) => {
+    let dono;
+    for (const h of estado.inteirosHist ?? []) if (h.lugarId === lugarId && h.desde <= d) dono = h.envelopeId;
+    return dono ?? undefined;
+  };
 
   // Cotas internas de cada lugar que rende; reais de cada envelope no caixa.
   const cotas = new Map();   // lugarId → Map(dono → cotas)
@@ -155,6 +176,7 @@ export function donosNoDia(estado, dia = hoje()) {
   const extrato = new Map(); // envelopeId → [linhas]
   const posto = new Map();   // envelopeId → o que entrou menos o que saiu do envelope
   const gastos = new Map();  // envelopeId → { custo, financiado, pagamentos, porCategoria }
+  const reservado = new Map(); // lugarId → centavos de compra no cartão custeada por envelope, fatura ainda não debitada
   const doLugar = (mapa, id) => { if (!mapa.has(id)) mapa.set(id, new Map()); return mapa.get(id); };
   const soma = (m) => [...m.values()].reduce((t, v) => t + v, 0);
   const somar = (m, k, v) => m.set(k, (m.get(k) ?? 0) + v);
@@ -188,7 +210,7 @@ export function donosNoDia(estado, dia = hoje()) {
       if (total > 0 && valor <= 0) { c.clear(); total = 0; }
       // Valor sem dono de cota nenhuma (o que já estava lá antes): sem dono.
       if (total <= 0 && valor > 0) {
-        const dono = inteiroDe.get(lugar.id);
+        const dono = inteiroAte(lugar.id, d);
         c.set(dono ?? SEM_DONO, valor);
         // Do envelope dono do lugar inteiro, isso foi posto — não rendimento.
         if (dono) somar(posto, dono, valor);
@@ -217,7 +239,7 @@ export function donosNoDia(estado, dia = hoje()) {
         };
         for (const dn of m.donos) falta -= tirar(dn.envelopeId, dn.valor / p);
         falta -= tirar(SEM_DONO, falta);
-        const inteiro = inteiroDe.get(m.de.id);
+        const inteiro = inteiroAte(m.de.id, d);
         if (inteiro && falta > 0) falta -= tirar(inteiro, falta);
         const resto = soma(c);
         if (falta > 1e-9 && resto > 0) {
@@ -242,7 +264,7 @@ export function donosNoDia(estado, dia = hoje()) {
         const c = doLugar(cotas, m.para.id);
         for (const [dono, v] of efetivos) somar(c, dono, v / p);
         const resto = Math.max(0, m.valor - comDono);
-        const inteiro = inteiroDe.get(m.para.id);
+        const inteiro = inteiroAte(m.para.id, d);
         somar(c, inteiro ?? SEM_DONO, resto / p);
         if (inteiro && resto > 0) {
           somar(posto, inteiro, resto);
@@ -259,6 +281,8 @@ export function donosNoDia(estado, dia = hoje()) {
         const env = m.donos[0].envelopeId;
         const usado = efetivos.get(env) ?? 0;
         somar(posto, env, -usado);
+        // O dinheiro da fatura segue na conta até ela ser debitada: não é "sem dono" (auditoria I4).
+        if (m.de && estado.contas[m.l.contaId]?.tipo === 'cartao' && m.l.dataCaixa > dia) somar(reservado, m.de.id, usado);
         if (!gastos.has(env)) gastos.set(env, { custo: 0, financiado: 0, pagamentos: 0, porCategoria: new Map() });
         const g = gastos.get(env);
         g.custo += m.valor;
@@ -342,15 +366,20 @@ export function donosNoDia(estado, dia = hoje()) {
       const total = soma(c);
       if (total > 0 && lugar.valor > 0) {
         for (const [dono, u] of c) if (dono !== SEM_DONO && u > 1e-9) donos.set(dono, Math.round((u / total) * lugar.valor));
-      } else if (lugar.valor > 0 && inteiroDe.has(lugar.id)) {
-        donos.set(inteiroDe.get(lugar.id), lugar.valor);
-        somar(posto, inteiroDe.get(lugar.id), lugar.valor);
+      } else if (lugar.valor > 0 && inteiroAte(lugar.id, dia)) {
+        donos.set(inteiroAte(lugar.id, dia), lugar.valor);
+        somar(posto, inteiroAte(lugar.id, dia), lugar.valor);
       }
     } else {
       for (const [dono, v] of caixa.get(lugar.id) ?? []) if (Math.round(v) > 0) donos.set(dono, Math.round(v));
     }
     const comDono = soma(donos);
-    porLugar.set(lugar.id, { lugar, valor: lugar.valor, donos, semDono: lugar.valor - comDono });
+    const guardado = Math.round(reservado.get(lugar.id) ?? 0);
+    porLugar.set(lugar.id, {
+      lugar, valor: lugar.valor, donos, reservado: guardado, semDono: lugar.valor - comDono - guardado,
+      // Os envelopes têm mais do que o lugar tem (dois aparelhos distribuindo, gasto sem envelope): o furo.
+      furo: Math.max(0, comDono + guardado - lugar.valor),
+    });
     for (const [dono, v] of donos) {
       const env = doEnvelope(dono);
       env.total += v;
@@ -371,7 +400,8 @@ export function donosNoDia(estado, dia = hoje()) {
     env.extrato = (extrato.get(v.id) ?? []).sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : b.lc - a.lc));
   }
   const semDono = [...porLugar.values()].reduce((t, x) => t + Math.max(0, x.semDono), 0);
-  return { porLugar, porEnvelope, semDono };
+  const furos = [...porLugar.values()].filter((x) => x.furo > 0 && !x.lugar.arquivado);
+  return { porLugar, porEnvelope, semDono, furos };
 }
 
 // ── a evolução (§5.1, D34) ──────────────────────────────────────────────────
@@ -470,6 +500,23 @@ export function proximoDoProjeto(envelope) {
     inicio: fim ? `${somarMeses(`${fim.slice(0, 7)}-01`, 1)}` : hoje(),
     alvoData: fim ? somarMeses(fim, 12) : null,
   };
+}
+
+/**
+ * O que está agendado para sair de um lugar (ainda não confirmado): resgate do
+ * ativo, ou saída da conta (despesa, transferência, aplicação). É dinheiro que
+ * ainda está lá, mas já tem destino: não se distribui. { total, itens }
+ */
+export function saidasAgendadas(estado, lugarId) {
+  const ehAtivo = Boolean(estado.ativos?.[lugarId]);
+  const itens = [];
+  for (const l of visiveis(estado)) {
+    if (l.confirmado || l.automatico) continue;
+    const sai = ehAtivo ? l.ativoId === lugarId && l.tipo === 'resgate' : l.contaId === lugarId && sinalDeSaida(l) > 0;
+    if (sai) itens.push({ valor: l.valor, data: l.dataCaixa, id: l.id });
+  }
+  itens.sort((a, b) => (a.data < b.data ? -1 : 1));
+  return { total: itens.reduce((t, x) => t + x.valor, 0), itens };
 }
 
 /** O nome de um lugar para a tela: "CDB · Banco", "Corrente". */

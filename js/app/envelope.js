@@ -9,9 +9,9 @@ import * as estado from '../core/estado.js';
 import { novoId } from '../core/id.js';
 import { deTexto, formatar } from '../core/dinheiro.js';
 import { umaVez } from './uma-vez.js';
-import { hoje } from '../core/datas.js';
+import { hoje, diaCurto } from '../core/datas.js';
 import {
-  envelopesAtivos, ehProjeto, donosNoDia, numerosDoEnvelope, nomeDoLugar, envelopesNoLugar,
+  envelopesAtivos, ehProjeto, donosNoDia, numerosDoEnvelope, nomeDoLugar, envelopesNoLugar, saidasAgendadas,
 } from '../core/envelopes.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -249,11 +249,18 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
     dist('rotulo-disp').textContent = 'disponível neste lugar';
     dist('b-ok').textContent = 'Distribuir';
     const r = donosNoDia(app).porLugar.get(lugarId);
-    semDono = Math.max(0, r?.semDono ?? 0);
+    const agendadas = saidasAgendadas(app, lugarId);
+    const livre = Math.max(0, r?.semDono ?? 0);
+    // O que já tem hora para sair não se distribui (ex.: R$ 600 livres — R$ 400 saem amanhã).
+    semDono = Math.max(0, livre - agendadas.total);
     const ativo = app.ativos?.[lugarId];
     document.getElementById('titulo-distribuir').textContent = `Distribuir · ${nomeDoLugar(app, lugarId)}`;
     dist('cabeca').textContent = `${ativo ? `${app.contas[ativo.contaId]?.nome ?? ''} · ` : ''}${envelopeId ? 'Arraste ou digite quanto vai para o envelope.' : 'Arraste ou digite quanto vai para cada envelope.'} Cada linha vira um aporte; nada sai do lugar.`;
     dist('disponivel').textContent = formatar(semDono);
+    if (agendadas.total > 0 && livre > 0) {
+      const quando = agendadas.itens.length === 1 ? `em ${diaCurto(agendadas.itens[0].data)}` : `(${agendadas.itens.length} saídas agendadas)`;
+      dist('cabeca').textContent += ` ${formatar(livre)} sem dono — ${formatar(Math.min(livre, agendadas.total))} saem ${quando}.`;
+    }
     // O passo da barra: de real em real até R$ 1.000; acima, de 10 em 10.
     const passo = semDono > 100000 ? 1000 : 100;
 
@@ -389,12 +396,12 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
       await estado.aplicarEvento('envelope.alocado', { id: novoId('alo'), lugarId, de: null, para: x.envelopeId, valor: x.valor, data });
     }
     if (inteiro !== antes) {
-      if (antes) await estado.aplicarEvento('envelope.alterado', { id: antes, inteiros: app.envelopes[antes].inteiros.filter((l) => l !== lugarId) });
+      if (antes) await estado.aplicarEvento('envelope.alterado', { id: antes, inteiros: app.envelopes[antes].inteiros.filter((l) => l !== lugarId), desde: data });
       if (inteiro) {
         // Inteiro dele: o que ainda está sem dono ali passa a ser dele também.
         const resto = semDono - total;
         if (resto > 0) await estado.aplicarEvento('envelope.alocado', { id: novoId('alo'), lugarId, de: null, para: inteiro, valor: resto, data });
-        await estado.aplicarEvento('envelope.alterado', { id: inteiro, inteiros: [...(app.envelopes[inteiro].inteiros ?? []), lugarId] });
+        await estado.aplicarEvento('envelope.alterado', { id: inteiro, inteiros: [...(app.envelopes[inteiro].inteiros ?? []), lugarId], desde: data });
       }
     }
     distJ.close();
@@ -534,6 +541,19 @@ export function ligarDonos(raiz) {
     return '';
   }
 
-  return { pintar, ler, conferir, lugar: () => lugarId };
+  /**
+   * Quando a saída não diz de quem é e o sem dono do lugar não cobre, ela vai tirar
+   * de envelope: a frase para avisar antes de gravar, ou ''.
+   */
+  function aviso(valor) {
+    if (!disponiveis.length) return '';
+    const dito = ler().reduce((t, d) => t + d.valor, 0);
+    const excesso = valor - dito - semDono;
+    if (excesso <= 0) return '';
+    const quem = disponiveis.map((x) => x.envelope.nome).join(', ');
+    return `Esta saída passa de ${formatar(semDono)}, o que não tem dono aqui: ${formatar(excesso)} vão sair de dinheiro de envelope (${quem}).`;
+  }
+
+  return { pintar, ler, conferir, aviso, lugar: () => lugarId };
 }
 

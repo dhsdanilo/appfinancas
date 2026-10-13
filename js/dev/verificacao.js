@@ -3127,6 +3127,71 @@ caso('energia', 'a despesa da fatura: agendada no vencimento, na conta escolhida
   igual(energia.lancamentoDaFatura(null, r, 'cat'), null, 'sem vínculo, não gera');
 });
 
+caso('envelope', 'auditoria I1: poupança — o dia do passado usa o saldo daquele dia, não o de hoje', async () => {
+  const ev = await baseDeEnvelopes();
+  await ev('conta.criada', { id: 'pou', nome: 'Poupança', tipo: 'investimento', saldoInicial: 50000 });
+  await aporte('p1', 'pou', 'ipva', 50000, '2025-01-01');
+  await ev('lancamento.registrado', { id: 't1', tipo: 'transferencia', valor: 100000, contaId: 'cc', contaDestinoId: 'pou', categoriaId: null, dataCompetencia: '2025-03-01', dataCaixa: '2025-03-01', confirmado: true });
+  const e = await estado.calcular();
+  igual(envelopes.donosNoDia(e, '2025-02-01').porEnvelope.get('ipva').total, 50000, 'antes da transferência: R$ 500');
+  igual(envelopes.donosNoDia(e, '2025-04-01').porEnvelope.get('ipva').total, 50000, 'depois dela: continua R$ 500, não R$ 250');
+  igual(envelopes.donosNoDia(e, '2025-04-01').porEnvelope.get('ipva').rendeu, 0, 'sem rendimento inventado');
+});
+
+caso('envelope', 'auditoria I2: marcar um lugar como inteiro vale dali em diante, não reescreve o passado', async () => {
+  const ev = await baseDeEnvelopes();
+  await ev('ativo.criado', { id: 'prev', contaId: 'inv', nome: 'Previdência', classe: 'previdencia' });
+  await ev('envelope.criado', { id: 'apos', nome: 'Aposentadoria' });
+  await ev('lancamento.registrado', { id: 'a1', tipo: 'aplicacao', valor: 100000, contaId: null, ativoId: 'prev', dataCompetencia: '2025-01-01', confirmado: true });
+  await ev('envelope.alterado', { id: 'apos', inteiros: ['prev'], desde: '2025-03-01' });
+  await ev('lancamento.registrado', { id: 'a2', tipo: 'aplicacao', valor: 20000, contaId: null, ativoId: 'prev', dataCompetencia: '2025-03-02', confirmado: true });
+  const e = await estado.calcular();
+  igual(envelopes.donosNoDia(e, '2025-02-15').porEnvelope.get('apos').total, 0, 'antes da marcação, nada era dele');
+  igual(envelopes.donosNoDia(e, '2025-03-05').porEnvelope.get('apos').total, 20000, 'depois dela, o que chega é dele');
+  await ev('envelope.alterado', { id: 'apos', inteiros: [], desde: '2025-04-01' });
+  await ev('lancamento.registrado', { id: 'a3', tipo: 'aplicacao', valor: 30000, contaId: null, ativoId: 'prev', dataCompetencia: '2025-04-02', confirmado: true });
+  igual(envelopes.donosNoDia(await estado.calcular(), '2025-04-05').porEnvelope.get('apos').total, 20000, 'desmarcado: o que chega depois não é dele');
+});
+
+caso('envelope', 'auditoria I3: um ativo vazio não transforma a poupança em caixa', async () => {
+  const ev = await baseDeEnvelopes();
+  await ev('conta.criada', { id: 'pou', nome: 'Poupança', tipo: 'investimento', saldoInicial: 50000 });
+  igual(envelopes.lugarDaConta(await estado.calcular(), 'pou').tipo, 'fracao', 'sem ativo: rende');
+  await ev('ativo.criado', { id: 'vazio', contaId: 'pou', nome: 'Novo', classe: 'renda_fixa' });
+  igual(envelopes.lugarDaConta(await estado.calcular(), 'pou').tipo, 'fracao', 'ativo ainda vazio: continua rendendo');
+  await ev('lancamento.registrado', { id: 'ap', tipo: 'aplicacao', valor: 10000, contaId: 'pou', ativoId: 'vazio', dataCompetencia: '2025-02-01', confirmado: true });
+  igual(envelopes.lugarDaConta(await estado.calcular(), 'pou').tipo, 'caixa', 'com movimento: o que sobra é caixa parado');
+});
+
+caso('envelope', 'auditoria I4: o dinheiro da fatura custeada por envelope não vira sem dono na corrente', async () => {
+  const ev = await baseDeEnvelopes();
+  await ev('conta.criada', { id: 'cart', nome: 'Cartão', tipo: 'cartao', diaFechamento: 25, diaVencimento: 5, pagaCom: 'cc' });
+  await aporte('x1', 'cc', 'via', 100000, '2026-03-01');
+  await ev('lancamento.registrado', { id: 'g1', tipo: 'despesa', valor: 60000, contaId: 'cart', categoriaId: 'hotel', custeadoPor: 'via', dataCompetencia: '2026-03-10', confirmado: true });
+  const cc = envelopes.donosNoDia(await estado.calcular(), '2026-03-11').porLugar.get('cc');
+  igual([cc.reservado, cc.semDono], [60000, 400000], 'R$ 600 seguem na corrente até a fatura: não estão livres');
+});
+
+caso('envelope', 'auditoria I5/I7: envelopes que passam do lugar viram furo; projeto que já pagou não está atrasado', async () => {
+  const ev = await baseDeEnvelopes();
+  await aporte('x1', 'cc', 'ipva', 400000, '2025-02-01');
+  await aporte('x2', 'cc', 'via', 300000, '2025-02-01');
+  const r = envelopes.donosNoDia(await estado.calcular(), '2025-02-10');
+  igual([r.furos.length, r.porLugar.get('cc').furo], [1, 200000], 'R$ 7.000 de envelopes numa conta de R$ 5.000: furo de R$ 2.000');
+  const avisos = (await import('../core/avisos.js')).avisosDoInicio(await estado.calcular(), '2025-02-10');
+  igual(avisos.some((a) => /a mais do que há aqui/.test(a.titulo)), true, 'o Início avisa');
+});
+
+caso('envelope', 'auditoria I8: corrigir a data de um movimento põe ele na fila do dia pelo momento da correção', async () => {
+  const ev = await baseDeEnvelopes();
+  await ev('lancamento.registrado', { id: 'tr', tipo: 'transferencia', valor: 100000, contaId: 'cc', contaDestinoId: 'inv', categoriaId: null, dataCompetencia: '2025-02-01', dataCaixa: '2025-02-01', confirmado: true });
+  await aporte('x1', 'cc', 'via', 100000, '2025-02-10');
+  const antes = (await estado.calcular()).lancamentos.tr.lc;
+  await ev('lancamento.alterado', { id: 'tr', dataCaixa: '2025-02-10', dataCompetencia: '2025-02-10' });
+  const e = await estado.calcular();
+  igual(e.lancamentos.tr.lc > antes, true, 'a correção que muda o dia leva o lc novo');
+});
+
 async function limpar() {
   db.usarBanco(BANCO_DE_TESTE);
   await db.apagarTudo();

@@ -26,7 +26,12 @@ export const AREAS_PADRAO = ['caixa', 'cartoes'];
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 30;
+export const VERSAO_ESTADO = 31;
+
+/** Anota de que dia em diante um lugar é inteiro de um envelope (ou de nenhum). Sem data = desde sempre. */
+function marcarInteiro(e, lugarId, envelopeId, desde) {
+  (e.inteirosHist ??= []).push({ lugarId, envelopeId, desde: desde ?? '0000-00-00' });
+}
 
 export function estadoVazio() {
   return {
@@ -44,6 +49,7 @@ export function estadoVazio() {
     // das alocações — o aporte e o resgate do envelope — e dos `donos` de cada
     // movimento entre lugares.
     envelopes: {},
+    inteirosHist: [],
     alocacoes: {},
     // O que o texto do banco vira (design/13 §2), e as linhas de extrato que
     // se mandou ignorar ("conta|número do banco"), para não voltarem.
@@ -344,6 +350,7 @@ export const redutores = {
       encerradoEm: null,
       arquivado: false,
     };
+    for (const lugarId of d.inteiros ?? []) marcarInteiro(e, lugarId, d.id, d.desde);
   },
 
   'envelope.encerrado'(e, d) {
@@ -359,8 +366,14 @@ export const redutores = {
   'envelope.alterado'(e, d) {
     const v = e.envelopes?.[d.id];
     if (!v) return;
+    const antes = v.inteiros ?? [];
     for (const campo of ['nome', 'inicio', 'alvoValor', 'alvoData', 'inteiros']) {
       if (d[campo] !== undefined) v[campo] = d[campo];
+    }
+    // O "inteiro" vale de uma data em diante: não reescreve o passado (auditoria I2).
+    if (d.inteiros) {
+      for (const lugarId of antes) if (!d.inteiros.includes(lugarId)) marcarInteiro(e, lugarId, null, d.desde);
+      for (const lugarId of d.inteiros) if (!antes.includes(lugarId)) marcarInteiro(e, lugarId, v.id, d.desde);
     }
     // Um lugar é inteiro de um envelope só.
     if (d.inteiros) {
@@ -819,9 +832,14 @@ export const redutores = {
     datarNoCartao(e.lancamentos[d.id], e.contas[d.contaId]);
   },
 
-  'lancamento.alterado'(e, d) {
+  'lancamento.alterado'(e, d, evento) {
     const l = e.lancamentos[d.id];
     if (!l) return;
+    // Mudou o dia: na fila do dia vale o momento da correção, não o do registro
+    // original (senão passaria na frente de um aporte feito depois — auditoria I8).
+    if ((d.dataCaixa !== undefined && d.dataCaixa !== l.dataCaixa) || (d.dataCompetencia !== undefined && d.dataCompetencia !== l.dataCompetencia)) {
+      l.lc = evento?.lc ?? l.lc;
+    }
     for (const [campo, valor] of Object.entries(d)) {
       // No cartão, caixa e vencimento são do ciclo, nunca do dedo.
       if (l.cicloFatura && (campo === 'dataCaixa' || campo === 'dataVencimento')) continue;

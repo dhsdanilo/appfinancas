@@ -514,6 +514,12 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
     const deQuem = op === 'aplicacao' || op === 'resgate' ? donos.ler() : [];
     const recusa = deQuem.length ? donos.conferir(valor) : '';
     if (recusa) { recadar(recusa); return; }
+    if (!corrigindo && deQuem !== undefined && (op === 'aplicacao' || op === 'resgate')) {
+      const aviso = donos.aviso(valor);
+      if (aviso && !confirm(`${aviso}
+
+Gravar assim?`)) return;
+    }
     recadar('');
     ofertar('');
     if (op === 'avaliacao') {
