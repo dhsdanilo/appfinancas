@@ -27,6 +27,12 @@ export function deTexto(texto) {
   // O app escreve o negativo com o sinal de menos tipográfico (−): ele tem de voltar como negativo.
   const negativo = /^[-−–]/.test(s);
   const corpo = s.replace(/^[-−–]/, '');
+  // Só pontos, e cada grupo depois deles com três dígitos ("1.500", "1.234.567"):
+  // é milhar, como se escreve no Brasil. Ler como decimal fazia R$ 1.500 virar R$ 1,50.
+  if (!corpo.includes(',') && /^\d{1,3}(\.\d{3})+$/.test(corpo)) {
+    const valor = parseInt(corpo.replace(/\./g, ''), 10) * 100;
+    return negativo ? -valor : valor;
+  }
   // O último separador presente é o decimal; os outros são de milhar.
   const ultimoSep = Math.max(corpo.lastIndexOf(','), corpo.lastIndexOf('.'));
   let inteiros, decimais;
