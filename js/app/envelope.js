@@ -8,6 +8,7 @@
 import * as estado from '../core/estado.js';
 import { novoId } from '../core/id.js';
 import { deTexto, formatar } from '../core/dinheiro.js';
+import { umaVez } from './uma-vez.js';
 import { hoje } from '../core/datas.js';
 import {
   envelopesAtivos, ehProjeto, donosNoDia, numerosDoEnvelope, nomeDoLugar, envelopesNoLugar,
@@ -141,7 +142,7 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
     pintarJeito();
   });
 
-  env('b-salvar').addEventListener('click', async () => {
+  env('b-salvar').addEventListener('click', umaVez(async () => {
     const nome = env('nome').value.trim();
     if (!nome) { env('nome').focus(); return; }
     const alvoValor = Math.abs(deTexto(env('alvo').value)) || null;
@@ -157,7 +158,7 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
     else await estado.aplicarEvento('envelope.criado', { id: novoId('env'), ...dados });
     fichaJ.close();
     await depois();
-  });
+  }));
   env('nome').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); env('b-salvar').click(); } });
 
   env('b-arquivar').addEventListener('click', async () => {
@@ -373,7 +374,7 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
   });
   dist('linhas').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.matches('input')) { e.preventDefault(); dist('b-ok').click(); } });
 
-  dist('b-ok').addEventListener('click', async () => {
+  dist('b-ok').addEventListener('click', umaVez(async () => {
     if (modoAjuste) { await salvarAjuste(); return; }
     const linhas = lerLinhas();
     const total = linhas.reduce((t, x) => t + x.valor, 0);
@@ -398,7 +399,7 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
     }
     distJ.close();
     await depois();
-  });
+  }));
 
   async function salvarAjuste() {
     const app = await estado.calcular();
@@ -455,7 +456,7 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
     mov('valor').focus();
   }
 
-  mov('b-ok').addEventListener('click', async () => {
+  mov('b-ok').addEventListener('click', umaVez(async () => {
     const app = await estado.calcular();
     const lugar = mov('lugar').value;
     const valor = Math.abs(deTexto(mov('valor').value));
@@ -468,7 +469,7 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
     });
     movJ.close();
     await depois();
-  });
+  }));
   mov('valor').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); mov('b-ok').click(); } });
 
   janelas = { abrirFicha, abrirDistribuir, abrirAjustar, abrirTirar };

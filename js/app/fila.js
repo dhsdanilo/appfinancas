@@ -9,6 +9,7 @@ import { pendencias } from '../core/pendencias.js';
 import { diaCurto, hoje, nomeDoMes } from '../core/datas.js';
 import { dinheiroHTML } from './dinheiro-html.js';
 import { lancarOcorrencia } from './ocorrencia.js';
+import { umaVez } from './uma-vez.js';
 
 const VISIVEIS = 5;
 
@@ -115,7 +116,10 @@ export function criarFila({ raiz, abrirPagamento, abrirConferencia, abrirHolerit
     await estado.aplicarEvento('lancamento.alterado', mudancas);
   }
 
-  async function agir(acao, i, campo) {
+  // Um toque, uma ação: "Confirmar" tocado duas vezes lançava a conta duas vezes.
+  const agir = umaVez(agirAgora);
+
+  async function agirAgora(acao, i, campo) {
     const l = i.tipo === 'vencido' ? i.lancamento : i.ocorrencia;
     switch (acao) {
       case 'pagar':

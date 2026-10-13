@@ -8,6 +8,7 @@ import * as estado from '../core/estado.js';
 import * as log from '../core/log.js';
 import { novoId } from '../core/id.js';
 import { deTexto, formatar } from '../core/dinheiro.js';
+import { umaVez } from './uma-vez.js';
 import { hoje } from '../core/datas.js';
 import { saldoReal } from '../core/lancamentos.js';
 import { opcoesDeConta } from './areas.js';
@@ -56,7 +57,9 @@ export function criarRecebimento({ janela, raiz, aoSalvar }) {
     el('valor').focus();
   }
 
-  async function lancar() {
+  const lancar = umaVez(lancarAgora);
+
+  async function lancarAgora() {
     const data = el('data').value;
     const valor = Math.abs(deTexto(el('valor').value));
     const destino = el('destino').value;

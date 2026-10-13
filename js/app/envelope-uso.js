@@ -9,6 +9,7 @@ import * as estado from '../core/estado.js';
 import * as log from '../core/log.js';
 import { novoId } from '../core/id.js';
 import { deTexto, formatar } from '../core/dinheiro.js';
+import { umaVez } from './uma-vez.js';
 import { hoje } from '../core/datas.js';
 import { contaDoDinheiro } from '../core/investimentos.js';
 import { categoriaNaArea } from './areas.js';
@@ -177,7 +178,7 @@ export function criarJanelasDeUso({ aoSalvar } = {}) {
   pag('origem').addEventListener('change', () => { origemEscolhida = pag('origem').value; pintarPagar(); });
   pag('conta').addEventListener('change', () => { pintarCategorias(); pintarPagar(); });
 
-  pag('b-ok').addEventListener('click', async () => {
+  pag('b-ok').addEventListener('click', umaVez(async () => {
     const valor = Math.abs(deTexto(pag('valor').value));
     const contaId = pag('conta').value;
     const categoriaId = pag('categoria').value || null;
@@ -224,7 +225,7 @@ export function criarJanelasDeUso({ aoSalvar } = {}) {
     });
     pagJ.close();
     await depois();
-  });
+  }));
   pag('valor').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); pag('b-ok').click(); } });
 
   // ── encerrar ────────────────────────────────────────────────────────────
@@ -263,7 +264,7 @@ export function criarJanelasDeUso({ aoSalvar } = {}) {
 
   enc('proximo').addEventListener('change', () => pintarDestinos());
 
-  enc('b-ok').addEventListener('click', async () => {
+  enc('b-ok').addEventListener('click', umaVez(async () => {
     const data = enc('data').value || hoje();
     let destino = enc('destino').value || null;
     if (enc('proximo').checked && ehProjeto(encerrando)) {
@@ -281,7 +282,7 @@ export function criarJanelasDeUso({ aoSalvar } = {}) {
     await estado.aplicarEvento('envelope.encerrado', { id: encerrando.id, data });
     encJ.close();
     await depois();
-  });
+  }));
 
   janelas = { abrirPagar, abrirEncerrar };
   return janelas;

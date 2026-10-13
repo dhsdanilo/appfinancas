@@ -8,6 +8,7 @@
 import * as estado from './core/estado.js';
 import { novoId } from './core/id.js';
 import { deTexto, formatar } from './core/dinheiro.js';
+import { umaVez } from './app/uma-vez.js';
 import { hoje, diaCurto, fimDoMes, somarMeses } from './core/datas.js';
 import { visiveis, nomeDaCategoria } from './core/lancamentos.js';
 import { ocorrenciasPrevistas, valorDaSerie, proximoReajuste, ultimoReajuste } from './core/previsto.js';
@@ -159,7 +160,10 @@ function recusar(texto) {
   $('aviso-recorrencia').hidden = false;
 }
 
-async function salvar(e) {
+// Um toque, uma série: dois toques em salvar criavam duas séries iguais.
+const salvar = umaVez(salvarAgora);
+
+async function salvarAgora(e) {
   e.preventDefault();
   const tipo = tipoEscolhido();
   const anual = f().periodicidade.value === 'anual';
@@ -213,7 +217,11 @@ async function salvar(e) {
 // ── eventos ───────────────────────────────────────────────────────────────
 
 $('b-nova-recorrencia').addEventListener('click', () => abrir());
-$('f-recorrencia').addEventListener('submit', salvar);
+$('f-recorrencia').addEventListener('submit', (e) => {
+  // O formulário não pode seguir para o servidor nem quando o toque é ignorado.
+  e.preventDefault();
+  salvar(e);
+});
 $('b-cancelar-recorrencia').addEventListener('click', () => $('dialogo-recorrencia').close());
 $('f-recorrencia').querySelector('.pilulas').addEventListener('click', (e) => {
   const b = e.target.closest('[data-tipo-rec]');

@@ -24,6 +24,7 @@ import { compradoPorDaCompra, pessoaDoAparelho, curarPessoaDoAparelho, disponive
 import { temCiclo, cicloDaCompra } from '../core/cartao.js';
 import { MARCACAO_CAMPO_VALOR, ligarCampoValor } from './campo-valor.js';
 import { ligarZonaDePerigo } from './zona-perigo.js';
+import { umaVez } from './uma-vez.js';
 import { areaDaConta, opcoesDeConta, categoriaNaArea, areasParaConta } from './areas.js';
 import { envelopesAtivos, envelopesNoLugar, lugarDaConta } from '../core/envelopes.js';
 import { chave, idDaRegra } from '../core/importar.js';
@@ -1086,7 +1087,10 @@ export async function criarFormulario({
 
   // ── salvar ──────────────────────────────────────────────────────────────
 
-  async function salvar() {
+  // Um toque, uma gravação: o segundo toque enquanto o primeiro grava não faz nada.
+  const salvar = umaVez(salvarAgora);
+
+  async function salvarAgora() {
     if (!pronto()) return false;
     // A descrição escrita e não confirmada com Enter vale do mesmo jeito:
     // salvar sem ela perdia o que estava escrito na tela.

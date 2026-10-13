@@ -21,6 +21,7 @@ import { hoje, nasceConfirmado, correcao, tipoDaTransferencia } from '../core/la
 import { somarDias } from '../core/datas.js';
 import { MARCACAO_CAMPO_VALOR, ligarCampoValor } from './campo-valor.js';
 import { ligarZonaDePerigo } from './zona-perigo.js';
+import { umaVez } from './uma-vez.js';
 import { areaDaConta, opcoesDeConta } from './areas.js';
 import { pularParcela, corrigirParcela, voltarAoContrato } from './contrato.js';
 import { lugarDaConta } from '../core/envelopes.js';
@@ -303,7 +304,10 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
 
   // ── salvar ──────────────────────────────────────────────────────────────
 
-  async function salvar() {
+  // Um toque, uma gravação: o segundo toque enquanto o primeiro grava não faz nada.
+  const salvar = umaVez(salvarAgora);
+
+  async function salvarAgora() {
     if (!pronto()) return false;
     if (daParcela) return salvarParcela();
     return editando ? salvarCorrecao() : registrar();

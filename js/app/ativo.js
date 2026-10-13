@@ -9,6 +9,7 @@ import * as estado from '../core/estado.js';
 import * as log from '../core/log.js';
 import { novoId } from '../core/id.js';
 import { deTexto, formatar } from '../core/dinheiro.js';
+import { umaVez } from './uma-vez.js';
 import { hoje, diaCurto } from '../core/datas.js';
 import { visiveis } from '../core/lancamentos.js';
 import { CLASSES, CLASSES_POR_COTAS, nomeDaClasse, posicao, contaDoDinheiro, contaDaOperacao } from '../core/investimentos.js';
@@ -339,7 +340,9 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
     pintar();
   }
 
-  async function salvarFicha() {
+  const salvarFicha = umaVez(salvarFichaAgora);
+
+  async function salvarFichaAgora() {
     const nome = el('nome').value.trim();
     if (!nome) { el('nome').focus(); return; }
     const dados = { nome, classe: el('classe').value, unidade: el('unidade').value, vencimento: el('vencimento').value || null, cotacao: lerCotacao() };
@@ -476,7 +479,9 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
       : `De antes de ${dinheiro.nome} entrar no app: conta para o ativo, mas não mexe em conta nenhuma.`;
   }
 
-  async function registrar() {
+  const registrar = umaVez(registrarAgora);
+
+  async function registrarAgora() {
     const cotas = ativo.unidade === 'cotas';
     const data = el('data').value || hoje();
     let valor = Math.abs(deTexto(el('valor').value));

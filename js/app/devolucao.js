@@ -10,6 +10,7 @@ import * as estado from '../core/estado.js';
 import * as log from '../core/log.js';
 import { novoId } from '../core/id.js';
 import { deTexto, formatar } from '../core/dinheiro.js';
+import { umaVez } from './uma-vez.js';
 import { hoje, diaCurto } from '../core/datas.js';
 import { nomeDaCategoria, restanteEstornavel, dataVista } from '../core/lancamentos.js';
 import { ligarZonaDePerigo } from './zona-perigo.js';
@@ -80,7 +81,10 @@ export function criarDevolucao({ janela, raiz, aoSalvar }) {
     el('valor').select();
   }
 
-  async function salvar() {
+  // Um toque, uma devolução: dois toques passavam os dois pela conta do quanto resta.
+  const salvar = umaVez(salvarAgora);
+
+  async function salvarAgora() {
     const valor = Math.abs(deTexto(el('valor').value));
     const data = el('data').value;
     const resta = restanteEstornavel(app, compra.id, editando?.id);

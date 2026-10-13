@@ -10,6 +10,7 @@ import * as estado from '../core/estado.js';
 import * as log from '../core/log.js';
 import { novoId } from '../core/id.js';
 import { deTexto, formatar } from '../core/dinheiro.js';
+import { umaVez } from './uma-vez.js';
 import { hoje, diaNoMes, nomeDoMes } from '../core/datas.js';
 import { nomeDaCategoria } from '../core/lancamentos.js';
 import { linhasDoHolerite, lancadosNoMes, liquido, jaLancadoNoLiquido } from '../core/holerite.js';
@@ -166,7 +167,9 @@ export function criarHolerite({ janela, raiz, aoSalvar }) {
     janela.showModal();
   }
 
-  async function lancar() {
+  const lancar = umaVez(lancarAgora);
+
+  async function lancarAgora() {
     const data = el('data').value;
     const destino = el('destino').value;
     const total = valorDoLiquido();

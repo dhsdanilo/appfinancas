@@ -12,6 +12,7 @@ import * as estado from '../core/estado.js';
 import * as log from '../core/log.js';
 import { novoId } from '../core/id.js';
 import { deTexto, formatar } from '../core/dinheiro.js';
+import { umaVez } from './uma-vez.js';
 import { hoje, diaCurto } from '../core/datas.js';
 import { visiveis, saldoReal, nomeDaCategoria } from '../core/lancamentos.js';
 import { ligarZonaDePerigo } from './zona-perigo.js';
@@ -96,7 +97,10 @@ export function criarConferencia({ janela, titulo, raiz, aoSalvar }) {
     janela.showModal();
   }
 
-  async function conferir() {
+  // Um toque, uma conferência: dois toques lançavam o ajuste da carteira duas vezes.
+  const conferir = umaVez(conferirAgora);
+
+  async function conferirAgora() {
     const conta = app.contas[el('conta').value];
     if (!conta) return;
     const texto = el('saldo').value.trim();
