@@ -5,8 +5,9 @@
 // "não pode" sem o caminho que resolve. Por isso cada recusa devolve o motivo
 // em dado — quem escreve a frase é a tela, não o núcleo.
 
-import { visiveis, saldoReal } from './lancamentos.js';
+import { visiveis, saldoReal, hoje } from './lancamentos.js';
 import { saldoDevedor } from './divida.js';
+import { calendarioDaDivida, fimDasParcelas } from './parcelas.js';
 
 /**
  * Quantos lançamentos usam cada item. É o número que torna a bancada útil em
@@ -54,12 +55,26 @@ export function podeRemover(estado, especie, id) {
 }
 
 /** Conta com saldo não se arquiva antes de o saldo ser resolvido. */
-export function podeArquivarConta(estado, id) {
+export function podeArquivarConta(estado, id, dia = hoje()) {
   // Na dívida o que importa é o que ainda se deve, não a soma dos pagamentos.
   const devedor = estado.contas[id]?.tipo === 'divida' ? saldoDevedor(estado, id) : null;
   const saldo = devedor != null ? -devedor : saldoReal(estado, id);
   if (saldo !== 0) return { pode: false, motivo: 'tem saldo', saldo };
+  // Conta que ainda paga parcelas de um empréstimo: arquivada, elas cairiam
+  // escondidas nela. Primeiro o contrato passa a ser pago por outra.
+  const divida = dividaPagaPor(estado, id, dia);
+  if (divida) return { pode: false, motivo: 'paga dívida', divida, saldo: 0 };
   return { pode: true, saldo: 0 };
+}
+
+/** A dívida com parcelas ainda por cair que esta conta paga, se houver. */
+export function dividaPagaPor(estado, contaId, dia) {
+  return Object.values(estado.contas).find((d) => {
+    if (d.tipo !== 'divida' || d.arquivada || !d.contrato || d.pagaCom !== contaId) return false;
+    const fim = fimDasParcelas(d);
+    if (fim && fim <= dia) return false;
+    return calendarioDaDivida(estado, d).some((p) => p.data > dia);
+  }) ?? null;
 }
 
 /**

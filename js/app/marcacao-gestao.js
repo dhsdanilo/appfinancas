@@ -221,6 +221,12 @@ export const CONTRATO = `
       Sem os juros, o app usa a taxa embutida no contrato (valor, parcelas e prestação), ou a observada entre duas
       fotos do saldo. O saldo que o banco mostra, quando informado, manda.
     </p>
+    <!-- Mudou o que parcelas já caídas usaram: vale daqui pra frente, ou corrige desde o início. -->
+    <fieldset class="alcance-contrato" id="alcance-contrato" hidden>
+      <legend id="alcance-texto"></legend>
+      <label><input type="radio" name="alcance" value="frente"> <strong>daqui pra frente</strong> — as que já caíram ficam como estão (trocou de conta, reajuste)</label>
+      <label><input type="radio" name="alcance" value="tudo"> <strong>desde o início</strong> — o cadastro estava errado, as que já caíram mudam também</label>
+    </fieldset>
     <p class="aviso erro" id="aviso-contrato" hidden></p>
     <div class="campo acao">
       <button type="submit" class="principal" value="salvar">Salvar</button>

@@ -17,7 +17,8 @@ import { valorLancavel, formatar } from '../core/dinheiro.js';
 import { novoId } from '../core/id.js';
 import * as log from '../core/log.js';
 import * as estado from '../core/estado.js';
-import { hoje, nasceConfirmado, correcao, tipoDaTransferencia } from '../core/lancamentos.js';
+import { hoje, nasceConfirmado, correcao, tipoDaTransferencia, lancados } from '../core/lancamentos.js';
+import { parcelaAutomaticaDoMes } from '../core/parcelas.js';
 import { somarDias } from '../core/datas.js';
 import { MARCACAO_CAMPO_VALOR, ligarCampoValor } from './campo-valor.js';
 import { ligarZonaDePerigo } from './zona-perigo.js';
@@ -103,6 +104,12 @@ const MARCACAO = `
     <button type="button" class="elo" data-papel="b-pular">não foi debitada</button>
     <button type="button" class="elo" data-papel="b-voltar-contrato" hidden>voltar ao contrato</button>
   </p>
+
+  <!-- Para uma dívida cuja parcela já cai sozinha naquele mês: esta transferência
+       é a parcela? Marcada, a automática deixa de cair (senão sai duas vezes). -->
+  <label class="parcela-manual" data-papel="parcela-manual" hidden>
+    <input type="checkbox" data-papel="eh-parcela"> <span data-papel="texto-eh-parcela"></span>
+  </label>
 
   <div class="acoes">
     <button type="button" class="principal" data-papel="b-salvar-nova" disabled>Transferir e nova</button>
@@ -204,8 +211,50 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
     el('sugestao').hidden = !sugerido;
   }
 
+  /**
+   * A parcela automática que esta transferência paga, quando vai para uma
+   * dívida com contrato e a parcela daquele mês ainda não tem lançamento.
+   */
+  let parcelaPaga = null;
+  let parcelaPintada = '';
+  function pintarParcelaManual() {
+    parcelaPaga = null;
+    let pagadora = null;
+    const divida = app && !daParcela ? app.contas[destino()] : null;
+    if (divida?.tipo === 'divida' && divida.contrato) {
+      if (editando?.parcelaDe?.dividaId === divida.id) {
+        parcelaPaga = editando.parcelaDe;
+      } else {
+        const outros = editando ? lancados(app).filter((l) => l.id !== editando.id) : lancados(app);
+        const auto = parcelaAutomaticaDoMes(app, outros, divida.id, data.slice(0, 7), hoje());
+        if (auto) {
+          parcelaPaga = auto.parcelaDe;
+          pagadora = app.contas[auto.contaId]?.nome ?? null;
+        }
+      }
+    }
+    el('parcela-manual').hidden = !parcelaPaga;
+    const chave = parcelaPaga ? `${parcelaPaga.dividaId}:${parcelaPaga.k}` : '';
+    // Nova: marcada (o mais comum é ser a parcela). Na correção: como está gravada.
+    if (chave !== parcelaPintada) {
+      el('eh-parcela').checked = editando ? Boolean(editando.parcelaDe) : true;
+      parcelaPintada = chave;
+    }
+    if (!parcelaPaga) return;
+    const mes = `${data.slice(5, 7)}/${data.slice(0, 4)}`;
+    const de = parcelaPaga.total ? `${parcelaPaga.k}/${parcelaPaga.total}` : `${parcelaPaga.k}`;
+    el('texto-eh-parcela').textContent = `é a parcela ${de} de ${mes}: a automática${pagadora ? ` de ${pagadora}` : ''} deixa de cair`;
+  }
+
+  /** O `parcelaDe` que esta transferência grava: a parcela marcada, ou nada. */
+  function parcelaDeGravar() {
+    if (!parcelaPaga || el('parcela-manual').hidden || !el('eh-parcela').checked) return null;
+    return { dividaId: parcelaPaga.dividaId, k: parcelaPaga.k, total: parcelaPaga.total ?? null };
+  }
+
   function pintarAcao() {
     pintarAreas();
+    pintarParcelaManual();
     pintarDonos();
     // Corrigir, a parcela e a fatura são uma coisa só: um botão. A transferência
     // nova tem os dois, como o lançamento.
@@ -284,6 +333,7 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
     data = dia;
     pintarData();
     pintarRepete();
+    pintarParcelaManual();
   }
 
   // ── apagar ──────────────────────────────────────────────────────────────
@@ -367,6 +417,7 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
       recorrenciaId: daSerie ?? serie,
       donos: donos.ler(),
       repasse: !el('repasse-bloco').hidden && el('repasse').checked,
+      parcelaDe: parcelaDeGravar(),
       lancadoPor: ap?.id ?? null,
     });
     daSerie = null;
@@ -389,6 +440,8 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
     if (JSON.stringify(deQuem) !== JSON.stringify(editando.donos ?? [])) mudancas.donos = deQuem;
     const ehRepasse = !el('repasse-bloco').hidden && el('repasse').checked;
     if (ehRepasse !== Boolean(editando.repasse)) mudancas.repasse = ehRepasse;
+    const parcelaDe = parcelaDeGravar();
+    if (JSON.stringify(parcelaDe) !== JSON.stringify(editando.parcelaDe ?? null)) mudancas.parcelaDe = parcelaDe;
     if (Object.keys(mudancas).length === 0) return true;
 
     await estado.aplicarEvento('lancamento.alterado', { id: editando.id, ...mudancas });

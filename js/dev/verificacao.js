@@ -42,6 +42,7 @@ import * as ir from '../core/ir-venda.js';
 import * as copia from '../core/copia.js';
 import * as avisos from '../core/avisos.js';
 import * as icones from '../core/icones-conta.js';
+import * as parcelas from '../core/parcelas.js';
 
 const BANCO_DE_TESTE = 'appfinancas-teste';
 
@@ -1939,6 +1940,90 @@ caso('dívida', 'a exceção, pela linha: corrigir uma parcela, ou dizer que nã
   await estado.aplicarEvento('divida.parcelaPulada', { id: 'emp', k: 7, pulada: false });
   e = await estado.calcular();
   igual(lanc.saldoReal(e, 'cc'), 2000000 - 9 * 100000, 'desfeitas as duas, as automáticas voltam');
+});
+
+async function comDuasCorrentes() {
+  await comEmprestimo();
+  await estado.aplicarEvento('conta.criada', { id: 'c2', nome: 'Outra', tipo: 'corrente', saldoInicial: 2000000, dataInicial: '2025-01-01' });
+  return estado.calcular();
+}
+
+caso('dívida', '★ trocar quem paga DAQUI PRA FRENTE não mexe nas parcelas que já caíram', async () => {
+  await comDuasCorrentes();
+  await estado.aplicarEvento('conta.alterada', { id: 'emp', pagaCom: 'c2', vigenteDesde: '2025-05-01' });
+  const e = await estado.calcular();
+  igual(lanc.saldoReal(e, 'cc'), 2000000 - 4 * 100000, 'jan a abr continuam saindo da conta antiga');
+  igual(lanc.saldoReal(e, 'c2'), 2000000 - 5 * 100000, 'de maio em diante, da nova');
+  igual(e.contas.emp.historicoContrato.length, 1, 'a versão de antes ficou guardada');
+});
+
+caso('dívida', 'trocar quem paga DESDE O INÍCIO (cadastro errado) leva todas', async () => {
+  await comDuasCorrentes();
+  await estado.aplicarEvento('conta.alterada', { id: 'emp', pagaCom: 'c2' });
+  const e = await estado.calcular();
+  igual(lanc.saldoReal(e, 'cc'), 2000000);
+  igual(lanc.saldoReal(e, 'c2'), 2000000 - 9 * 100000);
+});
+
+caso('dívida', 'reajuste da parcela daqui pra frente: as antigas mantêm o valor', async () => {
+  await comEmprestimo();
+  await estado.aplicarEvento('conta.alterada', { id: 'emp', contrato: { ...EMPRESTIMO, valorParcela: 120000 }, vigenteDesde: '2025-05-01' });
+  const e = await estado.calcular();
+  igual(lanc.saldoReal(e, 'cc'), 2000000 - 4 * 100000 - 5 * 120000);
+  const ks = lanc.visiveis(e, '2025-12-31').filter((l) => l.parcelaDe?.dividaId === 'emp').map((l) => l.id).sort();
+  igual(new Set(ks).size, 9, 'nove parcelas, sem id repetido');
+});
+
+caso('dívida', '★ quitada no banco (foto zero) ou arquivada: a parcela para de cair', async () => {
+  await comEmprestimo();
+  await estado.aplicarEvento('conta.fotografada', { id: 'emp', data: '2025-04-15', valor: 0 });
+  let e = await estado.calcular();
+  igual(lanc.saldoReal(e, 'cc'), 2000000 - 4 * 100000, 'só jan a abr, até a foto zerada');
+
+  await comEmprestimo();
+  await estado.aplicarEvento('conta.arquivada', { id: 'emp', arquivada: true, data: '2025-06-20' });
+  e = await estado.calcular();
+  igual(lanc.saldoReal(e, 'cc'), 2000000 - 6 * 100000, 'arquivada em 20/06: até junho');
+  await estado.aplicarEvento('conta.arquivada', { id: 'emp', arquivada: false });
+  e = await estado.calcular();
+  igual(lanc.saldoReal(e, 'cc'), 2000000 - 9 * 100000, 'desarquivada, o calendário volta inteiro');
+});
+
+caso('dívida', 'conta que paga parcelas por vir não se arquiva', async () => {
+  const e = await comEmprestimo();
+  igual(listas.dividaPagaPor(e, 'cc', '2025-05-01')?.id, 'emp', 'em maio ainda faltam parcelas');
+  igual(listas.dividaPagaPor(e, 'cc', '2025-12-01'), null, 'depois da última, pode');
+});
+
+caso('dívida', '★ contrato posto numa dívida antiga não cobra os meses de antes de hoje', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  await estado.aplicarEvento('conta.criada', { id: 'cc', nome: 'Corrente', tipo: 'corrente', saldoInicial: 2000000, dataInicial: '2025-01-01' });
+  await estado.aplicarEvento('conta.criada', { id: 'emp', nome: 'Empréstimo', tipo: 'divida', dataInicial: '2025-01-15' });
+  const { salvarContrato } = await import('../app/contrato.js');
+  const primeira = datas.somarMeses(datas.inicioDoMes(lanc.hoje()), -9);
+  await salvarContrato(await estado.calcular(), 'emp', { valorTomado: 2000000, data: primeira, parcelas: 24, valorParcela: 100000, primeira }, 'cc');
+  const e = await estado.calcular();
+  const meses = lanc.visiveis(e, '2099-12-31').filter((l) => l.parcelaDe?.dividaId === 'emp').map((l) => l.dataCompetencia.slice(0, 7));
+  igual(meses[0], lanc.hoje().slice(0, 7), 'a primeira que cai é a deste mês, não as nove de antes');
+  igual(meses.length, 24 - 9);
+});
+
+caso('dívida', '★ a parcela paga à mão: o aviso pergunta, e "é a parcela" tira a automática', async () => {
+  await comEmprestimo();
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'mao', tipo: 'transferencia', valor: 100000, contaId: 'cc', contaDestinoId: 'emp',
+    dataCompetencia: '2025-03-10', dataCaixa: '2025-03-10', confirmado: true,
+  });
+  let e = await estado.calcular();
+  const dobro = parcelas.parcelasEmDobro(e, lanc.lancados(e), '2025-12-31');
+  igual(dobro.map((x) => [x.lancamento.id, x.parcela.parcelaDe.k]), [['mao', 6]], 'março: a automática e a manual');
+  igual(lanc.saldoReal(e, 'cc'), 2000000 - 10 * 100000, 'saiu duas vezes');
+
+  await estado.aplicarEvento('lancamento.alterado', { id: 'mao', parcelaDe: { dividaId: 'emp', k: 6, total: 12 } });
+  e = await estado.calcular();
+  igual(parcelas.parcelasEmDobro(e, lanc.lancados(e), '2025-12-31'), [], 'marcada, nada em dobro');
+  igual(lanc.saldoReal(e, 'cc'), 2000000 - 9 * 100000, 'e a parcela sai uma vez só');
 });
 
 caso('dívida', 'amortizar: reduzir prazo e reduzir parcela, lado a lado', async () => {

@@ -572,6 +572,35 @@ input[type="text"].observacao {
 }
 .conferencia-contrato strong { display: block; color: var(--tinta); }
 .conferencia-contrato[hidden] { display: none; }
+
+/* Mudança no contrato que mexe em parcela que já caiu: daqui pra frente ou desde o início. */
+.alcance-contrato {
+  flex-basis: 100%;
+  width: 100%;
+  margin: var(--e2) 0 0;
+  padding: var(--e2) var(--e3);
+  border: 1px solid var(--alerta);
+  border-radius: var(--raio-controle);
+  font-size: var(--t-apoio);
+  display: flex;
+  flex-direction: column;
+  gap: var(--e2);
+}
+.alcance-contrato legend { padding: 0 var(--e1); color: var(--tinta); font-weight: 600; }
+.alcance-contrato label { display: flex; gap: var(--e2); align-items: baseline; color: var(--tinta-fraca); }
+.alcance-contrato label strong { color: var(--tinta); }
+.alcance-contrato[hidden] { display: none; }
+
+/* A transferência para uma dívida que é a parcela do mês (design/10 §4.4). */
+.parcela-manual {
+  display: flex;
+  gap: var(--e2);
+  align-items: baseline;
+  margin: var(--e2) 0 0;
+  font-size: var(--t-apoio);
+  color: var(--tinta-fraca);
+}
+.parcela-manual[hidden] { display: none; }
 .fim-contrato { display: flex; flex-wrap: wrap; gap: var(--e2) var(--e3); align-items: center; }
 .fim-contrato [hidden] { display: none; }
 .recado-parcela { display: flex; flex-wrap: wrap; gap: var(--e2); align-items: baseline; color: var(--tinta-fraca); }
@@ -642,7 +671,9 @@ input[type="text"].observacao {
 
 /* Juros do contrato e CET: o número e "ao mês / ao ano" lado a lado. */
 .taxa-com-unidade .valor-e-unidade { display: flex; gap: var(--e2); }
-.taxa-com-unidade .valor-e-unidade input { flex: 1 1 90px; min-width: 0; }
+/* `.campo input[type="text"]` (bancada.css) dá largura 100% e flex: none: aqui o
+   campo divide a linha com o seletor de unidade, senão o seletor passa da borda no celular. */
+.taxa-com-unidade .valor-e-unidade input[type="text"] { flex: 1 1 90px; width: auto; min-width: 0; }
 .taxa-com-unidade .valor-e-unidade select { flex: none; width: auto; }
 .taxa-com-unidade .opcional { color: var(--tinta-fraca); font-weight: 400; }
 .conferencia-taxas { margin: 0; font-size: var(--t-apoio); color: var(--tinta-fraca); grid-column: 1 / -1; }

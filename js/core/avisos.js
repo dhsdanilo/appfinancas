@@ -13,6 +13,8 @@ import { provisaoDoCartao } from './cofrinho.js';
 import { envelopesAtivos, donosNoDia, numerosDoEnvelope } from './envelopes.js';
 import { aReceber } from './repasse.js';
 import { compromissoDaEnergia } from './energia-envelope.js';
+import { parcelasEmDobro } from './parcelas.js';
+import { lancados } from './lancamentos.js';
 
 const ORDEM = { ruim: 0, atencao: 1, info: 2 };
 const dias = (de, ate) => Math.round((Date.parse(ate) - Date.parse(de)) / 86400000);
@@ -88,6 +90,17 @@ export function avisosDoInicio(estado, dia = hoje(), { ultimaCopia } = {}) {
         para: { tela: 'cartoes' },
       });
     }
+  }
+
+  // A parcela da dívida cai sozinha; uma transferência à mão no mesmo mês provavelmente a pagou de novo.
+  for (const x of parcelasEmDobro(estado, lancados(estado), dia)) {
+    const l = x.lancamento;
+    lista.push({
+      nivel: 'atencao',
+      titulo: `${x.divida.nome}: parcela de ${l.dataCompetencia.slice(5, 7)}/${l.dataCompetencia.slice(0, 4)} em dobro?`,
+      detalhe: `já cai sozinha (${formatar(x.parcela.valor)}) e há uma transferência de ${formatar(l.valor)} em ${l.dataCompetencia.slice(8, 10)}/${l.dataCompetencia.slice(5, 7)}: se ela é a parcela, marque "é a parcela" nela`,
+      para: { conta: l.contaId, mes: l.dataCompetencia.slice(0, 7) },
+    });
   }
 
   // O compromisso da Energia: o envelope cobra a economia dos meses que já venceram.

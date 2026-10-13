@@ -9,23 +9,30 @@ import { novoId } from '../core/id.js';
 import * as log from '../core/log.js';
 import { hoje, lancados } from '../core/lancamentos.js';
 import { simularAmortizacao } from '../core/divida.js';
+import { somarDias } from '../core/datas.js';
 
 /**
  * @param {object} app            o estado atual
  * @param {string} contaId        a conta de dívida
  * @param {object} contrato       { valorTomado, data, parcelas, valorParcela, primeira, taxa }
  * @param {string|null} pagaCom   a conta que paga
+ * @param {object} [opcoes]
+ * @param {boolean} [opcoes.daquiPraFrente]  as parcelas que já caíram ficam como estavam
+ *   (outra conta paga a partir de agora, reajuste); sem isto, a correção vale desde o início
  */
-export async function salvarContrato(app, contaId, contrato, pagaCom) {
+export async function salvarContrato(app, contaId, contrato, pagaCom, { daquiPraFrente = false } = {}) {
   const anterior = app.contas[contaId]?.contrato;
   await estado.aplicarEvento('conta.alterada', {
     id: contaId,
+    ...(daquiPraFrente && anterior ? { vigenteDesde: somarDias(hoje(), 1) } : {}),
     contrato: {
       ...contrato,
-      // O dia em que o empréstimo entrou no app: o que venceu até ele já está
-      // no saldo das contas, e não cai de novo. Corrigir o contrato depois não
-      // muda esse dia.
-      incluidoEm: anterior?.incluidoEm ?? app.contas[contaId]?.dataInicial ?? hoje(),
+      // O dia em que o CONTRATO entrou no app: o que venceu até ele já está no
+      // saldo das contas, e não cai de novo. Corrigir o contrato depois não muda
+      // esse dia. Dívida que existia só com fotos e ganha contrato agora: é hoje,
+      // não o dia em que a dívida foi cadastrada (senão as parcelas desde então
+      // cairiam todas de uma vez).
+      incluidoEm: anterior?.incluidoEm ?? hoje(),
       // A série da primeira versão, se houve: guardada só para não repetir os
       // meses que ela já lançou.
       recorrenciaId: anterior?.recorrenciaId ?? null,

@@ -8,6 +8,7 @@
 // envelope (com as alocações: o aporte e o resgate do envelope).
 
 import { datarNoCartao, temCiclo } from './cartao.js';
+import { somarDias } from './datas.js';
 
 /** As áreas de uma categoria nova, quando ninguém disse outra coisa. */
 export const AREAS_PADRAO = ['caixa', 'cartoes'];
@@ -25,7 +26,7 @@ export const AREAS_PADRAO = ['caixa', 'cartoes'];
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 27;
+export const VERSAO_ESTADO = 28;
 
 export function estadoVazio() {
   return {
@@ -113,6 +114,10 @@ export const redutores = {
       // que o banco informa (02 §3.11). A foto manda; o contrato estima entre
       // uma e outra.
       contrato: d.contrato ?? null,
+      // As versões anteriores do contrato e do "paga com", cada uma valendo
+      // para as parcelas até o dia `ate`: mudar daqui pra frente não reescreve
+      // as parcelas que já caíram (design/10 §4.4).
+      historicoContrato: [],
       fotos: d.foto ? [d.foto] : [],
       // As amortizações feitas, com o resultado escolhido no dia, e as
       // parcelas que não foram debitadas (design/10 §4.4).
@@ -133,6 +138,19 @@ export const redutores = {
     const c = e.contas[d.id];
     if (!c) return;
     const cicloAntes = temCiclo(c) ? `${c.diaFechamento}/${c.diaVencimento}` : null;
+    // Contrato ou "paga com" mudando DAQUI PRA FRENTE: a versão de antes fica
+    // valendo para as parcelas até a véspera de `vigenteDesde`. Sem ele, a
+    // mudança corrige a versão atual inteira (o cadastro estava errado).
+    if (c.tipo === 'divida' && d.vigenteDesde && c.contrato) {
+      const mudaContrato = d.contrato !== undefined && JSON.stringify(d.contrato) !== JSON.stringify(c.contrato);
+      const mudaPagadora = d.pagaCom !== undefined && (d.pagaCom ?? null) !== (c.pagaCom ?? null);
+      if (mudaContrato || mudaPagadora) {
+        c.historicoContrato = [
+          ...(c.historicoContrato ?? []),
+          { ate: somarDias(d.vigenteDesde, -1), contrato: c.contrato, pagaCom: c.pagaCom ?? null },
+        ];
+      }
+    }
     for (const campo of [
       'nome',
       'titular',
@@ -186,9 +204,12 @@ export const redutores = {
     if (d.dataInicial !== undefined) c.dataInicial = d.dataInicial;
   },
 
-  'conta.arquivada'(e, d) {
+  'conta.arquivada'(e, d, evento) {
     const c = e.contas[d.id];
-    if (c) c.arquivada = d.arquivada !== false;
+    if (!c) return;
+    c.arquivada = d.arquivada !== false;
+    // O dia importa na dívida: arquivada, a parcela para de cair depois dele.
+    c.arquivadaEm = c.arquivada ? (d.data ?? evento?.t?.slice(0, 10) ?? null) : null;
   },
 
   'conta.fotografada'(e, d, evento) {

@@ -22,7 +22,7 @@
 import * as estado from './core/estado.js';
 import { novoId } from './core/id.js';
 import { deTexto } from './core/dinheiro.js';
-import { hoje, saldoReal } from './core/lancamentos.js';
+import { hoje, saldoReal, visiveis } from './core/lancamentos.js';
 import { usos, podeRemover, podeArquivarConta, acharPorNome } from './core/listas.js';
 import { dinheiroHTML } from './app/dinheiro-html.js';
 import { NOVA_CONTA, CICLO, CONTRATO, EDITAR_CONTA } from './app/marcacao-gestao.js';
@@ -1031,8 +1031,11 @@ function abrirContrato(id) {
   f.cetUn.value = cet.unidade;
   f.foto.value = '';
   pintarPagadoras();
+  manterOpcao(f.pagaComDivida, c.pagaCom);
   f.pagaComDivida.value = c.pagaCom ?? '';
   $('aviso-contrato').hidden = true;
+  $('alcance-contrato').hidden = true;
+  for (const r of $('f-contrato').querySelectorAll('[name="alcance"]')) r.checked = false;
   conferirContrato($('f-contrato'));
   conferirTaxas($('f-contrato'));
   pintarFimDoContrato();
@@ -1054,7 +1057,8 @@ function pintarFimDoContrato() {
 
 $('b-arquivar-divida')?.addEventListener('click', async () => {
   const c = app.contas[contratoDe];
-  await estado.aplicarEvento('conta.arquivada', { id: c.id, arquivada: !c.arquivada });
+  // Arquivada, a parcela para de cair depois deste dia.
+  await estado.aplicarEvento('conta.arquivada', { id: c.id, arquivada: !c.arquivada, data: hoje() });
   $('dialogo-contrato').close();
   await recarregar();
 });
@@ -1067,7 +1071,14 @@ $('b-excluir-divida')?.addEventListener('click', () => {
   const extra = ligados
     ? ` e ${ligados} lançamento${ligados > 1 ? 's' : ''} ligado${ligados > 1 ? 's' : ''} a ele (amortizações)`
     : '';
-  $('texto-exclusao').textContent = `Excluir ${c.nome}${extra}? As parcelas automáticas somem junto.`;
+  // As parcelas que já caíram também deixam de existir: o dinheiro "volta" para quem pagou.
+  const caidas = visiveis(app).filter((l) => l.automatico && l.parcelaDe?.dividaId === c.id && l.confirmado);
+  const devolve = caidas.reduce((t, l) => t + l.valor, 0);
+  const pagadoras = [...new Set(caidas.map((l) => app.contas[l.contaId]?.nome).filter(Boolean))].join(', ');
+  const efeito = caidas.length
+    ? ` As ${caidas.length} parcelas que já caíram somem junto: o saldo de ${pagadoras} sobe ${formatarSimples(devolve)}. Se o empréstimo foi quitado, arquive em vez de excluir.`
+    : ' As parcelas automáticas somem junto.';
+  $('texto-exclusao').textContent = `Excluir ${c.nome}${extra}?${efeito}`;
   $('b-excluir-divida').hidden = true;
   $('confirma-exclusao').hidden = false;
 });
@@ -1255,11 +1266,14 @@ $('b-arquivar-conta')?.addEventListener('click', async () => {
   const c = app.contas[editandoConta];
   if (!c.arquivada) {
     const resposta = podeArquivarConta(app, c.id);
+    if (!resposta.pode && resposta.motivo === 'paga dívida') {
+      return avisoDaEdicao(`${c.nome} paga as parcelas de ${resposta.divida.nome}, que continuam caindo nela. Mude o "paga com" no contrato antes de arquivar.`);
+    }
     if (!resposta.pode) {
       return avisoDaEdicao(`${c.nome} ainda tem ${formatarSimples(resposta.saldo)}. Transfira ou ajuste o saldo antes de arquivar — conta guardada com dinheiro dentro faz o total do app mentir.`);
     }
   }
-  await estado.aplicarEvento('conta.arquivada', { id: c.id, arquivada: !c.arquivada });
+  await estado.aplicarEvento('conta.arquivada', { id: c.id, arquivada: !c.arquivada, data: hoje() });
   $('dialogo-editar-conta').close();
   editandoConta = null;
   await recarregar();
@@ -1306,7 +1320,21 @@ $('f-contrato')?.addEventListener('submit', async (e) => {
     $('aviso-contrato').hidden = false;
     return;
   }
-  await salvarContrato(app, id, contrato.valor, f.pagaComDivida.value || null);
+  const pagaCom = f.pagaComDivida.value || null;
+  // Mudou o que as parcelas que já caíram usaram (conta que paga, valor, calendário)?
+  // Pergunta se a mudança é daqui pra frente ou correção desde o início.
+  const caidas = parcelasJaCaidas(id);
+  const antes = app.contas[id].contrato;
+  const mexeNoPassado = caidas > 0 && antes && (
+    (app.contas[id].pagaCom ?? null) !== pagaCom ||
+    ['valorParcela', 'primeira', 'parcelas'].some((k) => (antes[k] ?? null) !== (contrato.valor[k] ?? null)));
+  const alcance = $('f-contrato').querySelector('[name="alcance"]:checked')?.value;
+  if (mexeNoPassado && !alcance) {
+    $('alcance-texto').textContent = `${caidas} parcela${caidas > 1 ? 's' : ''} deste contrato já ${caidas > 1 ? 'caíram' : 'caiu'}. A mudança vale:`;
+    $('alcance-contrato').hidden = false;
+    return;
+  }
+  await salvarContrato(app, id, contrato.valor, pagaCom, { daquiPraFrente: mexeNoPassado && alcance === 'frente' });
   const nome = f.nome.value.trim();
   if (nome && nome !== app.contas[id].nome) await estado.aplicarEvento('conta.alterada', { id, nome });
   const foto = Math.abs(deTexto(f.foto.value));
@@ -1316,6 +1344,22 @@ $('f-contrato')?.addEventListener('submit', async (e) => {
   avisar('');
   await recarregar();
 });
+
+/** Quantas parcelas automáticas deste contrato já caíram até hoje. */
+function parcelasJaCaidas(dividaId) {
+  return visiveis(app).filter((l) => l.automatico && l.parcelaDe?.dividaId === dividaId && l.confirmado).length;
+}
+
+/** A escolha guardada que não está mais na lista (conta arquivada) continua lá, para salvar não a apagar. */
+function manterOpcao(select, id) {
+  if (!id || [...select.options].some((o) => o.value === id)) return;
+  const c = app.contas[id];
+  if (!c) return;
+  const o = document.createElement('option');
+  o.value = id;
+  o.textContent = `${c.nome} (arquivada)`;
+  select.append(o);
+}
 
 /** Quem pode pagar a fatura: as contas de caixa — corrente e espécie. */
 function pintarPagadoras() {
