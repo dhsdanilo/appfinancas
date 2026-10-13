@@ -10,7 +10,7 @@
 
 import * as log from '../core/log.js';
 import { instalarServiceWorker } from './instalar.js';
-import { iniciarSincronia } from './sincronia-viva.js';
+import { iniciarSincronia, primeiraSincronia } from './sincronia-viva.js';
 import { enderecoDa } from './rotas.js';
 import { ligarAutomaticas } from './automaticas.js';
 
@@ -181,7 +181,7 @@ export async function montarPagina() {
   });
 
   await garantirAparelho();
-  ligarAutomaticas();
+  ligarAutomaticas({ depoisDe: primeiraSincronia() });
   instalarServiceWorker();
   iniciarSincronia({ raiz: document.getElementById('nuvem') });
 }

@@ -2682,6 +2682,48 @@ caso('entrada', '★ conta fixa que cai sozinha: do dia em que se ligou, um por 
   igual(lanc.saldoReal(e, 'cc'), 500000 - 50000, 'setembro e outubro saíram da corrente');
 });
 
+caso('entrada', '★ retomar uma série encerrada não despeja os meses parados', async () => {
+  const ev = await baseDeRelatorios();
+  await ev('recorrencia.criada', {
+    id: 'alug', nome: 'Aluguel', tipo: 'despesa', contaId: 'cc', categoriaId: 'luz', valor: 150000, dia: 5,
+    inicio: '2026-01-05', caiSozinha: true, caiSozinhaDesde: '2026-01-01',
+  });
+  let e = await estado.calcular();
+  for (const dados of automaticas.automaticasPendentes(e, '2026-03-20')) await ev('lancamento.registrado', dados);
+  await ev('recorrencia.alterada', { id: 'alug', fim: '2026-03-20' });
+  await ev('recorrencia.alterada', { id: 'alug', fim: null, retomadaEm: '2026-10-13' });
+  e = await estado.calcular();
+  igual(automaticas.automaticasPendentes(e, '2026-10-13').length, 0, 'abril a outubro não caem de uma vez');
+  igual(previsto.ocorrenciasPrevistas(e, '2026-04-01', '2026-11-30', '2026-10-13', { comPassado: true }).map((o) => o.dataCompetencia),
+    ['2026-11-05'], 'nem viram pendência: a próxima é novembro');
+  igual(automaticas.automaticasPendentes(e, '2026-11-06').map((x) => x.id), ['auto-rec:alug:2026-11'], 'e novembro cai no dia');
+});
+
+caso('entrada', '★ a conta que cai sozinha gravada de novo pelo outro aparelho não desfaz a correção', async () => {
+  const ev = await baseDeRelatorios();
+  await ev('recorrencia.criada', {
+    id: 'luz', nome: 'Energia', tipo: 'despesa', contaId: 'cc', categoriaId: 'luz', valor: 18000, dia: 10,
+    inicio: '2026-01-10', caiSozinha: true, caiSozinhaDesde: '2026-10-01',
+  });
+  let e = await estado.calcular();
+  const [luz] = automaticas.automaticasPendentes(e, '2026-10-12');
+  await ev('lancamento.registrado', luz);
+  await ev('lancamento.alterado', { id: luz.id, valor: 24300 });
+  await ev('lancamento.registrado', luz); // o outro celular, que ainda não tinha recebido
+  e = await estado.calcular();
+  igual(e.lancamentos[luz.id].valor, 24300, 'a correção continua valendo');
+
+  await ev('lancamento.removido', { id: luz.id });
+  await ev('lancamento.registrado', luz);
+  e = await estado.calcular();
+  verdade(e.lancamentos[luz.id].removido, 'e o apagado não volta');
+
+  await ev('recorrencia.alterada', { id: 'luz', fim: '2026-10-31' });
+  await ev('lancamento.registrado', { ...luz, id: 'auto-rec:luz:2026-11', dataCompetencia: '2026-11-10', dataCaixa: '2026-11-10' });
+  e = await estado.calcular();
+  igual(e.lancamentos['auto-rec:luz:2026-11'], undefined, 'série encerrada não ganha mês novo de outro aparelho');
+});
+
 const OFX_EXEMPLO = `OFXHEADER:100
 DATA:OFXSGML
 CHARSET:1252

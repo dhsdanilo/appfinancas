@@ -196,6 +196,10 @@ async function salvarAgora(e) {
   }
   if (tipo !== 'transferencia' && !dados.categoriaId) return recusar('Falta a categoria.');
   if (dados.tipoValor === 'fixa' && !dados.valor) return recusar('Recorrência fixa precisa do valor.');
+  // A variável usa a média do que já foi lançado; sem nada lançado e sem valor,
+  // ela não teria número nenhum — não apareceria na previsão nem cairia sozinha.
+  const temHistorico = editando && visiveis(app).some((l) => l.recorrenciaId === editando.id);
+  if (!dados.valor && !temHistorico) return recusar('Dê um valor aproximado: sem nenhum mês lançado, é dele que a previsão sai.');
   if (!dados.nome) {
     dados.nome = tipo === 'transferencia'
       ? `${app.contas[dados.contaId].nome} → ${app.contas[dados.contaDestinoId].nome}`
@@ -206,6 +210,8 @@ async function salvarAgora(e) {
     const mudou = Object.fromEntries(
       Object.entries(dados).filter(([k, v]) => (editando[k] ?? null) !== v)
     );
+    // Tirar ou adiar o fim de uma série já encerrada é retomá-la hoje (os meses parados não voltam).
+    if (mudou.fim !== undefined) mudou.retomadaEm = hoje();
     if (Object.keys(mudou).length) await estado.aplicarEvento('recorrencia.alterada', { id: editando.id, ...mudou });
   } else {
     await estado.aplicarEvento('recorrencia.criada', { id: novoId('rec'), ...dados });
@@ -251,7 +257,7 @@ $('lista-recorrencias').addEventListener('click', async (e) => {
       await estado.aplicarEvento('recorrencia.alterada', { id, fim: hoje() });
       break;
     case 'retomar':
-      await estado.aplicarEvento('recorrencia.alterada', { id, fim: null });
+      await estado.aplicarEvento('recorrencia.alterada', { id, fim: null, retomadaEm: hoje() });
       break;
     case 'apagar':
       await estado.aplicarEvento('recorrencia.removida', { id });

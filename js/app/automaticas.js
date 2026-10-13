@@ -20,8 +20,14 @@ export async function lancarAutomaticas() {
   }
 }
 
-/** Liga: agora, e de novo quando a sincronização trouxer algo de outro aparelho. */
-export function ligarAutomaticas() {
-  lancarAutomaticas();
+/**
+ * Liga: depois da primeira sincronização (ou de 8 s sem ela — sem rede, cai assim
+ * mesmo), e de novo quando a sincronização trouxer algo de outro aparelho.
+ * Rodar antes de receber gravava de novo o que o outro aparelho já tinha
+ * lançado e corrigido.
+ */
+export async function ligarAutomaticas({ depoisDe = Promise.resolve() } = {}) {
   estado.aoAplicar((motivo) => { if (motivo === 'recebido') lancarAutomaticas(); });
+  await Promise.race([depoisDe, new Promise((r) => setTimeout(r, 8000))]);
+  await lancarAutomaticas();
 }

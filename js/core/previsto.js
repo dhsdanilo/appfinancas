@@ -208,6 +208,8 @@ export function ocorrenciasPrevistas(estado, de, ate, dia = hoje(), { comPassado
       if (data < piso || data > ate) continue;
       if (r.inicio && data < r.inicio) continue;
       if (r.fim && data > r.fim) continue;
+      // Os meses em que a série ficou encerrada antes de ser retomada.
+      if ((r.pausas ?? []).some((p) => data > p.de && data < p.ate)) continue;
       if (cobertos.has(mes)) continue;
 
       const ciclo = temCiclo(conta) ? cicloDaCompra(conta, data) : null;

@@ -26,7 +26,7 @@ export const AREAS_PADRAO = ['caixa', 'cartoes'];
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 28;
+export const VERSAO_ESTADO = 29;
 
 export function estadoVazio() {
   return {
@@ -619,11 +619,18 @@ export const redutores = {
     };
   },
 
-  'recorrencia.alterada'(e, d) {
+  'recorrencia.alterada'(e, d, evento) {
     const r = e.recorrencias[d.id];
     if (!r) return;
+    // Retomar uma série encerrada (o fim some, ou vai para depois de hoje): os
+    // meses em que ela ficou parada não existiram — nem caem sozinhos de uma
+    // vez, nem viram pendência. A pausa vai do fim antigo até o dia da retomada.
+    if (d.fim !== undefined && r.fim && (d.fim === null || d.fim > r.fim)) {
+      const retomada = d.retomadaEm ?? evento?.t?.slice(0, 10) ?? null;
+      if (retomada && retomada > r.fim) r.pausas = [...(r.pausas ?? []), { de: r.fim, ate: retomada }];
+    }
     for (const [campo, valor] of Object.entries(d)) {
-      if (campo !== 'id' && valor !== undefined) r[campo] = valor;
+      if (campo !== 'id' && campo !== 'retomadaEm' && valor !== undefined) r[campo] = valor;
     }
     // Corrigir o valor de uma série com reajustes corrige o valor vigente —
     // o último —, não reescreve a história dos anteriores.
@@ -710,6 +717,19 @@ export const redutores = {
   // ── lançamento ──────────────────────────────────────────────────────────
 
   'lancamento.registrado'(e, d, evento) {
+    // O que cai sozinho tem id fixo por série e mês, e os dois aparelhos podem
+    // gravá-lo. Vale o primeiro na ordem canônica: o segundo não desfaz a
+    // correção feita depois nem ressuscita o que foi apagado. E não nasce para
+    // série apagada, encerrada antes do mês, mês "não houve" ou série parada.
+    if (String(d.id).startsWith('auto-rec:')) {
+      if (e.lancamentos[d.id]) return;
+      const r = e.recorrencias[d.recorrenciaId];
+      const dia = d.dataCompetencia ?? '';
+      if (!r) return;
+      if (r.fim && dia > r.fim) return;
+      if ((r.pulados ?? []).includes(dia.slice(0, 7))) return;
+      if ((r.pausas ?? []).some((p) => dia > p.de && dia < p.ate)) return;
+    }
     e.lancamentos[d.id] = {
       id: d.id,
       // A ordem do registro, para o que acontece no mesmo dia (design/11 §4).

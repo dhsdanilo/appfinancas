@@ -21,6 +21,12 @@ let carimbo = null;
 let botao = null;
 let forcarCotacoes = false;
 
+// A primeira rodada ao abrir (deu certo ou não). Quem grava sozinho espera por
+// ela: o outro aparelho pode já ter lançado, corrigido ou apagado.
+let terminouPrimeira;
+const primeira = new Promise((r) => { terminouPrimeira = r; });
+export const primeiraSincronia = () => primeira;
+
 /**
  * @param {object} [opcoes]
  * @param {HTMLElement} [opcoes.raiz]  o bloco do carimbo e do botão, se a tela tiver
@@ -35,6 +41,7 @@ export async function iniciarSincronia({ raiz } = {}) {
   const config = await sincronia.configuracao();
   if (raiz) raiz.hidden = !config;
   if (!config) {
+    terminouPrimeira();
     cotacoes.atualizar().catch(() => {});
     return;
   }
@@ -100,6 +107,7 @@ async function rodar() {
     });
   } finally {
     ocupado = false;
+    terminouPrimeira();
     if (sujo) agendar(ESPERA);
   }
 }
