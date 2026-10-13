@@ -17,7 +17,8 @@ import { criarFila } from './app/fila.js';
 import { criarDevolucao } from './app/devolucao.js';
 import { criarConferencia } from './app/conferencia.js';
 import { criarHolerite } from './app/holerite.js';
-import { linhasDoHolerite, lancadosNoMes } from './core/holerite.js';
+import { criarRecebimento } from './app/recebimento.js';
+import { linhasDoHolerite, lancadosNoMes, ehAvulsa } from './core/holerite.js';
 import { situacao, saldoDevedor, jurosDaParcela, cronograma, simularAmortizacao } from './core/divida.js';
 import { fotografar, amortizar, pularParcela } from './app/contrato.js';
 import { lancarOcorrencia } from './app/ocorrencia.js';
@@ -1051,6 +1052,16 @@ function blocoDosCartoes(cartoes) {
  */
 function peDaFolha(c) {
   const mes = vista.mes;
+  // Autônomo: o dinheiro chega em pedaços, então não há contracheque a fechar —
+  // só os recebimentos do mês e o botão para lançar mais um.
+  if (ehAvulsa(c)) {
+    const entradas = lancadosNoMes(app, c.id, mes).filter((l) => l.tipo === 'receita');
+    const n = entradas.length;
+    return `<div class="pe-bloco">
+    <span class="fino">${n ? `${n} recebimento${n > 1 ? 's' : ''} neste mês` : 'nenhum recebimento neste mês'}</span>
+    <button type="button" class="principal" data-recebimento="${escapar(c.id)}">Lançar recebimento</button>
+  </div>`;
+  }
   const faltam = linhasDoHolerite(app, c.id, mes).filter((l) => !l.automatico).length;
   // A parcela do consignado cai sozinha na folha: ela não é o holerite. Só o
   // que foi lançado à mão conta, e "lançado" exige a folha fechada em zero.
@@ -2190,6 +2201,12 @@ const holerite = criarHolerite({
   aoSalvar: pintar,
 });
 
+const recebimento = criarRecebimento({
+  janela: $('dialogo-recebimento'),
+  raiz: $('formulario-recebimento'),
+  aoSalvar: pintar,
+});
+
 const fila = criarFila({
   raiz: $('pendencias'),
   abrirPagamento: (cartaoId, centavos) => pagarFatura(cartaoId, centavos),
@@ -2326,6 +2343,12 @@ document.addEventListener('click', async (e) => {
   const corrigirDivida = e.target.closest('[data-corrigir-divida]');
   if (corrigirDivida) {
     document.dispatchEvent(new CustomEvent('divida:corrigir', { detail: corrigirDivida.dataset.corrigirDivida }));
+    return;
+  }
+
+  const doRecebimento = e.target.closest('[data-recebimento]');
+  if (doRecebimento) {
+    await recebimento.abrir(doRecebimento.dataset.recebimento);
     return;
   }
 

@@ -1,7 +1,7 @@
 // Service worker: o que faz o app abrir sem internet.
 // design/01-visao.md princípio 7 — a sincronização é conveniência, não dependência.
 
-const CACHE = 'appfinancas-v144';
+const CACHE = 'appfinancas-v145';
 
 const CASCA = [
   './',
@@ -62,6 +62,7 @@ const CASCA = [
   'js/core/pendencias.js',
   'js/recorrencias.js',
   'js/app/holerite.js',
+  'js/app/recebimento.js',
   'js/core/holerite.js',
   'js/core/divida.js',
   'js/core/contrato.js',

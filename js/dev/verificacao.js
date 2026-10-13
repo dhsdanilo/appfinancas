@@ -1581,6 +1581,24 @@ caso('categoria', 'a categoria aparece só nas áreas dela (D26)', async () => {
 });
 
 
+caso('folha', '★ folha de recebimentos avulsos: sem líquido previsto nem cobrança de contracheque', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const ev = (t, d) => estado.aplicarEvento(t, d);
+  await ev('conta.criada', { id: 'cc', nome: 'Corrente', tipo: 'corrente' });
+  await ev('conta.criada', { id: 'fo', nome: 'Avaliações', tipo: 'folha', liquidoPara: 'cc' });
+  await ev('categoria.criada', { id: 'sal', nome: 'Honorários', natureza: 'receita', areas: ['folha'] });
+  await ev('recorrencia.criada', { id: 'r1', contaId: 'fo', tipoValor: 'estimada', dia: 5, inicio: '2027-01-01', tipo: 'receita', categoriaId: 'sal', valor: 100000 });
+  let e = await estado.calcular();
+  igual(e.contas.fo.recebimento, 'contracheque', 'o padrão é o contracheque mensal');
+  verdade(holerite.liquidoPrevisto(e, 'fo', '2027-03', '2027-03-10') !== null, 'no contracheque há líquido previsto');
+  verdade(pendencias.pendencias(e, '2027-03-20').some((p) => p.tipo === 'holerite'), 'e cobrança do contracheque');
+  await ev('conta.alterada', { id: 'fo', recebimento: 'avulso' });
+  e = await estado.calcular();
+  igual(holerite.liquidoPrevisto(e, 'fo', '2027-03', '2027-03-10'), null, 'avulsa: nada previsto');
+  verdade(!pendencias.pendencias(e, '2027-03-20').some((p) => p.tipo === 'holerite'), 'avulsa: ninguém cobra contracheque');
+});
+
 caso('folha', 'o holerite traz as linhas do mês, e o líquido zera a folha', async () => {
   await limpar();
   await log.registrarAparelho('meu-pc');

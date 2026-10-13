@@ -107,6 +107,8 @@ export const redutores = {
       pagaCom: d.pagaCom ?? null,
       // Só em folha: para onde vai o líquido do holerite (design/10 §2).
       liquidoPara: d.liquidoPara ?? null,
+      // Só em folha: 'contracheque' (mensal) ou 'avulso' (recebimentos soltos no mês).
+      recebimento: d.recebimento ?? 'contracheque',
       // Só em dívida: o contrato (design/10 §4) e as fotos do saldo devedor
       // que o banco informa (02 §3.11). A foto manda; o contrato estima entre
       // uma e outra.
@@ -139,6 +141,7 @@ export const redutores = {
       'diaVencimento',
       'pagaCom',
       'liquidoPara',
+      'recebimento',
       'contrato',
       'caixaEm',
       // O cofrinho que guarda, de antemão, o que o cartão deve (design/11 §9).

@@ -35,6 +35,8 @@ export function pendencias(estado, dia = hoje()) {
     // As linhas da folha não entram uma a uma: são UM holerite, que se lança
     // de uma vez (design/10 §2). Seis pendências por mês seriam ruído.
     if (estado.contas[o.contaId]?.tipo === 'folha') {
+      // Folha de recebimentos avulsos não tem contracheque a cobrar.
+      if (estado.contas[o.contaId].recebimento === 'avulso') continue;
       const mes = o.dataCompetencia.slice(0, 7);
       const chave = `h:${o.contaId}:${mes}`;
       if (!holerites.has(chave)) {

@@ -33,6 +33,9 @@ export function linhasDoHolerite(estado, folhaId, mes, dia = hoje()) {
     .sort((a, b) => lugar(estado, a) - lugar(estado, b));
 }
 
+/** A folha recebe em pagamentos avulsos (autônomo), sem contracheque mensal? */
+export const ehAvulsa = (folha) => folha?.recebimento === 'avulso';
+
 /** O que já foi lançado na folha naquele mês — para dizer "lançado" em vez de oferecer de novo. */
 export function lancadosNoMes(estado, folhaId, mes, dia = hoje()) {
   return visiveis(estado, dia).filter(
@@ -70,7 +73,7 @@ export function jaLancadoNoLiquido(estado, folhaId, mes, dia = hoje()) {
  */
 export function liquidoPrevisto(estado, folhaId, mes, dia = hoje()) {
   const folha = estado.contas[folhaId];
-  if (!folha || folha.arquivada || !folha.liquidoPara) return null;
+  if (!folha || folha.arquivada || !folha.liquidoPara || ehAvulsa(folha)) return null;
   const previstas = linhasDoHolerite(estado, folhaId, mes, dia);
   // Só a parcela do consignado sobrando não é contracheque por lançar.
   if (!previstas.some((o) => !o.automatico)) return null;

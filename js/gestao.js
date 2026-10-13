@@ -1115,6 +1115,8 @@ function abrirEditarConta(id) {
   iconeEscolhido = c.icone ?? '';
   pintarEscolhaDeIcone(c.nome);
   f.dono.value = (c.titular && app.pessoas[c.titular]?.nome) || '';
+  $('ec-campo-recebe').hidden = !folha;
+  if (folha) f.recebe.value = c.recebimento === 'avulso' ? 'avulso' : 'contracheque';
   $('ec-cartao').hidden = !cartao;
   if (cartao) {
     f.fechamento.value = c.diaFechamento ?? '';
@@ -1229,6 +1231,7 @@ $('f-editar-conta')?.addEventListener('submit', async (e) => {
     };
     for (const [k, v] of Object.entries(novo)) if ((c[k] ?? null) !== v) mudou[k] = v;
   }
+  if (c.tipo === 'folha' && f.recebe.value !== (c.recebimento ?? 'contracheque')) mudou.recebimento = f.recebe.value;
   if (c.tipo === 'investimento' && (f.caixaEm.value || null) !== (c.caixaEm ?? null)) mudou.caixaEm = f.caixaEm.value || null;
   if (Object.keys(mudou).length) await estado.aplicarEvento('conta.alterada', { id, ...mudou });
 

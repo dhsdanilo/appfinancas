@@ -129,4 +129,12 @@ export const DIALOGOS = `
     <button type="button" class="elo" data-fechar>fechar</button>
   </div>
   <div class="form-simples" id="formulario-holerite"></div>
+</dialog>
+
+<dialog id="dialogo-recebimento" class="dialogo-captura dialogo-holerite" aria-label="Recebimento">
+  <div class="cabecalho-dialogo">
+    <strong>Lançar recebimento</strong>
+    <button type="button" class="elo" data-fechar>fechar</button>
+  </div>
+  <div class="form-simples" id="formulario-recebimento"></div>
 </dialog>`;

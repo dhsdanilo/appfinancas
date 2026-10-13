@@ -278,6 +278,14 @@ export const EDITAR_CONTA = `
         <select id="ec-cofrinho" name="cofrinho" data-papel="cofrinho"></select>
       </div>
     </div>
+    <!-- Só em folha: contracheque mensal ou recebimentos avulsos (autônomo). -->
+    <div class="campo" id="ec-campo-recebe" hidden>
+      <label for="ec-recebe">Como recebe</label>
+      <select id="ec-recebe" name="recebe">
+        <option value="contracheque">contracheque mensal</option>
+        <option value="avulso">recebimentos avulsos</option>
+      </select>
+    </div>
     <!-- Só em investimento: onde fica o dinheiro dela (design/10 §3.6). -->
     <div class="campo" id="ec-campo-caixa" hidden>
       <label for="ec-caixa">O dinheiro fica</label>
