@@ -23,6 +23,24 @@ export function definirPessoaDoAparelho(pessoaId) {
 }
 
 /**
+ * O aparelho aponta para uma pessoa que foi fundida em outra (na fusão feita
+ * em outro aparelho, a daqui não sabia)? Passa a apontar para a que ficou. Só
+ * mexe quando a fusão está no estado: pessoa que ainda não chegou na
+ * sincronização não é pessoa apagada.
+ */
+export function curarPessoaDoAparelho(estado) {
+  let id = pessoaDoAparelho();
+  const original = id;
+  for (let i = 0; id && !estado.pessoas?.[id] && i < 10; i += 1) {
+    const fusao = Object.values(estado.fusoes ?? {}).find((f) => f.especie === 'pessoas' && !f.desfeita && f.item?.id === id);
+    if (!fusao) break;
+    id = fusao.para;
+  }
+  if (id !== original && estado.pessoas?.[id]) definirPessoaDoAparelho(id);
+  return pessoaDoAparelho();
+}
+
+/**
  * A pessoa que comprou, para gravar no lançamento: só quando a conta é um
  * cartão cujo titular é OUTRA pessoa que a do aparelho. Senão, null.
  */

@@ -20,7 +20,7 @@ import {
   hoje, nasceConfirmado, nomeDaCategoria, correcao, detalhesDaCategoria, dataVista, estornado, saldoReal,
 } from '../core/lancamentos.js';
 import { somarDias, somarMeses, fimDoMes } from '../core/datas.js';
-import { compradoPorDaCompra, pessoaDoAparelho, disponivelDe } from '../core/repasse.js';
+import { compradoPorDaCompra, pessoaDoAparelho, curarPessoaDoAparelho, disponivelDe } from '../core/repasse.js';
 import { temCiclo, cicloDaCompra } from '../core/cartao.js';
 import { MARCACAO_CAMPO_VALOR, ligarCampoValor } from './campo-valor.js';
 import { ligarZonaDePerigo } from './zona-perigo.js';
@@ -1564,6 +1564,7 @@ export async function criarFormulario({
 
   async function recarregar() {
     app = await estado.calcular();
+    curarPessoaDoAparelho(app);
     if (!contaId || !app.contas[contaId] || app.contas[contaId].arquivada || (rapido && !contaNaEscolha(contaId))) {
       contaId = contaPadrao();
     }

@@ -10,7 +10,7 @@ import * as sincronia from './core/sincronia.js';
 import { agora as sincronizarAgora } from './app/sincronia-viva.js';
 import * as cotacoes from './core/cotacoes.js';
 import * as estadoDoApp from './core/estado.js';
-import { pessoaDoAparelho, definirPessoaDoAparelho } from './core/repasse.js';
+import { pessoaDoAparelho, definirPessoaDoAparelho, curarPessoaDoAparelho } from './core/repasse.js';
 import { ligarCopia } from './app/copia.js';
 
 const $ = (id) => document.getElementById(id);
@@ -174,6 +174,7 @@ async function pintarDonoDoAparelho() {
   const sel = document.getElementById('ap-pessoa');
   if (!sel) return;
   const app = await estadoDoApp.calcular();
+  curarPessoaDoAparelho(app);
   const pessoas = Object.values(app.pessoas ?? {});
   sel.innerHTML = '<option value="">ninguém em especial</option>' +
     pessoas.map((p) => `<option value="${p.id}">${p.nome}</option>`).join('');

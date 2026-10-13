@@ -1481,6 +1481,25 @@ caso('fusão', '★ fundir pessoa: contas e compras marcadas vão junto, a marca
   igual([doZero.contas.cc.titular, doZero.lancamentos.l2.compradoPor], ['p2', 'p2'], 'e o recálculo do zero concorda');
 });
 
+caso('fusão', 'o aparelho que era da pessoa fundida passa a ser da que ficou, e a que ainda não chegou não é mexida', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const antes = repasse.pessoaDoAparelho();
+  try {
+    await estado.aplicarEvento('pessoa.criada', { id: 'p1', nome: 'Ana' });
+    await estado.aplicarEvento('pessoa.criada', { id: 'p2', nome: 'Aná' });
+    repasse.definirPessoaDoAparelho('p2');
+    igual(repasse.curarPessoaDoAparelho(await estado.calcular()), 'p2', 'pessoa que existe: nada muda');
+    repasse.definirPessoaDoAparelho('p-ainda-nao-chegou');
+    igual(repasse.curarPessoaDoAparelho(await estado.calcular()), 'p-ainda-nao-chegou', 'sem fusão no estado, não mexe');
+    repasse.definirPessoaDoAparelho('p2');
+    await estado.aplicarEvento('pessoa.fundida', { id: 'f1', de: 'p2', para: 'p1' });
+    igual(repasse.curarPessoaDoAparelho(await estado.calcular()), 'p1', 'fundida em outro aparelho: este passa para a que ficou');
+  } finally {
+    repasse.definirPessoaDoAparelho(antes);
+  }
+});
+
 caso('fusão', 'fundir etiqueta não duplica quem já tinha as duas', async () => {
   await limpar();
   await log.registrarAparelho('meu-pc');

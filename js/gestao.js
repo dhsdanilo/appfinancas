@@ -33,7 +33,7 @@ import { calendarioDePagamento, taxaImplicita } from './core/contrato.js';
 import { somarMeses, inicioDoMes } from './core/datas.js';
 import { porOrdemDaConta } from './core/ordem.js';
 import { escolhasDeIcone } from './core/icones-conta.js';
-import { pessoaDoAparelho, definirPessoaDoAparelho } from './core/repasse.js';
+import { pessoaDoAparelho, definirPessoaDoAparelho, curarPessoaDoAparelho } from './core/repasse.js';
 import { envelopesAtivos } from './core/envelopes.js';
 
 const $ = (id) => document.getElementById(id);
@@ -405,6 +405,7 @@ function pintarDetalhes() {
  */
 function pintarPessoas() {
   const pessoas = Object.values(app.pessoas ?? {});
+  curarPessoaDoAparelho(app);
   const doAparelho = pessoaDoAparelho();
   $('lista-pessoas').innerHTML = pessoas.length
     ? cabecalhoDeColunas(['pessoa', 'contas', '', 'uso']) +
