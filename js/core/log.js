@@ -23,13 +23,46 @@ export async function aparelho() {
   return db.lerMeta('aparelho');
 }
 
+/**
+ * Dá identidade a um aparelho que ainda não tem. Quem já tem fica com a sua:
+ * trocar o id deixaria para trás os eventos gravados com o id antigo, que
+ * nunca subiriam. Mudar de nome é `mudarAparelho`.
+ */
 export async function registrarAparelho(nome) {
-  const id = slug(nome) || 'aparelho';
   const existente = await db.lerMeta('aparelho');
-  if (existente && existente.id === id) return existente;
-  const registro = { id, nome, criadoEm: new Date().toISOString() };
+  if (existente) return existente;
+  const registro = { id: slug(nome) || 'aparelho', nome, criadoEm: new Date().toISOString() };
   await db.gravarMeta('aparelho', registro);
   return registro;
+}
+
+/**
+ * Troca o nome do aparelho e, se o id mudar, leva junto os eventos do id
+ * antigo — que ainda não subiram, senão o id não poderia mudar. Passa pela fila
+ * para nenhum lançamento nascer no meio da troca com o id velho.
+ * Quem chama recalcula o estado: a ordem canônica desempata pelo aparelho.
+ */
+export function mudarAparelho({ id, nome }) {
+  return enfileirar(async () => {
+    const atual = await db.lerMeta('aparelho');
+    if (atual && atual.id !== id) await db.reetiquetarEventos(atual.id, id);
+    const registro = { id, nome, criadoEm: atual?.criadoEm ?? new Date().toISOString() };
+    await db.gravarMeta('aparelho', registro);
+    return registro;
+  });
+}
+
+/**
+ * Eventos gravados aqui com outro id (de antes do pareamento, ou de uma versão
+ * que trocava o id ao parear) passam a ser deste aparelho, no fim da sequência
+ * dele — e sobem no próximo envio.
+ */
+export function adotarEventos(deOutroId) {
+  return enfileirar(async () => {
+    const atual = await db.lerMeta('aparelho');
+    if (!atual) throw new Error('aparelho não registrado');
+    return db.reetiquetarEventos(deOutroId, atual.id);
+  });
 }
 
 // ── relógio lógico ────────────────────────────────────────────────────────

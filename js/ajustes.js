@@ -39,7 +39,31 @@ async function pintarEstado() {
 
   $('zona-esquecer').innerHTML =
     '<button type="button" class="elo" data-papel="esquecer">esquecer este aparelho</button>';
+
+  const orfaos = Object.values(await sincronia.orfaos()).reduce((s, n) => s + n, 0);
+  $('orfaos-sincronia').hidden = !orfaos;
+  if (orfaos) {
+    $('orfaos-sincronia').innerHTML =
+      `${orfaos} alteraç${orfaos === 1 ? 'ão gravada' : 'ões gravadas'} neste aparelho antes do pareamento ` +
+      `nunca ${orfaos === 1 ? 'foi' : 'foram'} para os outros aparelhos. Os números daqui já ${orfaos === 1 ? 'a' : 'as'} contam; ` +
+      'os dos outros, não. <button type="button" class="elo" id="b-enviar-orfaos">enviar para os outros</button>';
+  }
 }
+
+$('orfaos-sincronia').addEventListener('click', async (e) => {
+  if (!e.target.closest('#b-enviar-orfaos')) return;
+  e.target.disabled = true;
+  dizer('Enviando…');
+  try {
+    const { enviados } = await sincronia.enviarOrfaos();
+    avisar(`Pronto: ${enviados} enviado${enviados === 1 ? '' : 's'}.`, 'ok');
+  } catch (erro) {
+    mostrarErro(erro);
+  } finally {
+    dizer('');
+    await recarregar();
+  }
+});
 
 /**
  * "não sincroniza há 2 dias" é mais útil que um carimbo de hora: o que importa
@@ -71,7 +95,7 @@ $('f-parear').addEventListener('submit', async (e) => {
   botao.disabled = true;
   dizer('Conferindo o repositório…');
   try {
-    const { primeiro } = await sincronia.parear({
+    const { primeiro, aparelho, nomeOcupado } = await sincronia.parear({
       repo: campos.repo.value.trim(),
       token: campos.token.value.trim(),
       frase: campos.frase.value,
@@ -85,7 +109,8 @@ $('f-parear').addEventListener('submit', async (e) => {
     avisar(
       primeiro
         ? 'Pareado. Este é o primeiro aparelho: a frase que você digitou é a que os outros vão precisar.'
-        : 'Pareado. A frase confere com a que já estava em uso.',
+        : 'Pareado. A frase confere com a que já estava em uso.' +
+          (nomeOcupado ? ` Outro aparelho já usava esse nome: este ficou como "${aparelho}".` : ''),
       'ok'
     );
     await recarregar();

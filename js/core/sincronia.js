@@ -14,11 +14,13 @@ import * as log from './log.js';
 import * as estado from './estado.js';
 import { criarCliente, ErroDoGitHub } from './github.js';
 import { novoSal, derivarChave, cifrar, decifrar, criarSelo, seloConfere } from './cripto.js';
+import { slug } from './id.js';
 
 const CONFIG = 'sincronia';
 const CHAVE = 'sincronia.chave';
 const ARQUIVO_DE_CONFIG = 'sincronia.json';
 const PASTA = 'log';
+const ORFAOS = 'sincronia.orfaos';
 
 export class ErroDeSincronia extends Error {
   constructor(mensagem, { grave = false } = {}) {
@@ -62,31 +64,78 @@ export async function parear({ repo, token, frase, aparelho }, { cliente } = {})
   const api = cliente ?? criarCliente({ repo, token });
   await exigirPrivado(api);
 
-  const registro = await log.registrarAparelho(nome);
   const existente = await api.ler(ARQUIVO_DE_CONFIG);
 
   let config;
+  let chave;
   if (existente) {
     config = JSON.parse(existente.texto);
-    const chave = await derivarChave(frase, config.sal);
+    chave = await derivarChave(frase, config.sal);
     if (!(await seloConfere(chave, config.selo))) {
       throw new ErroDeSincronia(
         'a frase não confere com a que já está em uso neste repositório — nada foi alterado'
       );
     }
-    await guardar({ repo, token, aparelho: registro.id, sal: config.sal }, chave);
   } else {
     // Primeira família neste repositório.
     const sal = novoSal();
-    const chave = await derivarChave(frase, sal);
+    chave = await derivarChave(frase, sal);
     config = { versao: 1, sal, selo: await criarSelo(chave), criadoEm: agora() };
     await api.gravar(ARQUIVO_DE_CONFIG, JSON.stringify(config, null, 2) + '\n', {
       mensagem: 'sincronia: sal e selo',
     });
-    await guardar({ repo, token, aparelho: registro.id, sal }, chave);
   }
 
-  return { aparelho: registro.id, primeiro: !existente };
+  // Só depois da frase conferida o aparelho ganha (ou troca) de nome.
+  const registro = await escolherAparelho(api, chave, nome);
+  await guardar({ repo, token, aparelho: registro.id, sal: config.sal }, chave);
+
+  return { aparelho: registro.id, primeiro: !existente, nomeOcupado: registro.id !== (slug(nome) || 'aparelho') };
+}
+
+/**
+ * O arquivo de cada aparelho é o nome dele, e só ele escreve ali. Então o nome
+ * tem de ser único no repositório:
+ *  - o aparelho que já tem arquivo lá (pareou, esqueceu e voltou) continua nele;
+ *  - senão, fica com o nome pedido — ou "nome-2", "nome-3" se outro aparelho já
+ *    o usa (dois "Celular", ou o mesmo celular reinstalado: o arquivo antigo
+ *    passa a ser lido como de outro aparelho, e o histórico volta);
+ *  - os eventos gravados aqui antes do pareamento vão junto para o id novo.
+ */
+async function escolherAparelho(api, chave, nome) {
+  const atual = (await log.aparelho()) ?? (await log.registrarAparelho(nome));
+  const ocupados = new Set((await api.listar(PASTA)).map((a) => a.nome));
+
+  if (ocupados.has(nomeDoArquivo(atual.id)) && (await arquivoEhDeste(api, chave, atual.id))) {
+    return log.mudarAparelho({ id: atual.id, nome });
+  }
+
+  const pedido = slug(nome) || 'aparelho';
+  let id = pedido;
+  for (let n = 2; ocupados.has(nomeDoArquivo(id)); n += 1) id = `${pedido}-${n}`;
+  const registro = await log.mudarAparelho({ id, nome });
+  // A ordem canônica desempata pelo aparelho: com outro id, refaz-se a conta.
+  if (id !== atual.id) await estado.recalcular();
+  return registro;
+}
+
+/** O arquivo `id` foi escrito por este aparelho? O primeiro evento dele diz. */
+async function arquivoEhDeste(api, chave, id) {
+  const remoto = await api.ler(`${PASTA}/${nomeDoArquivo(id)}`);
+  const primeira = remoto?.texto.split('\n').find((l) => l.trim());
+  if (!primeira) return true;
+  const ev = await eventoDaLinha(chave, primeira);
+  if (!ev) return false;
+  const local = await db.lerEvento(ev.id);
+  return local?.ap === id;
+}
+
+async function eventoDaLinha(chave, linha) {
+  try {
+    return JSON.parse(await decifrar(chave, linha.trim()));
+  } catch {
+    return null;
+  }
 }
 
 async function guardar(config, chave) {
@@ -123,8 +172,9 @@ export async function sincronizar({ cliente } = {}) {
 
   await exigirPrivado(api);
 
-  const recebidos = await receber(api, chave, config);
+  const { recebidos, arquivos } = await receber(api, chave, config);
   const enviados = await enviar(api, chave, config);
+  await contarOrfaos(arquivos, config);
 
   await db.gravarMeta('sincronia.ultima', { em: agora(), recebidos, enviados });
   return { recebidos, enviados };
@@ -143,9 +193,9 @@ async function receber(api, chave, config) {
     novos.push(...(await decifrarLinhas(chave, conteudo.texto, arquivo.nome)));
   }
 
-  if (!novos.length) return 0;
+  if (!novos.length) return { recebidos: 0, arquivos };
   const { novos: quantos } = await estado.absorverEventos(novos);
-  return quantos;
+  return { recebidos: quantos, arquivos };
 }
 
 async function decifrarLinhas(chave, texto, deOndeVeio) {
@@ -184,6 +234,22 @@ async function enviar(api, chave, config) {
     .filter((ev) => ev.ap === config.aparelho)
     .sort((a, b) => a.seq - b.seq);
 
+  // Contar linhas só vale se o arquivo for mesmo deste aparelho: confere a
+  // primeira e a última que estão lá contra os eventos daqui. Se não baterem,
+  // outro aparelho escreve neste arquivo — e enviar perderia eventos dos dois.
+  if (jaSubiram > 0) {
+    const linhas = remoto.texto.split('\n').filter((l) => l.trim());
+    const bate = jaSubiram <= meus.length &&
+      (await eventoDaLinha(chave, linhas[0]))?.id === meus[0].id &&
+      (await eventoDaLinha(chave, linhas[jaSubiram - 1]))?.id === meus[jaSubiram - 1].id;
+    if (!bate) {
+      throw new ErroDeSincronia(
+        `o arquivo ${caminho} não bate com os eventos deste aparelho — outro aparelho pode estar usando o mesmo nome. Nada foi enviado.`,
+        { grave: true }
+      );
+    }
+  }
+
   const faltando = meus.slice(jaSubiram);
   if (!faltando.length) return 0;
 
@@ -201,6 +267,34 @@ async function enviar(api, chave, config) {
 }
 
 export const nomeDoArquivo = (aparelho) => `${aparelho}.ndjson`;
+
+/**
+ * Eventos que estão aqui com um id de aparelho que não tem arquivo no
+ * repositório: foram gravados neste aparelho com outro id (antes do pareamento,
+ * numa versão que trocava o id ao parear) e nunca subiram. { id: quantos }
+ */
+async function contarOrfaos(arquivos, config) {
+  const nomes = new Set(arquivos.map((a) => a.nome));
+  const orfaos = {};
+  for (const ev of await db.eventosEmOrdem({})) {
+    if (ev.ap === config.aparelho || nomes.has(nomeDoArquivo(ev.ap))) continue;
+    orfaos[ev.ap] = (orfaos[ev.ap] ?? 0) + 1;
+  }
+  await db.gravarMeta(ORFAOS, orfaos);
+  return orfaos;
+}
+
+export async function orfaos() {
+  return (await db.lerMeta(ORFAOS)) ?? {};
+}
+
+/** Os órfãos passam a ser deste aparelho e sobem já. */
+export async function enviarOrfaos({ cliente } = {}) {
+  const lista = Object.keys(await orfaos());
+  for (const id of lista) await log.adotarEventos(id);
+  if (lista.length) await estado.recalcular();
+  return sincronizar({ cliente });
+}
 
 export function ultimaSincronizacao() {
   return db.lerMeta('sincronia.ultima');

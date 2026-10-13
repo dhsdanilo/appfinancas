@@ -95,6 +95,12 @@ caso('dinheiro', 'texto humano para centavos', () => {
   igual(dinheiro.deTexto('−241,90'), -24190, 'o menos que o próprio app escreve (−) é negativo: editar uma conta no vermelho não vira positivo');
   igual(dinheiro.deTexto(dinheiro.formatar(-24190, { comPrefixo: false })), -24190, 'o que o app mostra, ele lê de volta');
   igual(dinheiro.deTexto(''), 0);
+  igual(dinheiro.deTexto('1.500'), 150000, 'ponto com três dígitos depois é milhar: R$ 1.500 não pode virar R$ 1,50');
+  igual(dinheiro.deTexto('5.000'), 500000);
+  igual(dinheiro.deTexto('1.234.567'), 123456700);
+  igual(dinheiro.deTexto('-1.500'), -150000);
+  igual(dinheiro.deTexto('12.50'), 1250, 'dois dígitos depois do ponto continuam sendo centavos');
+  igual(dinheiro.deTexto('1.5'), 150);
 });
 
 caso('dinheiro', 'sempre vírgula, dois dígitos e milhar', () => {
@@ -437,6 +443,121 @@ caso('sincronia', 'esquecer o aparelho apaga o token e a chave', async () => {
   igual(await sincronia.configuracao(), null, 'nada de token guardado');
   await lanca(() => sincronia.sincronizar({ cliente: nuvem }), sincronia.ErroDeSincronia,
     'e sincronizar passa a pedir pareamento de novo');
+});
+
+caso('sincronia', '★ dois aparelhos com o mesmo nome não dividem o arquivo', async () => {
+  const nuvem = repositorioFalso();
+  await limpar();
+  await log.registrarAparelho('Celular');
+  await lancarAlgo();
+  await sincronia.parear({ ...ACESSO, aparelho: 'Celular' }, { cliente: nuvem });
+  await sincronia.sincronizar({ cliente: nuvem });
+  const doPrimeiro = nuvem.arquivos.get('log/celular.ndjson').texto;
+
+  // O segundo celular, com o nome que o app sugere.
+  await limpar();
+  await log.registrarAparelho('Celular');
+  await estado.aplicarEvento('pessoa.criada', { id: 'p9', nome: 'Maria' });
+  const pareado = await sincronia.parear({ ...ACESSO, aparelho: 'Celular' }, { cliente: nuvem });
+  igual(pareado.aparelho, 'celular-2', 'o nome já estava em uso: ganha outro');
+  verdade(pareado.nomeOcupado, 'e a tela pode dizer isso');
+  const r = await sincronia.sincronizar({ cliente: nuvem });
+  igual(r.recebidos, 3, 'recebe o que o primeiro lançou');
+  igual(r.enviados, 1, 'e o seu sobe no arquivo dele');
+  igual(nuvem.arquivos.get('log/celular.ndjson').texto, doPrimeiro, 'o arquivo do primeiro ficou intacto');
+  igual((await estado.calcular()).pessoas.p9.nome, 'Maria', 'o que ele lançou antes de parear continua');
+});
+
+caso('sincronia', '★ o que se lançou antes de parear sobe, mesmo com outro nome', async () => {
+  const nuvem = repositorioFalso();
+  await limpar();
+  await log.registrarAparelho('Celular');
+  await lancarAlgo();
+  await sincronia.parear({ ...ACESSO, aparelho: 'Celular da Maria' }, { cliente: nuvem });
+  const r = await sincronia.sincronizar({ cliente: nuvem });
+  igual(r.enviados, 3, 'os três eventos de antes do pareamento subiram');
+  igual(nuvem.arquivos.get('log/celular-da-maria.ndjson').texto.trim().split(String.fromCharCode(10)).length, 3);
+  igual(lanc.saldoReal(await estado.calcular(), 'c1'), 87260, 'e nada mudou nos números');
+});
+
+caso('sincronia', '★ celular reinstalado com o mesmo nome recupera o histórico e não perde o novo', async () => {
+  const nuvem = repositorioFalso();
+  await limpar();
+  await log.registrarAparelho('pc');
+  await lancarAlgo();
+  await sincronia.parear({ ...ACESSO, aparelho: 'pc' }, { cliente: nuvem });
+  await sincronia.sincronizar({ cliente: nuvem });
+
+  // Dados limpos: começa do zero e lança uma coisa antes de parear de novo.
+  await limpar();
+  await log.registrarAparelho('pc');
+  await estado.aplicarEvento('pessoa.criada', { id: 'p9', nome: 'Maria' });
+  const pareado = await sincronia.parear({ ...ACESSO, aparelho: 'pc' }, { cliente: nuvem });
+  igual(pareado.aparelho, 'pc-2');
+  const r = await sincronia.sincronizar({ cliente: nuvem });
+  igual(r.recebidos, 3, 'o histórico antigo voltou');
+  igual(r.enviados, 1, 'e o lançamento novo subiu');
+  const e = await estado.calcular();
+  igual(lanc.saldoReal(e, 'c1'), 87260);
+  igual(e.pessoas.p9.nome, 'Maria');
+});
+
+caso('sincronia', 'parear de novo o mesmo aparelho continua no mesmo arquivo', async () => {
+  const nuvem = repositorioFalso();
+  await limpar();
+  await log.registrarAparelho('pc');
+  await lancarAlgo();
+  await sincronia.parear({ ...ACESSO, aparelho: 'pc' }, { cliente: nuvem });
+  await sincronia.sincronizar({ cliente: nuvem });
+  await sincronia.esquecerAparelho();
+
+  const pareado = await sincronia.parear({ ...ACESSO, aparelho: 'Computador' }, { cliente: nuvem });
+  igual(pareado.aparelho, 'pc', 'os eventos dele já estão em pc.ndjson: fica lá');
+  await estado.aplicarEvento('pessoa.criada', { id: 'p9', nome: 'Maria' });
+  const r = await sincronia.sincronizar({ cliente: nuvem });
+  igual(r.enviados, 1);
+  igual(nuvem.arquivos.size, 2, 'só o sincronia.json e o pc.ndjson');
+});
+
+caso('sincronia', '★ arquivo que não bate com o aparelho: nada sobe, e o aviso é grave', async () => {
+  const nuvem = repositorioFalso();
+  await limpar();
+  await log.registrarAparelho('pc');
+  await lancarAlgo();
+  await sincronia.parear({ ...ACESSO, aparelho: 'pc' }, { cliente: nuvem });
+  await sincronia.sincronizar({ cliente: nuvem });
+  const deOutro = nuvem.arquivos.get('log/pc.ndjson');
+  nuvem.arquivos.delete('log/pc.ndjson');
+
+  // Outro aparelho, pareado como "pc" quando o arquivo não estava lá.
+  await limpar();
+  await log.registrarAparelho('pc');
+  await estado.aplicarEvento('pessoa.criada', { id: 'p9', nome: 'Maria' });
+  await sincronia.parear({ ...ACESSO, aparelho: 'pc' }, { cliente: nuvem });
+  nuvem.arquivos.set('log/pc.ndjson', deOutro);
+
+  const erro = await lanca(() => sincronia.sincronizar({ cliente: nuvem }), sincronia.ErroDeSincronia,
+    'enviar contando linhas de outro aparelho perderia eventos');
+  verdade(erro.grave, 'e é aviso grave');
+  igual(nuvem.arquivos.get('log/pc.ndjson').texto, deOutro.texto, 'o arquivo ficou intacto');
+});
+
+caso('sincronia', 'eventos que ficaram com um id antigo aparecem e sobem quando ele pede', async () => {
+  const nuvem = repositorioFalso();
+  await limpar();
+  await log.registrarAparelho('pc');
+  await lancarAlgo();
+  // Uma versão antiga trocava o id ao parear e deixava estes para trás.
+  await db.gravarMeta('aparelho', { id: 'computador', nome: 'Computador', criadoEm: '2026-01-01' });
+  await sincronia.parear({ ...ACESSO, aparelho: 'Computador' }, { cliente: nuvem });
+  const r = await sincronia.sincronizar({ cliente: nuvem });
+  igual(r.enviados, 0);
+  igual(await sincronia.orfaos(), { pc: 3 }, 'os três ficaram para trás, e o app sabe');
+
+  const depois = await sincronia.enviarOrfaos({ cliente: nuvem });
+  igual(depois.enviados, 3, 'subiram no arquivo do aparelho');
+  igual(await sincronia.orfaos(), {});
+  igual(lanc.saldoReal(await estado.calcular(), 'c1'), 87260, 'os números daqui não mudaram');
 });
 
 // estado ───────────────────────────────────────────────────────────────────

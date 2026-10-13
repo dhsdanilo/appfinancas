@@ -156,6 +156,34 @@ export async function ultimaSeq(ap) {
   return cursor ? cursor.value.seq : 0;
 }
 
+export async function lerEvento(id) {
+  const tx = await transacao(['eventos'], 'readonly');
+  const ev = await promessa(tx.objectStore('eventos').get(id));
+  return ev ?? null;
+}
+
+/**
+ * Passa os eventos do aparelho `de` para o aparelho `para`, continuando a
+ * sequência de `para`. Só serve para o que NUNCA subiu: depois de um evento
+ * estar no arquivo de um aparelho, ele é daquele aparelho para sempre.
+ * @returns {Promise<number>} quantos eventos mudaram de dono
+ */
+export async function reetiquetarEventos(de, para) {
+  if (de === para) return 0;
+  const tx = await transacao(['eventos'], 'readwrite');
+  const dep = tx.objectStore('eventos');
+  const indice = dep.index('ap_seq');
+  const doDe = await promessa(indice.getAll(IDBKeyRange.bound([de, -Infinity], [de, Infinity])));
+  const ultimo = await promessa(indice.openCursor(IDBKeyRange.bound([para, -Infinity], [para, Infinity]), 'prev'));
+  let seq = ultimo ? ultimo.value.seq : 0;
+  for (const ev of doDe) {
+    seq += 1;
+    dep.put({ ...ev, ap: para, seq });
+  }
+  await fim(tx);
+  return doDe.length;
+}
+
 // ── manutenção ────────────────────────────────────────────────────────────
 
 /** Apaga só o cache. Os eventos ficam: o estado é reconstruído do zero. */

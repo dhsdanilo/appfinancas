@@ -27,6 +27,9 @@ export function criarCliente({ repo, token }) {
     let resposta;
     try {
       resposta = await fetch(url, {
+        // O GitHub responde com max-age=60: sem isto, o navegador devolve o
+        // arquivo de um minuto atrás, com o sha velho, e o envio seguinte é recusado.
+        cache: 'no-store',
         ...opcoes,
         headers: {
           Authorization: `Bearer ${token}`,
