@@ -1052,13 +1052,13 @@ function blocoDosCartoes(cartoes) {
  */
 function peDaFolha(c) {
   const mes = vista.mes;
-  // Autônomo: o dinheiro chega em pedaços, então não há contracheque a fechar —
-  // só os recebimentos do mês e o botão para lançar mais um.
+  // Autônomo: o dinheiro chega em pedaços, então não há contracheque a fechar.
+  // As entradas se lançam na folha em lotes; o recebimento leva o que está nela
+  // para a conta que recebe.
   if (ehAvulsa(c)) {
-    const entradas = lancadosNoMes(app, c.id, mes).filter((l) => l.tipo === 'receita');
-    const n = entradas.length;
+    const naFolha = saldoReal(app, c.id);
     return `<div class="pe-bloco">
-    <span class="fino">${n ? `${n} recebimento${n > 1 ? 's' : ''} neste mês` : 'nenhum recebimento neste mês'}</span>
+    <span class="fino">${naFolha > 0 ? `${formatar(naFolha)} na folha para receber` : 'nada na folha para receber'}</span>
     <button type="button" class="principal" data-recebimento="${escapar(c.id)}">Lançar recebimento</button>
   </div>`;
   }
