@@ -2130,10 +2130,14 @@ const formulario = await criarFormulario({
 /**
  * A data em que o lançamento novo abre (D35, pedido dele, 05/10/2026): a do
  * último salvo, se o mês da tela não mudou desde então; senão, o mês da tela
- * — hoje, no mês atual; dia 1, em qualquer outro.
+ * — hoje, no mês atual; dia 1, em qualquer outro (menos nos cartões, abaixo).
  */
 function dataDaVista() {
   if (ultimaData && ultimaData.mes === vista.mes) return ultimaData.dia;
+  // Nos cartões o mês da tela é o da fatura (quando ela vence), não o da compra:
+  // olhando a fatura aberta de novembro, a compra de agora é de hoje — dia 1 de
+  // novembro cairia na fatura seguinte (pedido dele, 13/10/2026).
+  if (AREA === 'cartoes' && vista.mes > hoje().slice(0, 7)) return hoje();
   return vista.mes === hoje().slice(0, 7) ? hoje() : `${vista.mes}-01`;
 }
 
