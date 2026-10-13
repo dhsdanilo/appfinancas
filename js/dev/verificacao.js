@@ -92,6 +92,8 @@ caso('dinheiro', 'texto humano para centavos', () => {
   igual(dinheiro.deTexto('1234'), 123400, 'sem decimal = reais inteiros');
   igual(dinheiro.deTexto('12,5'), 1250, 'um decimal vira dois');
   igual(dinheiro.deTexto('-5,55'), -555);
+  igual(dinheiro.deTexto('−241,90'), -24190, 'o menos que o próprio app escreve (−) é negativo: editar uma conta no vermelho não vira positivo');
+  igual(dinheiro.deTexto(dinheiro.formatar(-24190, { comPrefixo: false })), -24190, 'o que o app mostra, ele lê de volta');
   igual(dinheiro.deTexto(''), 0);
 });
 

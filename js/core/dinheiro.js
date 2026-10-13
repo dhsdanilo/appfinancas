@@ -24,8 +24,9 @@ export function removerDigito(centavos) {
 export function deTexto(texto) {
   const s = String(texto).trim();
   if (s === '') return 0;
-  const negativo = /^-/.test(s);
-  const corpo = s.replace(/^-/, '');
+  // O app escreve o negativo com o sinal de menos tipográfico (−): ele tem de voltar como negativo.
+  const negativo = /^[-−–]/.test(s);
+  const corpo = s.replace(/^[-−–]/, '');
   // O último separador presente é o decimal; os outros são de milhar.
   const ultimoSep = Math.max(corpo.lastIndexOf(','), corpo.lastIndexOf('.'));
   let inteiros, decimais;
