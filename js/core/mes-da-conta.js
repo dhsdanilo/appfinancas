@@ -73,6 +73,16 @@ export function extratoDoMes(estado, ids, mes) {
 }
 
 /**
+ * O salário já foi lançado direto na conta (um "Salário R$ 8.000" pelo +, ou importado), sem passar pelo contracheque:
+ * uma receita na conta que recebe o líquido, no mês, com pelo menos 70% do que se previa. O líquido previsto não soma
+ * de novo (auditoria D1).
+ */
+function salarioJaEntrou(estado, folha, mes, previsto, dia) {
+  return visiveis(estado, dia).some((l) => l.confirmado && l.tipo === 'receita' && l.contaId === folha.liquidoPara
+    && l.dataCaixa.startsWith(mes) && l.valor >= previsto * 0.7);
+}
+
+/**
  * O que ainda vai entrar nas contas `ids` até `ate`: o líquido previsto de
  * cada folha que deposita nelas, as receitas por vir (recorrentes e
  * agendadas) e as transferências que chegam de fora.
@@ -94,6 +104,7 @@ export function entradasPrevistas(estado, ids, de, ate, dia = hoje(), ignorarOri
       if (mes < dia.slice(0, 7)) continue;
       const lp = liquidoPrevisto(estado, folha.id, mes, dia);
       if (!lp || lp.data > ate) continue;
+      if (salarioJaEntrou(estado, folha, mes, lp.valor, dia)) continue;
       liquidos.push({ folha, valor: lp.valor, data: lp.data, estimado: lp.estimado });
       if (lp.estimado) estimado = true;
     }

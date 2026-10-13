@@ -12,8 +12,9 @@ import { deTexto, formatar } from '../core/dinheiro.js';
 import { umaVez } from './uma-vez.js';
 import { hoje, diaCurto } from '../core/datas.js';
 import { visiveis } from '../core/lancamentos.js';
-import { CLASSES, CLASSES_POR_COTAS, nomeDaClasse, posicao, contaDoDinheiro, contaDaOperacao } from '../core/investimentos.js';
+import { CLASSES, CLASSES_POR_COTAS, nomeDaClasse, posicao, contaDoDinheiro, contaDaOperacao, conferirOperacao } from '../core/investimentos.js';
 import { lugarDaConta, envelopesAtivos } from '../core/envelopes.js';
+import { dependentesDe } from '../core/listas.js';
 import { provisaoDoCartao } from '../core/cofrinho.js';
 import * as cotacoes from '../core/cotacoes.js';
 import { liquidoDaVenda } from '../core/ir-venda.js';
@@ -151,6 +152,13 @@ function lerQuantidade(texto) {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+/** Corrigiu/apagou uma operação num ativo por valor com cotação: refaz o que a cotação calculou dali em diante (J3). */
+async function refazerCotacao(ativo, desde) {
+  if (!ativo?.cotacao || ativo.unidade === 'cotas' || !desde) return;
+  await estado.aplicarEvento('ativo.cotacaoRefeita', { id: ativo.id, desde });
+  await cotacoes.atualizar({ forcar: true });
+}
+
 const quantos = (q) => q.toLocaleString('pt-BR', { maximumFractionDigits: 8 });
 
 export function criarJanelaDoAtivo({ aoSalvar } = {}) {
@@ -284,7 +292,7 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
       : '<li class="vazio">Nenhuma ainda. Comece pela aplicação.</li>';
 
     el('b-arquivar').textContent = ativo.arquivado ? 'desarquivar' : 'arquivar';
-    el('b-excluir').hidden = ops.length > 0;
+    el('b-excluir').hidden = ops.length > 0 || dependentesDe(app, 'ativos', ativo.id).length > 0;
   }
 
   /** Aplicar no cofrinho de um cartão: quanto falta para cobrir o limite usado. */
@@ -493,8 +501,8 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
       if (!quantidade) { recadar('Falta a quantidade.'); return; }
       if (!preco) { recadar('Falta o preço de cada.'); return; }
       if (op === 'resgate' && !corrigindo) {
-        const tem = posicao(app, ativo.id).quantidade;
-        if (quantidade > tem + 1e-9) { recadar(`Só há ${quantos(tem)} na mão.`); return; }
+        const tem = posicao(app, ativo.id, data).quantidade;
+        if (quantidade > tem + 1e-9) { recadar(`Só havia ${quantos(tem)} na mão em ${diaCurto(data)}.`); return; }
       }
       const bruto = Math.round(quantidade * preco);
       valor = op === 'aplicacao' ? bruto + taxas : bruto - taxas;
@@ -511,6 +519,13 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
       return;
     }
     if (!valor || valor < 0) { recadar('Falta o valor.'); return; }
+    if (op === 'aplicacao' || op === 'resgate') {
+      const conf = conferirOperacao(app, ativo.id, { id: corrigindo, op: { tipo: op, data, valor, quantidade: extra.quantidade } });
+      if (conf.bloqueio) { recadar(conf.bloqueio); return; }
+      if (conf.aviso && !confirm(`${conf.aviso}
+
+Gravar assim?`)) return;
+    }
     const deQuem = op === 'aplicacao' || op === 'resgate' ? donos.ler() : [];
     const recusa = deQuem.length ? donos.conferir(valor) : '';
     if (recusa) { recadar(recusa); return; }
@@ -529,16 +544,21 @@ Gravar assim?`)) return;
       const ap = await log.aparelho();
       if (corrigindo) {
         // A conta segue a data: corrigida para antes do app, deixa de mexer.
+        const antigo = app.lancamentos[corrigindo];
+        const antes = antigo?.dataCompetencia ?? data;
+        // Mesma data: a escolha "antes do app / mexe na conta" feita à mão fica (auditoria G3).
+        const daConta = antigo && data === antigo.dataCompetencia ? antigo.contaId : contaDaOperacao(app, conta, data);
         await estado.aplicarEvento('lancamento.alterado', {
           id: corrigindo,
           valor,
           ...extra,
-          contaId: contaDaOperacao(app, conta, data),
+          contaId: daConta,
           donos: deQuem,
           dataCompetencia: data,
           dataCaixa: data,
           confirmado: data <= hoje(),
         });
+        await refazerCotacao(ativo, antes < data ? antes : data);
         corrigindo = null;
         donosDaCorrecao = [];
         for (const campo of ['valor', 'quantidade', 'preco', 'taxas']) el(campo).value = '';
@@ -560,6 +580,7 @@ Gravar assim?`)) return;
         confirmado: data <= hoje(),
         lancadoPor: ap?.id ?? null,
       });
+      if (op === 'aplicacao' || op === 'resgate') await refazerCotacao(ativo, data);
     }
     for (const campo of ['valor', 'quantidade', 'preco', 'taxas']) el(campo).value = '';
     await recarregar();
@@ -655,7 +676,11 @@ Gravar assim?`)) return;
       b.textContent = 'apagar mesmo?';
       return;
     }
+    const conf = conferirOperacao(app, ativo.id, { id: b.dataset.apagarOp });
+    if (conf.bloqueio) { recadar(`Não dá para apagar: ${conf.bloqueio.charAt(0).toLowerCase()}${conf.bloqueio.slice(1)} Apague ou corrija as vendas depois dela antes.`); return; }
+    const apagada = app.lancamentos[b.dataset.apagarOp];
     await estado.aplicarEvento('lancamento.removido', { id: b.dataset.apagarOp });
+    await refazerCotacao(ativo, apagada?.dataCompetencia);
     await recarregar();
     if (aoSalvar) await aoSalvar();
   });
@@ -675,6 +700,8 @@ Gravar assim?`)) return;
     el('nome').focus();
   });
   el('b-arquivar').addEventListener('click', async () => {
+    const tem = posicao(app, ativo.id)?.valorAtual ?? 0;
+    if (!ativo.arquivado && tem > 0 && !confirm(`${ativo.nome} ainda tem ${formatar(tem)}. Arquivado, ele continua somando no patrimônio, mas deixa de acompanhar a cotação e fica parado. Arquivar mesmo?`)) return;
     await estado.aplicarEvento('ativo.arquivado', { id: ativo.id, arquivado: !ativo.arquivado });
     janela.close();
     if (aoSalvar) await aoSalvar();

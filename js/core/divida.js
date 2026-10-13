@@ -77,7 +77,8 @@ export function cronograma(estado, dividaId) {
 
   // Juros do contrato informados e nenhuma foto nem amortização: o cronograma sai do fim para o começo, pelo
   // valor presente das parcelas, e fecha em zero na última (igual ao saldo devedor de cima).
-  if (c.taxa != null && marcos.length === 0) {
+  // A amortização já está no calendário; só a foto do banco manda no saldo (igual a `saldoNoDia`, auditoria J6).
+  if (c.taxa != null && !marcos.some((m) => m.foto != null)) {
     const cal = calendarioDaDivida(estado, conta);
     const depois = new Array(cal.length + 1).fill(0);
     for (let k = cal.length - 1; k >= 0; k -= 1) depois[k] = (depois[k + 1] + cal[k].valor) / (1 + taxa);

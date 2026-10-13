@@ -47,16 +47,21 @@ export function lerValor(texto) {
   return negativo ? -centavos : centavos;
 }
 
+/** AAAA-MM-DD só se o mês e o dia existem: "10/25/2026" não vira data (auditoria K8). */
+function diaValido(ano, mes, dia) {
+  const m = Number(mes);
+  const d = Number(dia);
+  if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+  return `${ano}-${mes}-${dia}`;
+}
+
 /** "20261003", "2026-10-03", "03/10/2026", "03/10/26" → '2026-10-03'. */
 export function lerData(texto) {
   const t = String(texto ?? '').trim();
   let m = t.match(/^(\d{4})-?(\d{2})-?(\d{2})/);
-  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  if (m) return diaValido(m[1], m[2], m[3]);
   m = t.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})/);
-  if (m) {
-    const ano = m[3].length === 2 ? `20${m[3]}` : m[3];
-    return `${ano}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
-  }
+  if (m) return diaValido(m[3].length === 2 ? `20${m[3]}` : m[3], m[2].padStart(2, '0'), m[1].padStart(2, '0'));
   return null;
 }
 
@@ -239,7 +244,8 @@ export function regraPara(estado, texto) {
   const regras = Object.values(estado.regras ?? {});
   const igual = regras.find((r) => r.padrao === k);
   if (igual) return igual;
-  const contidas = regras.filter((r) => r.padrao && ` ${k} `.includes(` ${r.padrao} `))
+  // Regra de transferência entre contas dele só vale para o texto igual: "joao" não pega o PIX de um terceiro (auditoria K4).
+  const contidas = regras.filter((r) => r.padrao && !r.transferePara && ` ${k} `.includes(` ${r.padrao} `))
     .sort((a, b) => b.padrao.length - a.padrao.length);
   return contidas[0] ?? null;
 }
@@ -272,12 +278,15 @@ export function casar(estado, contaId, linhas, { fatura = null, dia = hoje() } =
   const conta = estado.contas[contaId];
   const cartao = conta?.tipo === 'cartao';
   const fitidsDaConta = new Set(lancados(estado)
-    .filter((l) => l.fitid && (l.contaId === contaId || l.contaDestinoId === contaId)).map((l) => l.fitid));
+    .filter((l) => (l.fitid || l.fitid2) && (l.contaId === contaId || l.contaDestinoId === contaId)).flatMap((l) => [l.fitid, l.fitid2].filter(Boolean)));
   const ignorados = new Set(Object.keys(estado.importIgnorados ?? {}));
   const usados = new Set();
   // O que pode casar: o lançado (com ou sem número do banco ainda), as
   // parcelas automáticas de contrato e as ocorrências previstas.
-  const candidatos = visiveis(estado, dia).filter((l) => !l.fitid && (l.contaId === contaId || l.contaDestinoId === contaId));
+  // Transferência ou pagamento de fatura já importado pelo extrato da OUTRA ponta também casa: o mesmo movimento
+  // aparece nos dois arquivos (auditoria K1).
+  const candidatos = visiveis(estado, dia).filter((l) => (l.contaId === contaId || l.contaDestinoId === contaId)
+    && (!l.fitid || (l.contaDestinoId && l.fitidConta && l.fitidConta !== contaId && !l.fitid2)));
   const previstas = ocorrenciasPrevistas(estado, somarDias(linhas.reduce((m, l) => (l.data < m ? l.data : m), dia), -5), somarDias(dia, 40), dia, { comPassado: true })
     .filter((o) => o.contaId === contaId || o.contaDestinoId === contaId);
 
@@ -291,6 +300,8 @@ export function casar(estado, contaId, linhas, { fatura = null, dia = hoje() } =
 
   return linhas.map((linha) => {
     const base = { ...linha, sugestao: sugerir(estado, linha, cartao) };
+    // Antes do marco zero da conta o saldo inicial já inclui isso: importar somaria de novo (auditoria K2).
+    if (!cartao && conta?.dataInicial && linha.data < conta.dataInicial) return { ...base, situacao: 'ignorada', anterior: true };
     if (fitidsDaConta.has(linha.fitid) || ignorados.has(`${contaId}|${linha.fitid}`)) {
       return { ...base, situacao: ignorados.has(`${contaId}|${linha.fitid}`) ? 'ignorada' : 'importada' };
     }
@@ -301,8 +312,25 @@ export function casar(estado, contaId, linhas, { fatura = null, dia = hoje() } =
     if (l) { usados.add(l.id); return { ...base, situacao: 'lancada', lancamento: l }; }
     const o = achar(previstas);
     if (o) { usados.add(o.id); return { ...base, situacao: 'prevista', ocorrencia: o }; }
+    // O que o banco cobrou diferente do esperado (luz estimada, parcela com juros): o agendado ou o previsto de valor
+    // até 20% de diferença, do mesmo lado, é a mesma conta — senão importar duplicaria (auditoria K3).
+    const aprox = (lista, soAgendado) => lista
+      .filter((x) => !usados.has(x.id) && (!soAgendado || !x.confirmado) && perto(x, linha)
+        && Math.sign(efeito(x)) === Math.sign(linha.valor) && Math.abs(efeito(x) - linha.valor) <= Math.abs(linha.valor) * 0.2)
+      .sort((a, b) => Math.abs(efeito(a) - linha.valor) - Math.abs(efeito(b) - linha.valor))[0];
+    const la = aprox(candidatos, true);
+    if (la) { usados.add(la.id); return { ...base, situacao: 'lancada', lancamento: la, aproximada: true }; }
+    const oa = aprox(previstas, false);
+    if (oa) { usados.add(oa.id); return { ...base, situacao: 'prevista', ocorrencia: oa, aproximada: true }; }
     return { ...base, situacao: 'nova' };
   });
+}
+
+/** "PAGAMENTO RECEBIDO", "PGTO FATURA"; não "PAG*Loja", "MercadoPago", "Pagar.me" (auditoria K5). */
+function ehPagamentoDeFatura(texto) {
+  const t = sem(texto);
+  if (/pag\*|mercado ?pago|pagar\.?me|pagseguro|pagbank/.test(t)) return false;
+  return /\b(pagamento|pagto|pgto|pag)\b/.test(t) || /fatura/.test(t);
 }
 
 /** O que a linha nova deve virar: o tipo pelo sinal e a categoria da regra. */
@@ -311,10 +339,11 @@ function sugerir(estado, linha, cartao) {
   const entra = linha.valor > 0;
   // No cartão, o que entra é quase sempre o pagamento da fatura: transferência
   // da conta que paga.
-  if (cartao && entra && /pag/i.test(linha.texto)) return { tipo: 'transferencia', contaOutra: null, pagamento: true, regraId: null };
+  if (cartao && entra && ehPagamentoDeFatura(linha.texto)) return { tipo: 'transferencia', contaOutra: null, pagamento: true, regraId: null };
   const tipo = cartao ? (entra ? 'estorno' : 'despesa') : entra ? 'receita' : 'despesa';
   const natureza = tipo === 'receita' ? 'receita' : 'despesa';
-  const categoriaOk = r?.categoriaId && (estado.categorias[r.categoriaId]?.natureza ?? 'despesa') === natureza;
+  const categoriaOk = r?.categoriaId && estado.categorias[r.categoriaId] && !estado.categorias[r.categoriaId].arquivada
+    && (estado.categorias[r.categoriaId].natureza ?? 'despesa') === natureza;
   if (r?.transferePara) return { tipo: 'transferencia', contaOutra: r.transferePara, regraId: r.id };
   return {
     tipo: cartao && entra ? 'estorno' : tipo,

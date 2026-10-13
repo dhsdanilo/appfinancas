@@ -57,10 +57,10 @@ const mesesEntre = (de, ate) => (new Date(`${ate}T12:00:00`) - new Date(`${de}T1
  * { aplicado, resgatado, proventos, valorAtual, investido, rendeu, pct,
  *   avaliacao, estimado, encerrado }
  */
-export function posicao(estado, ativoId, dia = hoje()) {
+export function posicao(estado, ativoId, dia = hoje(), sem = null) {
   const ativo = estado.ativos?.[ativoId];
   if (!ativo) return null;
-  const ops = visiveis(estado, dia).filter((l) => l.ativoId === ativoId && l.confirmado && l.dataCompetencia <= dia);
+  const ops = visiveis(estado, dia).filter((l) => l.ativoId === ativoId && l.confirmado && l.dataCompetencia <= dia && l.id !== sem);
   if (ativo.unidade === 'cotas') return posicaoPorCotas(ativo, ops, dia);
 
   let aplicado = 0;
@@ -195,7 +195,12 @@ function periodo(ops, dia, rendeu, aplicado) {
   const desde = primeiras[0] ?? null;
   const meses = desde ? mesesEntre(desde, dia) : 0;
   const fator = aplicado ? (aplicado + rendeu) / aplicado : 1;
-  const aoAno = meses >= 1 && fator > 0 ? fator ** (12 / meses) - 1 : null;
+  // Aportes espaçados: o dinheiro ficou, em média, menos tempo que o primeiro — o prazo do
+  // "ao ano" é o médio ponderado pelo valor aplicado (auditoria J4).
+  const aplicacoes = ops.filter((l) => l.tipo === 'aplicacao' && l.valor > 0);
+  const total = aplicacoes.reduce((t, l) => t + l.valor, 0);
+  const mesesMedios = total ? aplicacoes.reduce((t, l) => t + l.valor * mesesEntre(l.dataCompetencia, dia), 0) / total : 0;
+  const aoAno = mesesMedios >= 1 && fator > 0 ? fator ** (12 / mesesMedios) - 1 : null;
   return { desde, meses, aoAno };
 }
 
@@ -332,4 +337,33 @@ export function resumoDaConta(estado, conta, dia = hoje()) {
     rendeu: proprio ? valorAtual - investido : posicoes.reduce((t, p) => t + p.rendeu, 0),
     estimado: posicoes.some((p) => p.estimado && p.valorAtual) || (!ativos.length && proprio && (!foto || foto.data !== dia)),
   };
+}
+
+/**
+ * Confere uma operação (nova, corrigida ou apagada) contra a história do ativo, no dia dela
+ * e nos seguintes (auditoria J1/J2). `op` é null para apagar; `id` é a operação que
+ * se corrige ou apaga.
+ *   bloqueio — não dá: a quantidade ficaria negativa em algum dia
+ *   aviso    — dá, mas o resgate passa do valor que o ativo tinha na data
+ */
+export function conferirOperacao(estado, ativoId, { id = null, op = null } = {}, dia = hoje()) {
+  const ativo = estado.ativos?.[ativoId];
+  if (!ativo) return { bloqueio: '', aviso: '' };
+  const outras = visiveis(estado, dia).filter((l) => l.ativoId === ativoId && l.confirmado && l.id !== id && (l.tipo === 'aplicacao' || l.tipo === 'resgate'));
+  const todas = op && op.data <= dia ? [...outras, { tipo: op.tipo, dataCompetencia: op.data, quantidade: op.quantidade, valor: op.valor }] : outras;
+  if (ativo.unidade === 'cotas') {
+    const ordem = (l) => (l.tipo === 'aplicacao' ? 0 : 1);
+    let qtd = 0;
+    const emOrdem = [...todas].sort((a, b) => (a.dataCompetencia < b.dataCompetencia ? -1 : a.dataCompetencia > b.dataCompetencia ? 1 : ordem(a) - ordem(b)));
+    for (const l of emOrdem) {
+      qtd += (l.tipo === 'aplicacao' ? 1 : -1) * (Number(l.quantidade) || 0);
+      if (qtd < -1e-9) return { bloqueio: `Em ${l.dataCompetencia.split('-').reverse().join('/')} não haveria cotas para essa venda: a quantidade ficaria negativa.`, aviso: '' };
+    }
+    return { bloqueio: '', aviso: '' };
+  }
+  if (op && op.tipo === 'resgate' && op.data <= dia) {
+    const tem = posicao(estado, ativoId, op.data, id)?.valorAtual ?? 0;
+    if (op.valor > tem + 100) return { bloqueio: '', aviso: `O resgate passa do valor que o ativo tinha em ${op.data.split('-').reverse().join('/')}: ${(tem / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.` };
+  }
+  return { bloqueio: '', aviso: '' };
 }

@@ -54,6 +54,20 @@ export function avisosDoInicio(estado, dia = hoje(), { ultimaCopia } = {}) {
     }
   }
 
+  // A fatura de um cartão sem conta que a pague, ou com a conta arquivada, some do previsto de todas (auditoria L5).
+  for (const c of Object.values(estado.contas)) {
+    if (c.tipo !== 'cartao' || c.arquivada || !temCiclo(c)) continue;
+    const paga = estado.contas[c.pagaCom];
+    if (!paga || paga.arquivada) {
+      lista.push({
+        nivel: 'atencao',
+        titulo: `${c.nome}: falta a conta que paga a fatura`,
+        detalhe: paga ? `${paga.nome} está arquivada` : 'sem ela, a fatura não pesa em saldo nenhum',
+        para: { conta: c.id, mes: null },
+      });
+    }
+  }
+
   for (const c of Object.values(estado.contas)) {
     if ((c.tipo !== 'corrente' && c.tipo !== 'especie') || c.arquivada) continue;
     const p = saldoPrevisto(estado, c.id, dia);

@@ -51,7 +51,7 @@ export function pendencias(estado, dia = hoje()) {
   itens.push(...holerites.values());
 
   for (const c of Object.values(estado.contas)) {
-    if (c.tipo !== 'cartao') continue;
+    if (c.tipo !== 'cartao' || c.arquivada) continue;
     for (const f of faturas(estado, c.id, dia) ?? []) {
       if (f.situacao !== 'fechada' || f.aPagar <= 0 || f.vencimento >= dia) continue;
       itens.push({ tipo: 'fatura', chave: `f:${c.id}:${f.fechamento}`, data: f.vencimento, cartao: c, fatura: f });

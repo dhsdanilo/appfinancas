@@ -47,11 +47,54 @@ export function usos(estado) {
 export function podeRemover(estado, especie, id) {
   const quantos = usos(estado)[especie]?.get(id) ?? 0;
   if (quantos > 0) return { pode: false, motivo: 'tem histórico', usos: quantos };
+  // Sem lançamento, mas ainda usada por uma série, regra, seleção, cartão, folha, Energia ou envelope:
+  // apagar tiraria isso do lugar sem aviso (auditoria H3, H4).
+  const dependentes = dependentesDe(estado, especie, id);
+  if (dependentes.length) return { pode: false, motivo: 'em uso', usos: 0, dependentes };
   // Conta sem lançamento nenhum sai, mesmo com saldo inicial declarado: nada
   // aponta pra ela, nada fica órfão, e a alternativa seria um beco sem saída
   // justo pra quem errou o cadastro na primeira semana. Quem confirma a saída
   // é a tela, dizendo o saldo em voz alta.
   return { pode: true, usos: 0 };
+}
+
+/**
+ * O que, fora os lançamentos, aponta para um item: frases curtas ("a recorrência Luz", "o cartão X").
+ * Também serve para um ativo (`especie` 'ativos'): dinheiro de envelope dentro dele.
+ */
+export function dependentesDe(estado, especie, id) {
+  const achados = [];
+  const nome = (m) => Object.values(m ?? {}).filter((x) => !x.removida && !x.arquivada);
+  const alocacoes = Object.values(estado.alocacoes ?? {}).filter((a) => !a.removida && a.lugarId === id);
+  if ((especie === 'contas' || especie === 'ativos') && alocacoes.length) {
+    const quais = [...new Set(alocacoes.flatMap((a) => [a.para, a.de]).filter(Boolean))].map((e) => estado.envelopes?.[e]?.nome).filter(Boolean);
+    achados.push(`o dinheiro de envelope que está ali${quais.length ? ` (${quais.join(', ')})` : ''}`);
+  }
+  const campoRec = { categorias: ['categoriaId'], contas: ['contaId', 'contaDestinoId'], detalhes: ['detalheId'] }[especie] ?? [];
+  for (const r of nome(estado.recorrencias)) {
+    if (campoRec.some((c) => r[c] === id) || (especie === 'etiquetas' && (r.etiquetas ?? []).includes(id))) achados.push(`a recorrência ${r.nome}`);
+  }
+  for (const r of nome(estado.regras)) {
+    const usa = (especie === 'categorias' && r.categoriaId === id) || (especie === 'detalhes' && r.detalheId === id)
+      || (especie === 'etiquetas' && (r.etiquetas ?? []).includes(id)) || (especie === 'contas' && r.transferePara === id);
+    if (usa) achados.push(`a regra "${r.padrao}"`);
+  }
+  const campoSel = { categorias: 'categorias', etiquetas: 'etiquetas', detalhes: 'descricoes', contas: 'contas' }[especie];
+  if (campoSel) for (const s of nome(estado.selecoes)) if ((s[campoSel] ?? []).includes(id)) achados.push(`a seleção "${s.nome}"`);
+  if (especie === 'contas') {
+    for (const c of Object.values(estado.contas)) {
+      if (c.id === id) continue;
+      if (c.pagaCom === id) achados.push(`${c.tipo === 'cartao' ? 'o cartão' : 'a dívida'} ${c.nome} (paga com ela)`);
+      if (c.liquidoPara === id) achados.push(`a renda ${c.nome} (o líquido cai nela)`);
+      if (c.caixaEm === id) achados.push(`${c.nome} (o dinheiro fica nela)`);
+      if (c.cofrinhoId === id) achados.push(`o cartão ${c.nome} (cofrinho)`);
+    }
+    if (estado.energiaConfig?.contaId === id) achados.push('a Energia (conta da fatura)');
+  }
+  if (especie === 'ativos') {
+    for (const c of Object.values(estado.contas)) if (c.cofrinhoAtivoId === id) achados.push(`o cartão ${c.nome} (cofrinho)`);
+  }
+  return achados;
 }
 
 /** Conta com saldo não se arquiva antes de o saldo ser resolvido. */

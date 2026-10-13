@@ -20,6 +20,8 @@ import {
   hoje, nasceConfirmado, nomeDaCategoria, correcao, detalhesDaCategoria, dataVista, estornado, saldoReal,
 } from '../core/lancamentos.js';
 import { somarDias, somarMeses, fimDoMes } from '../core/datas.js';
+import { chaveDoNome } from '../core/listas.js';
+import { ocorrenciaParecida } from '../core/previsto.js';
 import { compradoPorDaCompra, pessoaDoAparelho, curarPessoaDoAparelho, disponivelDe } from '../core/repasse.js';
 import { temCiclo, cicloDaCompra } from '../core/cartao.js';
 import { MARCACAO_CAMPO_VALOR, ligarCampoValor } from './campo-valor.js';
@@ -278,6 +280,8 @@ export async function criarFormulario({
   let contaId = null;
   let tipo = 'despesa';
   let data = hoje();
+  // O dia de quando a tela abriu: se o app ficou aberto até virar o dia, a data que ninguém mexeu vira a de hoje.
+  let ultimoHoje = hoje();
   let etiquetas = [];
   let detalheId = null;
   let todasAbertas = false;
@@ -402,9 +406,10 @@ export async function criarFormulario({
   async function criarCategoria(texto) {
     const nome = texto.trim();
     if (!nome) return;
-    const chave = nome.toLocaleLowerCase('pt-BR');
+    // Sem acento e sem caixa: "Saude" e "Saúde" são a mesma (auditoria N).
+    const chave = chaveDoNome(nome);
     let existente = Object.values(app.categorias).find(
-      (c) => c.nome.trim().toLocaleLowerCase('pt-BR') === chave && c.natureza === tipo
+      (c) => chaveDoNome(c.nome) === chave && c.natureza === tipo
     );
     if (existente?.arquivada) {
       // Nome de uma arquivada: volta a ela em vez de criar a gêmea.
@@ -748,6 +753,8 @@ export async function criarFormulario({
   };
 
   function irPara(novoDia) {
+    // Ano digitado errado (2062) some de toda tela: o teto é dez anos à frente (auditoria N).
+    if (novoDia > somarMeses(hoje(), 120)) return recadar('Essa data está longe demais: confira o ano.');
     const piso = pisoDaConta();
     if (piso && novoDia < piso) {
       const conta = app.contas[contaId];
@@ -959,7 +966,7 @@ export async function criarFormulario({
     return partes.length ? partes.join(' · ') : 'detalhes';
   }
 
-  const parcelas = () => Math.max(1, Math.min(99, Number(el('parcelas').value) || 1));
+  const parcelas = () => Math.max(1, Math.min(99, Math.floor(Number(el('parcelas').value)) || 1));
 
   function pintarParcelas() {
     // O valor digitado é o da PARCELA, como a loja anuncia e o cartão cobra
@@ -994,7 +1001,7 @@ export async function criarFormulario({
   function serieViva(l) {
     const r = l?.recorrenciaId ? app?.recorrencias?.[l.recorrenciaId] : null;
     if (!r || r.arquivada) return null;
-    if (r.fim && r.fim < l.dataCompetencia) return null;
+    if (r.fim && r.fim <= l.dataCompetencia) return null;
     return r;
   }
 
@@ -1082,19 +1089,29 @@ export async function criarFormulario({
     ? Object.values(app.lancamentos).filter((l) => !l.removido && l.parcela?.compraId === editando.parcela.compraId)
     : [];
 
+  /** As devoluções (estornos) ligadas a estas compras. */
+  const devolucoesDe = (compras) => {
+    const ids = new Set(compras.map((c) => c.id));
+    return Object.values(app.lancamentos).filter((l) => !l.removido && l.tipo === 'estorno' && ids.has(l.estornoDe));
+  };
+
   const perigo = ligarZonaDePerigo(el('perigo'), {
     descricao: () => {
       const nome = nomeDaCategoria(app, editando.categoriaId) || editando.tipo;
       const todas = parcelasDaCompra();
+      const devolucoes = devolucoesDe(todas.length > 1 ? todas : [editando]);
+      const e = devolucoes.length ? ` · e ${devolucoes.length === 1 ? 'a devolução' : `as ${devolucoes.length} devoluções`} dela` : '';
       if (todas.length > 1) {
         const total = todas.reduce((t, l) => t + l.valor, 0);
-        return `a compra inteira, ${todas.length} parcelas (${formatar(total)}) · ${nome}`;
+        return `a compra inteira, ${todas.length} parcelas (${formatar(total)}) · ${nome}${e}`;
       }
-      return `${formatar(editando.valor)} · ${nome}`;
+      return `${formatar(editando.valor)} · ${nome}${e}`;
     },
     apagar: async () => {
       const todas = parcelasDaCompra();
-      for (const l of todas.length > 1 ? todas : [editando]) {
+      const alvos = todas.length > 1 ? todas : [editando];
+      // A devolução de uma compra apagada ficaria órfã, somando no saldo (auditoria H2).
+      for (const l of [...alvos, ...devolucoesDe(alvos)]) {
         await estado.aplicarEvento('lancamento.removido', { id: l.id });
       }
       if (aoSalvar) await aoSalvar();
@@ -1107,8 +1124,35 @@ export async function criarFormulario({
   // Um toque, uma gravação: o segundo toque enquanto o primeiro grava não faz nada.
   const salvar = umaVez(salvarAgora);
 
+  /** O dia virou com a tela aberta: a data que ninguém escolheu acompanha (auditoria N). */
+  function virarODia() {
+    const h = hoje();
+    if (h === ultimoHoje) return;
+    if (!editando && !daSerie && !previstoDe && data === ultimoHoje) {
+      data = h;
+      pintarData();
+    }
+    ultimoHoje = h;
+  }
+
   async function salvarAgora() {
+    virarODia();
     if (!pronto()) return false;
+    // Lançou à mão a conta que a série já previa (luz, aluguel): pergunta se é ela, para não contar duas vezes (D1).
+    if (!editando && !daSerie && !previstoDe && parcelas() === 1 && repete === 'nao' && (tipo === 'despesa' || tipo === 'receita')) {
+      const parecida = ocorrenciaParecida(app, { tipo, contaId, categoriaId, dataCompetencia: data, valor: valor.centavos() });
+      if (parecida && confirm(`Isto é "${app.recorrencias[parecida.recorrenciaId]?.nome ?? 'a série'}", que estava prevista (${formatar(parecida.valor)} em ${rotuloDoDia(parecida.dataCompetencia)})?
+
+OK: conta como ela, sem somar de novo no previsto.
+Cancelar: é outra coisa.`)) {
+        daSerie = parecida.recorrenciaId;
+      }
+    }
+    // Parcelado não repete: avisa em vez de ignorar em silêncio (auditoria N).
+    if (!editando && parcelas() > 1 && repete !== 'nao') {
+      recadar('Compra parcelada não repete todo mês: tire o "repete" ou as parcelas.');
+      return false;
+    }
     // A descrição escrita e não confirmada com Enter vale do mesmo jeito:
     // salvar sem ela perdia o que estava escrito na tela.
     const escrita = el('novo-detalhe').value.trim();
@@ -1192,7 +1236,7 @@ Gravar assim?`)) return false;
   async function propagarParaAsIrmas(mudancas) {
     if (!editando.parcela?.compraId) return;
 
-    const DA_COMPRA = ['tipo', 'categoriaId', 'detalheId', 'etiquetas', 'observacao', 'faturaDesloca', 'custeadoPor', 'extraordinario'];
+    const DA_COMPRA = ['tipo', 'categoriaId', 'detalheId', 'etiquetas', 'observacao', 'faturaDesloca', 'custeadoPor', 'extraordinario', 'compradoPor'];
     const comuns = Object.fromEntries(
       Object.entries(mudancas).filter(([campo]) => DA_COMPRA.includes(campo))
     );
@@ -1750,6 +1794,7 @@ Gravar assim?`)) return false;
 
   return {
     recarregar,
+    virarODia,
     focar: () => { if (!(ordemDoApp && dedo)) valor.focar(); },
 
     /**
@@ -1846,6 +1891,8 @@ Gravar assim?`)) return false;
       valor: valor.centavos(),
       parcelas: Number(el('parcelas').value) || 1,
       observacao: el('observacao').value.trim(),
+      // O que também foi escolhido no rápido e o completo continua (auditoria N).
+      faturaDesloca, custeadoPor, repete, comprador: escolhaComprador,
     }),
 
     /** Abre um cadastro novo com o rascunho que veio do rápido. */
@@ -1856,6 +1903,11 @@ Gravar assim?`)) return false;
       contaTocada = true;
       tipo = r.tipo === 'receita' ? 'receita' : 'despesa';
       data = r.data || hoje();
+      ultimoHoje = hoje();
+      faturaDesloca = r.faturaDesloca ?? 0;
+      custeadoPor = r.custeadoPor ?? null;
+      repete = r.repete ?? 'nao';
+      escolhaComprador = r.comprador ?? null;
       contaId = r.contaId ?? contaId;
       if (pisoDaConta() && data < pisoDaConta()) data = pisoDaConta();
       categoriaId = r.categoriaId ?? null;
@@ -1867,7 +1919,7 @@ Gravar assim?`)) return false;
       if (r.valor) valor.definir(r.valor); else valor.limpar();
       el('desfazer').hidden = true;
       // Veio com algo além do básico: o "mais" já abre mostrando.
-      refinoAberto = Boolean(etiquetas.length || r.observacao || (r.parcelas ?? 1) > 1);
+      refinoAberto = Boolean(etiquetas.length || r.observacao || (r.parcelas ?? 1) > 1 || r.faturaDesloca || r.custeadoPor || (r.repete && r.repete !== 'nao'));
       await recarregar();
     },
 

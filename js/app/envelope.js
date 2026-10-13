@@ -190,6 +190,10 @@ export function criarJanelasDeEnvelope({ aoSalvar } = {}) {
       // Só se exclui o envelope que nunca recebeu nada; o resto se arquiva.
       const usado = Object.values(app.alocacoes ?? {}).some((a) => a.de === editando.id || a.para === editando.id)
         || (editando.inteiros ?? []).length > 0
+        // Também não se exclui o que a Energia, um cartão (cofrinho) ou uma série ainda usam (auditoria H6).
+        || app.energiaConfig?.envelopeId === editando.id
+        || Object.values(app.contas ?? {}).some((c) => c.cofrinhoEnvelopeId === editando.id)
+        || Object.values(app.recorrencias ?? {}).some((r) => r.envelopeId === editando.id)
         || Object.values(app.lancamentos ?? {}).some((l) => !l.removido && l.custeadoPor === editando.id);
       env('b-excluir').hidden = usado;
       env('b-excluir').dataset.confirmar = '';

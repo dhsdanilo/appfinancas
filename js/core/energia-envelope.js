@@ -29,7 +29,9 @@ export function compromissoDaEnergia(estado, dia = hoje()) {
   for (const { registro, calculo } of mesesDeEnergia(estado)) {
     if (!calculo || registro.mes < cfg.desde || calculo.economia == null || calculo.economia <= 0) continue;
     const cobraEm = somarMeses(`${registro.mes}-01`, cfg.defasagem ?? 2).slice(0, 7);
-    itens.push({ ref: registro.mes, cobraEm, valor: calculo.economia, vencido: cobraEm <= mesDeHoje });
+    // Envelope encerrado não cobra mais o que venceria depois do encerramento (auditoria M4).
+    const encerrado = envelope.encerradoEm ? cobraEm > envelope.encerradoEm.slice(0, 7) : false;
+    itens.push({ ref: registro.mes, cobraEm, valor: calculo.economia, vencido: cobraEm <= mesDeHoje && !encerrado });
   }
 
   const extrato = (donosNoDia(estado, dia).porEnvelope.get(envelope.id)?.extrato ?? []).filter((x) => x.data >= desdeDia);

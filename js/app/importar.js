@@ -153,7 +153,7 @@ export function criarImportacao({ aoSalvar } = {}) {
 
   function linhaCasada(x) {
     const l = x.lancamento ?? x.ocorrencia;
-    const como = x.situacao === 'importada' ? 'já importada' : x.situacao === 'ignorada' ? 'ignorada antes'
+    const como = x.situacao === 'importada' ? 'já importada' : x.situacao === 'ignorada' ? (x.anterior ? 'de antes de a conta entrar no app' : 'ignorada antes')
       : x.situacao === 'prevista' ? 'a prevista vira lançada' : l?.automatico ? 'a parcela automática' : 'já lançada';
     const nome = l ? app.detalhes?.[l.detalheId]?.nome ?? nomeDaCategoria(app, l.categoriaId) ?? app.contas[l.contaDestinoId]?.nome ?? l.tipo : '';
     return `<li class="linha-imp casada"><span class="quando">${diaCurto(x.data)}</span>
@@ -201,9 +201,12 @@ export function criarImportacao({ aoSalvar } = {}) {
       const textoBanco = x.texto || null;
       if (x.situacao === 'lancada') {
         if (x.lancamento.automatico) { casados += 1; continue; }
-        const mudar = { id: x.lancamento.id, fitid: x.fitid, textoBanco };
+        // O movimento já veio pelo extrato da outra ponta: guarda o número deste também (K1).
+        const jaTinha = x.lancamento.fitid && x.lancamento.contaDestinoId;
+        const mudar = jaTinha ? { id: x.lancamento.id, fitid2: x.fitid } : { id: x.lancamento.id, fitid: x.fitid, fitidConta: conta.id, textoBanco };
         // O agendado que o banco mostra como feito: agora é feito, no dia do banco.
         if (!x.lancamento.confirmado) { mudar.confirmado = true; if (!cartao) mudar.dataCaixa = x.data; }
+        if (x.aproximada) mudar.valor = Math.abs(x.valor);
         await estado.aplicarEvento('lancamento.alterado', mudar);
         casados += 1;
         continue;
@@ -216,7 +219,7 @@ export function criarImportacao({ aoSalvar } = {}) {
           categoriaId: o.categoriaId ?? null, detalheId: o.detalheId ?? null, etiquetas: o.etiquetas ?? [],
           recorrenciaId: o.recorrenciaId ?? null, parcelaDe: o.parcelaDe ?? null,
           dataCompetencia: cartao ? o.dataCompetencia : x.data, dataCaixa: cartao ? o.dataCompetencia : x.data,
-          confirmado: true, fitid: x.fitid, textoBanco, lancadoPor: ap?.id ?? null,
+          confirmado: true, fitid: x.fitid, fitidConta: conta.id, textoBanco, lancadoPor: ap?.id ?? null,
         });
         casados += 1;
         continue;
@@ -226,7 +229,7 @@ export function criarImportacao({ aoSalvar } = {}) {
       if (a.tipo === 'ignorar') { ignorar.push(x.fitid); continue; }
       const comum = {
         id: novoId('lan'), valor: Math.abs(x.valor), dataCompetencia: x.data, dataCaixa: x.data,
-        confirmado: true, fitid: x.fitid, textoBanco, lancadoPor: ap?.id ?? null,
+        confirmado: true, fitid: x.fitid, fitidConta: conta.id, textoBanco, lancadoPor: ap?.id ?? null,
       };
       if (a.tipo === 'transferencia') {
         const outra = a.contaOutra ?? (cartao ? conta.pagaCom : null);

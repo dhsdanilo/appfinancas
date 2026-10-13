@@ -321,6 +321,10 @@ function abrirVinculo() {
   const f = vinc();
   $('env-envelope').innerHTML = `<option value="">nenhum (desligado)</option>${envelopesAtivos(app)
     .map((v) => `<option value="${esc(v.id)}">${esc(v.nome)}</option>`).join('')}`;
+  // Envelope arquivado ou encerrado continua como opção: salvar não pode desligar o vínculo sem avisar (G2).
+  if (cfg?.envelopeId && app.envelopes?.[cfg.envelopeId] && ![...f.envelope.options].some((o) => o.value === cfg.envelopeId)) {
+    $('env-envelope').insertAdjacentHTML('beforeend', `<option value="${esc(cfg.envelopeId)}">${esc(app.envelopes[cfg.envelopeId].nome)} (fora da lista)</option>`);
+  }
   f.envelope.value = cfg?.envelopeId ?? '';
   const primeiro = mesesDeEnergia(app)[0]?.registro.mes ?? hoje().slice(0, 7);
   seletorDesde.definir(cfg?.desde ?? primeiro);
@@ -328,6 +332,9 @@ function abrirVinculo() {
   const contas = Object.values(app.contas).filter((c) => !c.arquivada && (c.tipo === 'corrente' || c.tipo === 'especie'))
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   $('env-conta').innerHTML = `<option value="">não gerar a despesa</option>${contas.map((c) => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join('')}`;
+  if (cfg?.contaId && app.contas[cfg.contaId] && ![...f.conta.options].some((o) => o.value === cfg.contaId)) {
+    $('env-conta').insertAdjacentHTML('beforeend', `<option value="${esc(cfg.contaId)}">${esc(app.contas[cfg.contaId].nome)} (arquivada)</option>`);
+  }
   f.conta.value = cfg?.contaId ?? '';
   $('env-aviso').hidden = true;
   mostrarCamposDoVinculo();
@@ -344,9 +351,16 @@ async function salvarVinculo() {
   const f = vinc();
   const envelopeId = f.envelope.value || null;
   if (envelopeId && !f.desde.value) { $('env-aviso').textContent = 'Escolha o mês de economia em que a cobrança começa.'; $('env-aviso').hidden = false; return; }
+  const antes = app.energiaConfig;
+  let desde = f.desde.value || null;
+  // Trocar de envelope sem mexer no mês herdaria, no novo, a cobrança de meses que não são dele (auditoria M2).
+  if (envelopeId && antes?.envelopeId && envelopeId !== antes.envelopeId && desde === antes.desde && desde < hoje().slice(0, 7)
+    && confirm(`O novo envelope passaria a cobrar a economia desde ${desde}. Começar a cobrar só a partir deste mês?`)) {
+    desde = hoje().slice(0, 7);
+  }
   await estado.aplicarEvento('energia.configurada', {
     envelopeId,
-    desde: f.desde.value || null,
+    desde,
     defasagem: Math.max(0, Math.min(12, Number(f.meses.value) || 0)),
     contaId: f.conta.value || null,
   });

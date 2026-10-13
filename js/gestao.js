@@ -23,7 +23,7 @@ import * as estado from './core/estado.js';
 import { novoId } from './core/id.js';
 import { deTexto } from './core/dinheiro.js';
 import { hoje, saldoReal, visiveis } from './core/lancamentos.js';
-import { usos, podeRemover, podeArquivarConta, acharPorNome } from './core/listas.js';
+import { usos, podeRemover, podeArquivarConta, acharPorNome, chaveDoNome } from './core/listas.js';
 import { dinheiroHTML } from './app/dinheiro-html.js';
 import { NOVA_CONTA, CICLO, CONTRATO, EDITAR_CONTA } from './app/marcacao-gestao.js';
 import { AREAS, areaDaConta, AREAS_COM_CATEGORIA, opcoesDeConta } from './app/areas.js';
@@ -602,6 +602,14 @@ function renomear(especie, id, item) {
         return pintar();
       }
     }
+    // Renomear para o nome de outro item da mesma lista faz as duas se confundirem (auditoria N).
+    const colecao = { categorias: app.categorias, etiquetas: app.etiquetas, detalhes: app.detalhes, contas: app.contas }[especie];
+    const gemea = colecao ? Object.values(colecao).find((x) => x.id !== id && !x.arquivada && !x.arquivado && chaveDoNome(x.nome) === chaveDoNome(novo)
+      && (especie !== 'categorias' || x.natureza === colecao[id]?.natureza)) : null;
+    if (gemea) {
+      avisar(`Já existe "${gemea.nome}". Para juntar as duas, use "fundir".`);
+      return pintar();
+    }
     await estado.aplicarEvento(evento(especie, 'alterada'), { id, nome: novo });
     avisar('');
     await recarregar();
@@ -631,6 +639,12 @@ async function arquivar(especie, id, guardar) {
   await recarregar();
 }
 
+/** "a, b e c" — para dizer o que ainda usa o item. */
+function listaDe(itens) {
+  const lista = itens.length > 4 ? [...itens.slice(0, 4), `mais ${itens.length - 4}`] : itens;
+  return lista.length > 1 ? `${lista.slice(0, -1).join(', ')} e ${lista[lista.length - 1]}` : lista[0];
+}
+
 function pedirParaApagar(especie, id) {
   const resposta = podeRemover(app, especie, id);
   const nome = nomeDe(especie, id);
@@ -639,6 +653,7 @@ function pedirParaApagar(especie, id) {
     // A recusa nunca vem sozinha: ao lado dela está o botão que resolve.
     confirmando = null;
     pintar();
+    if (resposta.motivo === 'em uso') return avisar(`${nome} ainda é usado por ${listaDe(resposta.dependentes)}. Tire de lá antes de apagar — ou arquive.`);
     return avisar(
       especie === 'contas'
         ? `${nome} tem ${resposta.usos} lançamento${resposta.usos > 1 ? 's' : ''}. Conta com passado não se apaga — arquive: ela sai das telas de lançamento e o extrato dela continua existindo.`
@@ -878,6 +893,14 @@ function lerContrato(campos) {
   if (!parcelas) return { erro: 'Falta o número de parcelas.' };
   if (!valorParcela) return { erro: 'Falta o valor da parcela.' };
   if (!primeira) return { erro: 'Falta a data da primeira parcela.' };
+  // Juros muito longe do que o valor, as parcelas e a prestação implicam: quase sempre é a
+  // unidade trocada (24 "ao mês" querendo 24% ao ano) — não deixa gravar assim (auditoria J5).
+  const informada = taxaDeTexto('taxa', taxaTexto, campos.taxaUn?.value).taxa;
+  const implicita = taxaImplicita(valorTomado, parcelas, valorParcela);
+  if (informada && implicita > 0 && (informada > implicita * 2.5 || informada < implicita / 2.5)) {
+    const p = (v) => `${(v * 100).toFixed(2).replace('.', ',')}%`;
+    return { erro: `Os juros digitados dão ${p(informada)} ao mês, mas o valor, as parcelas e a prestação implicam ${p(implicita)} ao mês. Confira se a unidade (ao mês × ao ano) está certa.` };
+  }
   return {
     valor: {
       valorTomado,
@@ -1135,7 +1158,11 @@ function abrirEditarConta(id) {
     f.vencimento.value = c.diaVencimento ?? '';
     f.limite.value = c.limite ? formatarSimples(c.limite).replace('R$ ', '') : '';
     pintarPagadoras();
+    // O que já está guardado e saiu da lista (conta arquivada, envelope encerrado) continua nela:
+    // salvar o cartão não pode apagar isso em silêncio (auditoria G2).
+    manterOpcao(f.pagaCom, c.pagaCom);
     f.pagaCom.value = c.pagaCom ?? '';
+    manterOpcaoDeCofrinho(f.cofrinho, c);
     f.cofrinho.value = c.cofrinhoEnvelopeId ? `envelope:${c.cofrinhoEnvelopeId}` : c.cofrinhoAtivoId ? `ativo:${c.cofrinhoAtivoId}` : c.cofrinhoId ? `conta:${c.cofrinhoId}` : '';
   }
   $('ec-campo-caixa').hidden = c.tipo !== 'investimento';
@@ -1244,7 +1271,12 @@ $('f-editar-conta')?.addEventListener('submit', async (e) => {
     for (const [k, v] of Object.entries(novo)) if ((c[k] ?? null) !== v) mudou[k] = v;
   }
   if (c.tipo === 'folha' && f.recebe.value !== (c.recebimento ?? 'contracheque')) mudou.recebimento = f.recebe.value;
-  if (c.tipo === 'investimento' && (f.caixaEm.value || null) !== (c.caixaEm ?? null)) mudou.caixaEm = f.caixaEm.value || null;
+  if (c.tipo === 'investimento' && (f.caixaEm.value || null) !== (c.caixaEm ?? null)) {
+    // Com movimento, trocar onde o dinheiro fica muda o "rendeu" e o caixa de toda a história (auditoria G4).
+    const temHistoria = (usos(app).contas.get(id) ?? 0) > 0 || Object.values(app.ativos ?? {}).some((a) => a.contaId === id);
+    if (temHistoria && !confirm('Trocar onde o dinheiro fica muda o "rendeu" e o caixa dessa conta desde o começo, não só daqui pra frente. Trocar mesmo?')) return;
+    mudou.caixaEm = f.caixaEm.value || null;
+  }
   if (Object.keys(mudou).length) await estado.aplicarEvento('conta.alterada', { id, ...mudou });
 
   if (c.tipo !== 'folha') {
@@ -1282,6 +1314,9 @@ $('b-arquivar-conta')?.addEventListener('click', async () => {
 $('b-excluir-conta')?.addEventListener('click', () => {
   const c = app.contas[editandoConta];
   const resposta = podeRemover(app, 'contas', c.id);
+  if (!resposta.pode && resposta.motivo === 'em uso') {
+    return avisoDaEdicao(`${c.nome} ainda é usada por ${listaDe(resposta.dependentes)}. Tire de lá antes de excluir — ou arquive.`);
+  }
   if (!resposta.pode) {
     return avisoDaEdicao(`${c.nome} tem ${resposta.usos} lançamento${resposta.usos > 1 ? 's' : ''}. Conta com passado não se apaga — arquive: ela sai das telas de lançamento e o extrato dela continua existindo.`);
   }
@@ -1358,6 +1393,19 @@ function manterOpcao(select, id) {
   const o = document.createElement('option');
   o.value = id;
   o.textContent = `${c.nome} (arquivada)`;
+  select.append(o);
+}
+
+/** O cofrinho guardado no cartão que já não aparece na lista (arquivado, encerrado) continua como opção. */
+function manterOpcaoDeCofrinho(select, c) {
+  const chave = c.cofrinhoEnvelopeId ? `envelope:${c.cofrinhoEnvelopeId}` : c.cofrinhoAtivoId ? `ativo:${c.cofrinhoAtivoId}` : c.cofrinhoId ? `conta:${c.cofrinhoId}` : '';
+  if (!chave || [...select.options].some((o) => o.value === chave)) return;
+  const nome = c.cofrinhoEnvelopeId ? app.envelopes?.[c.cofrinhoEnvelopeId]?.nome
+    : c.cofrinhoAtivoId ? app.ativos?.[c.cofrinhoAtivoId]?.nome : app.contas[c.cofrinhoId]?.nome;
+  if (!nome) return;
+  const o = document.createElement('option');
+  o.value = chave;
+  o.textContent = `${nome} (fora da lista)`;
   select.append(o);
 }
 

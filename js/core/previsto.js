@@ -335,6 +335,9 @@ export function saldoPrevisto(estado, contaId, dia = hoje(), ids = null) {
   for (const o of ocorrenciasPrevistas(estado, inicioDoMes(dia), ate, dia)) {
     if (o.contaId !== contaId && !cartoes.has(o.contaId)) continue;
     if (interna(o.contaDestinoId)) continue;
+    // A série que paga a fatura todo mês: a fatura já pesa acima pelo que o cartão deve de verdade; contar a série
+    // também tiraria o dobro (auditoria D2).
+    if (o.tipo === 'transferencia' && estado.contas[o.contaDestinoId]?.tipo === 'cartao') continue;
     const saida = sinalDeSaida(o);
     if (saida <= 0) continue;
     // A compra recorrente do cartão que cai na fatura do mês seguinte é da
@@ -404,4 +407,17 @@ export function ultimoReajuste(r, data = hoje()) {
   const valores = (r.valores ?? []).filter((v) => v.desde <= data);
   if (valores.length < 2) return null;
   return { ...valores[valores.length - 1], antes: valores[valores.length - 2].valor };
+}
+
+/**
+ * A conta de uma série que um lançamento feito à mão provavelmente é (auditoria D1): mesma conta, mesma categoria e
+ * mesmo tipo, no mês da competência, com valor entre metade e o dobro do previsto. Sem ligar o lançamento à série, a
+ * conta prevista continua somando junto com a lançada. Devolve a ocorrência prevista ou null.
+ */
+export function ocorrenciaParecida(estado, novo, dia = hoje()) {
+  if (!novo.categoriaId || (novo.tipo !== 'despesa' && novo.tipo !== 'receita')) return null;
+  const mes = novo.dataCompetencia.slice(0, 7);
+  return ocorrenciasPrevistas(estado, `${mes}-01`, fimDoMes(`${mes}-01`), dia, { comPassado: true }).find((o) =>
+    o.recorrenciaId && o.tipo === novo.tipo && o.contaId === novo.contaId && o.categoriaId === novo.categoriaId
+    && novo.valor >= o.valor * 0.5 && novo.valor <= o.valor * 2) ?? null;
 }

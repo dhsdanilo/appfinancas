@@ -270,7 +270,16 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
 
     // A recusa diz o que resolve, nunca só que não dá.
     const mesma = origem() && origem() === destino();
-    const recusa = mesma ? 'Escolha duas contas diferentes: transferência é dinheiro trocando de bolso.' : donos.conferir(valor.centavos());
+    // Conta de investimento que guarda o dinheiro no banco não tem caixa: o dinheiro se aplica no ativo (J8).
+    const noBanco = [destino(), origem()].map((id) => app?.contas[id]).find((c) => c?.tipo === 'investimento' && c.caixaEm);
+    const arquivada = [origem(), destino()].map((id) => app?.contas[id]).find((c) => c?.arquivada);
+    const recusa = mesma
+      ? 'Escolha duas contas diferentes: transferência é dinheiro trocando de bolso.'
+      : arquivada && !editando
+        ? `${arquivada.nome} está arquivada: desarquive-a ou escolha outra conta.`
+      : noBanco && !editando
+        ? `${noBanco.nome} guarda o dinheiro em ${app.contas[noBanco.caixaEm]?.nome ?? 'outra conta'}: use "aplicar" ou "resgatar" no ativo, em vez de transferir.`
+        : donos.conferir(valor.centavos());
     el('recado').textContent = recusa;
     el('recado').hidden = !recusa;
     pintarSugestao();
@@ -545,7 +554,8 @@ Gravar assim?`)) return false;
     async carregar(l) {
       editando = l;
       daParcela = null;
-      data = l.dataCaixa;
+      // Origem num cartão: a data da compra, não a do vencimento — senão cada salvar anda uma fatura (auditoria G5).
+      data = l.cicloFatura ? l.dataCompetencia : l.dataCaixa;
       valor.definir(l.valor);
       await recarregar();
       el('repasse').checked = Boolean(l.repasse);

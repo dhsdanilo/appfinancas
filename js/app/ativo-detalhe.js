@@ -230,6 +230,10 @@ export function iniciarPaginaDoAtivo({ aoRegistrar, aoEditar, aoCorrigir } = {})
     if (e.target.closest('[data-det="b-editar"]')) { if (aoEditar) await aoEditar(aberto); return; }
     if (e.target.closest('[data-det="b-arquivar"]')) {
       const ativo = (await estado.calcular()).ativos[aberto];
+      const app = await estado.calcular();
+      const tem = posicao(app, aberto)?.valorAtual ?? 0;
+      // Arquivado sai da cotação e congela, mas continua somando no patrimônio (auditoria J7).
+      if (ativo && !ativo.arquivado && tem > 0 && !confirm(`${ativo.nome} ainda tem ${formatar(tem)}. Arquivado, ele continua somando no patrimônio, mas deixa de acompanhar a cotação e fica parado. Resgate antes, se acabou. Arquivar mesmo?`)) return;
       if (ativo) await estado.aplicarEvento('ativo.arquivado', { id: aberto, arquivado: !ativo.arquivado });
     }
   });

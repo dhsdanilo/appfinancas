@@ -7,7 +7,7 @@
 // Cobertos: pessoa, conta, categoria, lançamento, recorrência, ativo e
 // envelope (com as alocações: o aporte e o resgate do envelope).
 
-import { datarNoCartao, temCiclo } from './cartao.js';
+import { datarNoCartao, temCiclo, cicloDaCompra } from './cartao.js';
 import { somarDias } from './datas.js';
 
 /** As áreas de uma categoria nova, quando ninguém disse outra coisa. */
@@ -26,7 +26,7 @@ export const AREAS_PADRAO = ['caixa', 'cartoes'];
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 31;
+export const VERSAO_ESTADO = 33;
 
 /** Anota de que dia em diante um lugar é inteiro de um envelope (ou de nenhum). Sem data = desde sempre. */
 function marcarInteiro(e, lugarId, envelopeId, desde) {
@@ -191,11 +191,21 @@ export const redutores = {
     // Mudou o ciclo: refaz só as faturas que ainda não tinham fechado no dia
     // da mudança. Fatura fechada é passado — o banco também não a refaz
     // (03-alimentacao §6.2). Lançamento que nunca teve ciclo entra agora.
-    const dia = evento?.t ? evento.t.slice(0, 10) : '';
+    // O dia da mudança é o do relógio de quem mudou, não o UTC: depois das 21h o UTC já é amanhã (auditoria L1).
+    const dia = evento?.t ? new Date(evento.t).toLocaleDateString('sv-SE') : '';
     for (const l of Object.values(e.lancamentos)) {
       if (l.contaId !== c.id) continue;
       if (l.cicloFatura && l.cicloFatura <= dia) continue;
+      const tinha = Boolean(l.cicloFatura);
       datarNoCartao(l, c);
+      // A compra de uma fatura que ainda estava aberta não vai parar numa fatura já fechada: vai para a
+      // aberta de agora (o banco também não reabre o passado).
+      if (tinha && l.cicloFatura && l.cicloFatura <= dia && temCiclo(c)) {
+        const aberta = cicloDaCompra(c, dia);
+        l.cicloFatura = aberta.fechamento;
+        l.dataCaixa = aberta.vencimento;
+        l.dataVencimento = aberta.vencimento;
+      }
     }
   },
 
@@ -317,8 +327,16 @@ export const redutores = {
     // ativo por cotas vem o preço de uma unidade (a cotação), não o total.
     const a = e.ativos[d.id];
     if (!a) return;
-    a.avaliacoes = [...a.avaliacoes.filter((v) => v.data !== d.data), { data: d.data, valor: d.valor ?? null, preco: d.preco ?? null, lc: evento?.lc ?? null }]
+    a.avaliacoes = [...a.avaliacoes.filter((v) => v.data !== d.data), { data: d.data, valor: d.valor ?? null, preco: d.preco ?? null, lc: evento?.lc ?? null, auto: d.auto === true }]
       .sort((x, y) => (x.data < y.data ? -1 : 1));
+  },
+
+  // Corrigiu ou apagou uma operação: os valores que a cotação automática calculou dali em
+  // diante partiram de uma base errada. Saem, e a próxima rodada os refaz (auditoria J3).
+  'ativo.cotacaoRefeita'(e, d) {
+    const a = e.ativos[d.id];
+    if (!a) return;
+    a.avaliacoes = a.avaliacoes.filter((v) => !(v.auto && v.valor != null && v.data >= d.desde));
   },
 
   'ativo.arquivado'(e, d) {
@@ -440,8 +458,9 @@ export const redutores = {
   // O envelope que "cobra" a economia (e quantos meses depois), a partir de que mês de economia, e a conta em
   // que a fatura vira despesa agendada. envelopeId nulo desliga o vínculo.
   'energia.configurada'(e, d) {
-    e.energiaConfig = d.envelopeId
-      ? { envelopeId: d.envelopeId, desde: d.desde, defasagem: d.defasagem ?? 2, contaId: d.contaId ?? null }
+    // Desligar o envelope não desliga a despesa da fatura: a conta fica (auditoria M1).
+    e.energiaConfig = d.envelopeId || d.contaId
+      ? { envelopeId: d.envelopeId ?? null, desde: d.envelopeId ? d.desde : null, defasagem: d.defasagem ?? 2, contaId: d.contaId ?? null }
       : null;
   },
 
@@ -813,6 +832,9 @@ export const redutores = {
       // Importado do banco (design/13 §3): o número que o banco dá à linha
       // (reimportar não duplica) e o texto dele (é dele que a regra aprende).
       fitid: d.fitid ?? null,
+      // A transferência importada dos dois lados: o número do outro extrato, e de que conta veio o primeiro (auditoria K1).
+      fitid2: d.fitid2 ?? null,
+      fitidConta: d.fitidConta ?? null,
       textoBanco: d.textoBanco ?? null,
       extraordinario: d.extraordinario ?? Boolean(d.custeadoPor),
       lancadoPor: d.lancadoPor ?? null,

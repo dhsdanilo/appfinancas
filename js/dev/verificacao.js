@@ -3192,6 +3192,110 @@ caso('envelope', 'auditoria I8: corrigir a data de um movimento põe ele na fila
   igual(e.lancamentos.tr.lc > antes, true, 'a correção que muda o dia leva o lc novo');
 });
 
+// ── auditoria 13/10: o resto dos grupos ─────────────────────────────────────
+
+async function baseDeAuditoria() {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const ev = (t, d) => estado.aplicarEvento(t, d);
+  await ev('conta.criada', { id: 'cc', nome: 'Corrente', tipo: 'corrente', saldoInicial: 1000000, dataInicial: '2025-01-01' });
+  await ev('conta.criada', { id: 'inv', nome: 'Corretora', tipo: 'investimento', saldoInicial: 0 });
+  await ev('categoria.criada', { id: 'luz', nome: 'Luz', natureza: 'despesa' });
+  return ev;
+}
+
+caso('investimentos', 'auditoria J1/J2: venda sem cotas na data, apagar compra com venda, resgate maior que o valor', async () => {
+  const ev = await baseDeAuditoria();
+  await ev('ativo.criado', { id: 'acao', contaId: 'inv', nome: 'ACAO', classe: 'acao', unidade: 'cotas' });
+  await ev('lancamento.registrado', { id: 'c1', tipo: 'aplicacao', valor: 100000, quantidade: 100, preco: 1000, contaId: 'cc', ativoId: 'acao', dataCompetencia: '2025-03-01', dataCaixa: '2025-03-01', confirmado: true });
+  await ev('lancamento.registrado', { id: 'v1', tipo: 'resgate', valor: 50000, quantidade: 50, preco: 1000, contaId: 'cc', ativoId: 'acao', dataCompetencia: '2025-04-01', dataCaixa: '2025-04-01', confirmado: true });
+  const e = await estado.calcular();
+  igual(!!investimentos.conferirOperacao(e, 'acao', { op: { tipo: 'resgate', data: '2025-02-01', valor: 1000, quantidade: 10 } }).bloqueio, true, 'vender antes de comprar: bloqueia');
+  igual(!!investimentos.conferirOperacao(e, 'acao', { op: { tipo: 'resgate', data: '2025-05-01', valor: 1000, quantidade: 10 } }).bloqueio, false, 'vender depois, com cotas: passa');
+  igual(!!investimentos.conferirOperacao(e, 'acao', { id: 'c1' }).bloqueio, true, 'apagar a compra que tinha venda: bloqueia');
+  await ev('ativo.criado', { id: 'cdb', contaId: 'inv', nome: 'CDB', classe: 'renda_fixa' });
+  await ev('lancamento.registrado', { id: 'a1', tipo: 'aplicacao', valor: 100000, contaId: 'cc', ativoId: 'cdb', dataCompetencia: '2025-03-01', dataCaixa: '2025-03-01', confirmado: true });
+  const e2 = await estado.calcular();
+  igual(!!investimentos.conferirOperacao(e2, 'cdb', { op: { tipo: 'resgate', data: '2025-06-01', valor: 1500000 } }).aviso, true, 'resgate de R$ 15.000 num CDB de R$ 1.000: avisa');
+  igual(investimentos.conferirOperacao(e2, 'cdb', { op: { tipo: 'resgate', data: '2025-06-01', valor: 50000 } }).aviso, '', 'resgate dentro do valor: nada');
+});
+
+caso('investimentos', 'auditoria J3: corrigir uma operação refaz o que a cotação automática tinha calculado', async () => {
+  const ev = await baseDeAuditoria();
+  await ev('ativo.criado', { id: 'tes', contaId: 'inv', nome: 'Tesouro', classe: 'renda_fixa' });
+  await ev('ativo.avaliado', { id: 'tes', data: '2025-03-02', valor: 100000, preco: 100, auto: true });
+  await ev('ativo.avaliado', { id: 'tes', data: '2025-03-10', valor: 50000 });
+  await ev('ativo.cotacaoRefeita', { id: 'tes', desde: '2025-03-01' });
+  const a = (await estado.calcular()).ativos.tes;
+  igual(a.avaliacoes.map((v) => v.data), ['2025-03-10'], 'só a automática sai; o valor informado à mão fica');
+});
+
+caso('listas', 'auditoria H3/H4: não apaga o que ainda é usado por série, regra ou envelope', async () => {
+  const ev = await baseDeAuditoria();
+  await ev('categoria.criada', { id: 'solta', nome: 'Solta', natureza: 'despesa' });
+  igual(listas.podeRemover(await estado.calcular(), 'categorias', 'solta').pode, true, 'sem uso nenhum: apaga');
+  await ev('recorrencia.criada', { id: 'r1', nome: 'Luz da casa', tipo: 'despesa', contaId: 'cc', categoriaId: 'solta', tipoValor: 'fixa', valor: 10000, dia: 10, inicio: '2025-01-10' });
+  const r = listas.podeRemover(await estado.calcular(), 'categorias', 'solta');
+  igual([r.pode, r.motivo, r.dependentes.length], [false, 'em uso', 1], 'usada só por uma série: recusa e diz qual');
+  await ev('envelope.criado', { id: 'env', nome: 'IPVA' });
+  await ev('conta.criada', { id: 'nova', nome: 'Nova', tipo: 'corrente', saldoInicial: 50000 });
+  await ev('envelope.alocado', { id: 'al2', lugarId: 'nova', de: null, para: 'env', valor: 50000, data: '2025-02-01' });
+  const n = listas.podeRemover(await estado.calcular(), 'contas', 'nova');
+  igual([n.pode, n.motivo], [false, 'em uso'], 'conta só com saldo inicial mas com dinheiro de envelope: não apaga');
+});
+
+caso('energia', 'auditoria M1/M4: desligar o envelope mantém a conta da fatura', async () => {
+  const ev = await baseDeAuditoria();
+  await ev('envelope.criado', { id: 'env', nome: 'Energia' });
+  await ev('energia.configurada', { envelopeId: 'env', desde: '2026-01', defasagem: 2, contaId: 'cc' });
+  await ev('energia.configurada', { envelopeId: null, contaId: 'cc' });
+  const e = await estado.calcular();
+  igual([e.energiaConfig?.contaId, e.energiaConfig?.envelopeId], ['cc', null], 'o vínculo com o envelope sai, a conta da fatura fica');
+  igual(compromissoEnergia.compromissoDaEnergia(e, '2026-06-01'), null, 'sem envelope, sem compromisso');
+});
+
+caso('importação', 'auditoria K: data inválida, pagamento de fatura, antes do marco zero e as duas pontas', async () => {
+  igual(importar.lerData('10/25/2026'), null, 'mês 25 não existe');
+  igual(importar.lerData('25/10/2026'), '2026-10-25', 'dia/mês/ano normal');
+  const ev = await baseDeAuditoria();
+  await ev('conta.criada', { id: 'cart', nome: 'Cartão', tipo: 'cartao', diaFechamento: 25, diaVencimento: 5, pagaCom: 'cc' });
+  const e = await estado.calcular();
+  const [pag, loja] = importar.casar(e, 'cart', [
+    { fitid: 'a', data: '2025-02-01', valor: 50000, texto: 'PAGAMENTO RECEBIDO' },
+    { fitid: 'b', data: '2025-02-01', valor: 5000, texto: 'PAG*Loja do Ze' },
+  ]).map((x) => x.sugestao);
+  igual([pag.tipo, loja.tipo], ['transferencia', 'estorno'], 'só o pagamento vira transferência; PAG*Loja é estorno');
+  await ev('lancamento.registrado', { id: 'pg', tipo: 'pagamento_fatura', valor: 50000, contaId: 'cc', contaDestinoId: 'cart', dataCompetencia: '2025-02-05', dataCaixa: '2025-02-05', confirmado: true, fitid: 'cc-1', fitidConta: 'cc' });
+  const dois = importar.casar(await estado.calcular(), 'cart', [{ fitid: 'cartao-9', data: '2025-02-05', valor: 50000, texto: 'PAGAMENTO RECEBIDO' }]);
+  igual(dois[0].situacao, 'lancada', 'o extrato do cartão casa com o pagamento que o da corrente já trouxe');
+  const antes = importar.casar(await estado.calcular(), 'cc', [{ fitid: 'z', data: '2024-12-30', valor: -1000, texto: 'COMPRA ANTIGA' }]);
+  igual([antes[0].situacao, antes[0].anterior], ['ignorada', true], 'linha de antes da data inicial da conta não soma');
+});
+
+caso('previsão', 'auditoria D1: a conta lançada à mão é a da série; o salário lançado não soma o líquido de novo', async () => {
+  const ev = await baseDeAuditoria();
+  await ev('recorrencia.criada', { id: 'rl', nome: 'Luz', tipo: 'despesa', contaId: 'cc', categoriaId: 'luz', tipoValor: 'fixa', valor: 20000, dia: 20, inicio: '2026-01-20' });
+  const e = await estado.calcular();
+  const nova = { tipo: 'despesa', contaId: 'cc', categoriaId: 'luz', dataCompetencia: '2026-10-18', valor: 18000 };
+  igual(previsto.ocorrenciaParecida(e, nova, '2026-10-10')?.recorrenciaId, 'rl', 'luz de R$ 180 é a luz prevista de R$ 200');
+  igual(previsto.ocorrenciaParecida(e, { ...nova, valor: 900000 }, '2026-10-10'), null, 'valor sem relação: não é ela');
+  igual(previsto.ocorrenciaParecida(e, { ...nova, categoriaId: 'outra' }, '2026-10-10'), null, 'outra categoria: não é ela');
+});
+
+caso('cartão', 'auditoria L1: mudar o fechamento não manda compra da fatura aberta para uma fatura já fechada', async () => {
+  const hojeDia = datas.hoje();
+  const diaDoMes = Number(hojeDia.slice(8, 10));
+  if (diaDoMes < 8 || diaDoMes > 27) return; // precisa de um fechamento novo "dois dias atrás" dentro do mês
+  const ev = await baseDeAuditoria();
+  await ev('conta.criada', { id: 'cart', nome: 'Cartão', tipo: 'cartao', diaFechamento: 28, diaVencimento: 8, pagaCom: 'cc' });
+  const compra = datas.somarDias(hojeDia, -5);
+  await ev('lancamento.registrado', { id: 'g', tipo: 'despesa', valor: 10000, contaId: 'cart', categoriaId: 'luz', dataCompetencia: compra, dataCaixa: compra, confirmado: true });
+  const antes = (await estado.calcular()).lancamentos.g.cicloFatura;
+  await ev('conta.alterada', { id: 'cart', diaFechamento: diaDoMes - 2, diaVencimento: Math.min(28, diaDoMes + 6) });
+  const depois = (await estado.calcular()).lancamentos.g.cicloFatura;
+  igual([antes > hojeDia, depois > hojeDia], [true, true], 'continua numa fatura que ainda não fechou');
+});
+
 async function limpar() {
   db.usarBanco(BANCO_DE_TESTE);
   await db.apagarTudo();

@@ -19,6 +19,7 @@ const formulario = await criarFormulario({
 // deixar a página fazer isso sem um toque; se não, um toque no valor abre.
 formulario.focar();
 document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') formulario.virarODia();
   if (document.visibilityState === 'visible' && !document.querySelector(':focus')) formulario.focar();
 });
 
