@@ -2724,6 +2724,22 @@ caso('entrada', '★ a conta que cai sozinha gravada de novo pelo outro aparelho
   igual(e.lancamentos['auto-rec:luz:2026-11'], undefined, 'série encerrada não ganha mês novo de outro aparelho');
 });
 
+caso('entrada', '★ fundir categoria leva junto a regra e a seleção salva (e desfazer volta)', async () => {
+  const ev = await baseDeRelatorios();
+  await ev('categoria.criada', { id: 'merc', nome: 'Mercado', pai: null, natureza: 'despesa' });
+  await ev('categoria.criada', { id: 'super', nome: 'Supermercado', pai: null, natureza: 'despesa' });
+  await ev('regra.definida', { id: 'regra:padaria', padrao: 'padaria', categoriaId: 'merc' });
+  await ev('selecao.salva', { id: 's1', nome: 'Comida', categorias: ['merc', 'super'] });
+  await ev('categoria.fundida', { id: 'f1', de: 'merc', para: 'super' });
+  let e = await estado.calcular();
+  igual(e.regras['regra:padaria'].categoriaId, 'super', 'a regra aponta para a que ficou');
+  igual(e.selecoes.s1.categorias, ['super'], 'a seleção também, sem repetir');
+  await ev('fusao.desfeita', { id: 'f1' });
+  e = await estado.calcular();
+  igual(e.regras['regra:padaria'].categoriaId, 'merc', 'desfeita, a regra volta');
+  igual(e.selecoes.s1.categorias, ['merc'], 'e a seleção também');
+});
+
 const OFX_EXEMPLO = `OFXHEADER:100
 DATA:OFXSGML
 CHARSET:1252

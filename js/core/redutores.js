@@ -26,7 +26,7 @@ export const AREAS_PADRAO = ['caixa', 'cartoes'];
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 29;
+export const VERSAO_ESTADO = 30;
 
 export function estadoVazio() {
   return {
@@ -703,6 +703,23 @@ export const redutores = {
       const r = e.recorrencias[id];
       if (r && r[f.campo] === f.para) r[f.campo] = f.item.id;
     }
+    // Regras, seleções e etiquetas das séries voltam a apontar para a de antes.
+    const volta = (lista) => (lista ?? []).map((x) => (x === f.para ? f.item.id : x));
+    for (const id of f.regras ?? []) {
+      const g = e.regras?.[id];
+      if (!g) continue;
+      if (f.campo === 'etiquetas') g.etiquetas = volta(g.etiquetas);
+      else if (g[f.campo] === f.para) g[f.campo] = f.item.id;
+    }
+    const lista = { categoriaId: 'categorias', etiquetas: 'etiquetas', detalheId: 'descricoes' }[f.campo];
+    for (const id of f.selecoes ?? []) {
+      const s = e.selecoes?.[id];
+      if (s && lista) s[lista] = volta(s[lista]);
+    }
+    for (const id of f.etiquetasDeSeries ?? []) {
+      const r = e.recorrencias[id];
+      if (r) r.etiquetas = volta(r.etiquetas);
+    }
     // Pessoa: as contas voltam ao titular de antes, e as compras que a fusão
     // limpou (comprou no cartão dela mesma) voltam a levar a marca.
     for (const id of f.contas ?? []) {
@@ -902,9 +919,37 @@ function fundir(e, especie, campo, d) {
       }
     }
   }
+  // Regras, seleções salvas e etiquetas das séries seguem junto: senão a regra
+  // gravaria numa categoria que não existe mais e a seleção perderia o filtro.
+  const troca = (lista) => [...new Set(lista.map((x) => (x === d.de ? d.para : x)))];
+  const regras = [];
+  for (const g of Object.values(e.regras ?? {})) {
+    if (campo === 'etiquetas' ? (g.etiquetas ?? []).includes(d.de) : g[campo] === d.de) {
+      if (campo === 'etiquetas') g.etiquetas = troca(g.etiquetas);
+      else g[campo] = d.para;
+      regras.push(g.id);
+    }
+  }
+  const lista = { categoriaId: 'categorias', etiquetas: 'etiquetas', detalheId: 'descricoes' }[campo];
+  const selecoes = [];
+  for (const s of Object.values(e.selecoes ?? {})) {
+    if (lista && (s[lista] ?? []).includes(d.de)) {
+      s[lista] = troca(s[lista]);
+      selecoes.push(s.id);
+    }
+  }
+  const etiquetasDeSeries = [];
+  if (campo === 'etiquetas') {
+    for (const r of Object.values(e.recorrencias)) {
+      if ((r.etiquetas ?? []).includes(d.de)) {
+        r.etiquetas = troca(r.etiquetas);
+        etiquetasDeSeries.push(r.id);
+      }
+    }
+  }
   delete e[especie][d.de];
   e.fusoes[d.id] = {
     id: d.id, especie, campo, item, para: d.para,
-    lancamentos: movidos, substituiu, recorrencias, desfeita: false,
+    lancamentos: movidos, substituiu, recorrencias, regras, selecoes, etiquetasDeSeries, desfeita: false,
   };
 }

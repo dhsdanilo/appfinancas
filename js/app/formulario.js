@@ -460,7 +460,9 @@ export async function criarFormulario({
    * holerite (D25) não existe, é por aqui que o desconto da folha é lançado.
    * Esconder conta que o dono criou é decidir por ele.
    */
-  const contasUtilizaveis = () => Object.values(app.contas).filter((c) => !c.arquivada);
+  // Na correção, a conta arquivada do próprio lançamento continua na lista: trocá-la
+  // por outra em silêncio movia a compra antiga para o saldo de outra conta.
+  const contasUtilizaveis = () => Object.values(app.contas).filter((c) => !c.arquivada || c.id === editando?.contaId);
 
   /**
    * As contas que este formulário oferece. O cadastro rápido do celular é a
@@ -1075,11 +1077,26 @@ export async function criarFormulario({
 
   // ── apagar ──────────────────────────────────────────────────────────────
 
+  /** As parcelas da mesma compra (design/03 §6.1: apagar a compra leva todas). */
+  const parcelasDaCompra = () => editando?.parcela?.compraId
+    ? Object.values(app.lancamentos).filter((l) => !l.removido && l.parcela?.compraId === editando.parcela.compraId)
+    : [];
+
   const perigo = ligarZonaDePerigo(el('perigo'), {
-    descricao: () =>
-      `${formatar(editando.valor)} · ${nomeDaCategoria(app, editando.categoriaId) || editando.tipo}`,
+    descricao: () => {
+      const nome = nomeDaCategoria(app, editando.categoriaId) || editando.tipo;
+      const todas = parcelasDaCompra();
+      if (todas.length > 1) {
+        const total = todas.reduce((t, l) => t + l.valor, 0);
+        return `a compra inteira, ${todas.length} parcelas (${formatar(total)}) · ${nome}`;
+      }
+      return `${formatar(editando.valor)} · ${nome}`;
+    },
     apagar: async () => {
-      await estado.aplicarEvento('lancamento.removido', { id: editando.id });
+      const todas = parcelasDaCompra();
+      for (const l of todas.length > 1 ? todas : [editando]) {
+        await estado.aplicarEvento('lancamento.removido', { id: l.id });
+      }
       if (aoSalvar) await aoSalvar();
       if (aoFechar) aoFechar();
     },
@@ -1569,7 +1586,8 @@ export async function criarFormulario({
   async function recarregar() {
     app = await estado.calcular();
     curarPessoaDoAparelho(app);
-    if (!contaId || !app.contas[contaId] || app.contas[contaId].arquivada || (rapido && !contaNaEscolha(contaId))) {
+    const arquivadaAlheia = app.contas[contaId]?.arquivada && contaId !== editando?.contaId;
+    if (!contaId || !app.contas[contaId] || arquivadaAlheia || (rapido && !contaNaEscolha(contaId))) {
       contaId = contaPadrao();
     }
     if (categoriaId && !app.categorias[categoriaId]) categoriaId = null;
