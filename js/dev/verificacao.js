@@ -3007,6 +3007,45 @@ caso('dívida', 'o valor para quitar sai dos juros do contrato, não do valor to
   igual([foto.saldoDevedor, foto.estimado], [650000, false], 'o saldo que o banco mostra continua mandando');
 });
 
+caso('dívida', '★ quitar: grava o valor que o banco cobrou, as parcelas restantes somem e o que estava lançado para depois sai junto', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const { quitar } = await import('../app/contrato.js');
+  const i = 0.02;
+  const parcela = Math.round(contratoPuro.parcelaPrice(1000000, i, 12));
+  await estado.aplicarEvento('conta.criada', { id: 'cc', nome: 'Corrente', tipo: 'corrente', saldoInicial: 5000000, dataInicial: '2027-01-01' });
+  await estado.aplicarEvento('conta.criada', {
+    id: 'emp', nome: 'Empréstimo', tipo: 'divida', pagaCom: 'cc',
+    contrato: { valorTomado: 1000000, data: '2027-01-01', parcelas: 12, valorParcela: parcela, primeira: '2027-02-10', taxa: i },
+  });
+  // Uma transferência agendada para depois e uma série para a dívida; e uma transferência para outra conta, que não é da dívida.
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'ag', tipo: 'transferencia', valor: 50000, contaId: 'cc', contaDestinoId: 'emp', categoriaId: null,
+    dataCompetencia: '2027-09-01', dataCaixa: '2027-09-01', confirmado: false,
+  });
+  await estado.aplicarEvento('recorrencia.criada', { id: 'sr', nome: 'Extra', tipo: 'transferencia', contaId: 'cc', contaDestinoId: 'emp', tipoValor: 'fixa', valor: 10000, periodicidade: 'mensal', dia: 20, inicio: '2027-02-20' });
+  let e = await estado.calcular();
+  const dia = '2027-06-15'; // 5 parcelas pagas, 7 restantes
+  const sim = divida.simularQuitacao(e, 'emp', dia);
+  igual([sim.restantes, sim.agendados.map((l) => l.id), sim.series.map((r) => r.id)], [7, ['ag'], ['sr']], 'faltam 7 parcelas; o agendado e a série aparecem');
+  igual(sim.somaRestante, 7 * parcela, 'a soma do que faltava pagar');
+  igual(divida.simularQuitacao(e, 'emp', '2028-06-01'), null, 'depois da última parcela, nada a quitar');
+
+  // O banco cobrou mais que o app estimava: vale o que o banco cobrou.
+  const cobrado = sim.saldo + 12345;
+  igual(await quitar(e, { dividaId: 'emp', origemId: 'cc', valor: cobrado, data: dia, cancelar: ['ag'], encerrar: ['sr'] }), true, 'quitou');
+  e = await estado.calcular();
+  const t = Object.values(e.lancamentos).find((l) => l.observacao === 'quitação');
+  igual([t.valor, t.contaId, t.contaDestinoId], [cobrado, 'cc', 'emp'], 'a transferência leva o valor digitado, não o estimado');
+  igual(e.lancamentos.ag.removido, true, 'o agendado marcado foi cancelado');
+  igual(e.recorrencias.sr.fim, dia, 'a série termina na quitação');
+  const s = divida.situacao(e, 'emp', dia);
+  igual([s.quitada, s.restantes], [true, 0], 'a dívida está quitada, sem parcelas restantes');
+  igual(divida.simularQuitacao(e, 'emp', dia), null, 'e não há mais o que quitar');
+  const { parcelasAutomaticas } = await import('../core/parcelas.js');
+  verdade(!parcelasAutomaticas(e, lanc.lancados(e), dia).some((l) => l.parcelaDe?.dividaId === 'emp' && l.dataCaixa > dia), 'nenhuma parcela automática depois da quitação');
+});
+
 caso('saldo previsto', 'previsto é tudo o que está previsto: entrada e saída por igual, e entre contas do mesmo conjunto nada muda', async () => {
   await limpar();
   await log.registrarAparelho('meu-pc');

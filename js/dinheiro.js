@@ -19,8 +19,8 @@ import { criarConferencia } from './app/conferencia.js';
 import { criarHolerite } from './app/holerite.js';
 import { criarRecebimento } from './app/recebimento.js';
 import { linhasDoHolerite, lancadosNoMes, ehAvulsa } from './core/holerite.js';
-import { situacao, saldoDevedor, jurosDaParcela, cronograma, simularAmortizacao } from './core/divida.js';
-import { fotografar, amortizar, pularParcela } from './app/contrato.js';
+import { situacao, saldoDevedor, jurosDaParcela, cronograma, simularAmortizacao, simularQuitacao } from './core/divida.js';
+import { fotografar, amortizar, quitar, pularParcela } from './app/contrato.js';
 import { lancarOcorrencia } from './app/ocorrencia.js';
 import { criarJanelaDoAtivo } from './app/ativo.js';
 import { iniciarPaginaDoAtivo } from './app/ativo-detalhe.js';
@@ -1097,6 +1097,7 @@ const mesAno = (dia) => `${dia.slice(5, 7)}/${dia.slice(0, 4)}`;
 // O que está aberto em cada cartão: o cronograma, e o contrato sendo amortizado.
 const cronogramasAbertos = new Set();
 let amortizando = null;
+let quitando = null;
 
 function pintarDividas(contas) {
   for (const parte of ['subabas', 'periodo', 'parte-lista', 'filtros']) $(parte).hidden = true;
@@ -1189,6 +1190,7 @@ function blocoDeDivida(c) {
   const aberto = detalhesAbertos.has(c.id);
   const cronogramaAberto = aberto && cronogramasAbertos.has(c.id);
   const emAmortizacao = aberto && amortizando === c.id && !s.quitada;
+  const emQuitacao = aberto && quitando === c.id && !s.quitada;
   const linhaTaxa = (rotulo, valor, classe = '') => `<div class="linha-detalhe ${classe}"><span>${escapar(rotulo)}</span><span>${escapar(valor)}</span></div>`;
   const numeros = `<div class="numeros-contrato">
       ${numeroDaFaixa('parcela', s.restantes ? formatar(s.valorParcela) : '—')}
@@ -1206,7 +1208,7 @@ function blocoDeDivida(c) {
     ? ''
     : '<p class="aviso-bloco">Sem conta que paga: as parcelas não caem em lugar nenhum. Escolha em "corrigir".</p>';
 
-  return `<div class="bloco contrato ${cronogramaAberto || emAmortizacao ? 'largo' : ''}">
+  return `<div class="bloco contrato ${cronogramaAberto || emAmortizacao || emQuitacao ? 'largo' : ''}">
     ${cabeca}
     ${numeros}
     ${semPagadora}
@@ -1215,6 +1217,7 @@ function blocoDeDivida(c) {
       <button type="button" class="elo" data-detalhes-divida="${id}" aria-expanded="${aberto}">${aberto ? 'fechar detalhes' : 'detalhes'}</button>
     </div>
     ${emAmortizacao ? painelDeAmortizacao(c, s) : ''}
+    ${emQuitacao ? painelDeQuitacao(c) : ''}
     ${cronogramaAberto ? tabelaDoCronograma(c) : ''}
   </div>`;
 }
@@ -1248,6 +1251,7 @@ function detalhesDoContrato(c, s) {
     <div class="acoes-contrato">
       <button type="button" class="elo" data-cronograma="${id}" aria-expanded="${cronogramaAberto}">${cronogramaAberto ? 'fechar cronograma' : 'cronograma'}</button>
       ${s.quitada ? '' : `<button type="button" class="elo" data-amortizar="${id}">amortizar</button>`}
+      ${s.quitada ? '' : `<button type="button" class="elo" data-quitar="${id}">quitar</button>`}
       <span class="foto-divida" data-foto-de="${id}">
         <button type="button" class="elo" data-foto="${id}">saldo do banco</button>
       </span>
@@ -1368,6 +1372,91 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', (e) => {
   const painel = e.target.closest?.('[data-amortizacao]');
   if (painel) pintarOpcoesDeAmortizacao(painel);
+});
+
+// ── quitar: o valor é o que o banco cobrou, não o que o app estimou ─────
+
+function painelDeQuitacao(c) {
+  const caixa = Object.values(app.contas)
+    .filter((o) => !o.arquivada && (o.tipo === 'corrente' || o.tipo === 'especie'))
+    .sort((a, b) => (a.nome < b.nome ? -1 : 1));
+  const padrao = caixa.some((o) => o.id === c.pagaCom) ? c.pagaCom : caixa[0]?.id;
+  const sim = simularQuitacao(app, c.id, hoje());
+  return `<div class="amortizar" data-quitacao="${escapar(c.id)}">
+    <p class="titulo-amortizar">Quitar · o app estima ${dinheiroHTML(sim?.saldo ?? 0, { estimado: true })} para quitar hoje</p>
+    <div class="campos-amortizar">
+      <label>valor cobrado pelo banco <input type="text" inputmode="decimal" data-qt-valor autocomplete="off" value="${formatar(sim?.saldo ?? 0, { comPrefixo: false })}"></label>
+      <label>sai de <select data-qt-origem>${caixa.map((o) => `<option value="${escapar(o.id)}" ${o.id === padrao ? 'selected' : ''}>${escapar(o.nome)}</option>`).join('')}</select></label>
+      <label>em <input type="date" data-qt-data value="${hoje()}"></label>
+    </div>
+    <div class="opcoes-amortizar" data-qt-resumo></div>
+    <div class="opcoes-amortizar" data-qt-futuros></div>
+    <p class="pe-amortizar">
+      <button type="button" class="principal" data-qt-confirmar>quitar</button>
+      <button type="button" class="elo" data-qt-cancelar>cancelar</button>
+    </p>
+  </div>`;
+}
+
+function lerQuitacao(painel) {
+  return {
+    dividaId: painel.dataset.quitacao,
+    valor: Math.abs(deTexto(painel.querySelector('[data-qt-valor]').value)),
+    origemId: painel.querySelector('[data-qt-origem]').value,
+    data: painel.querySelector('[data-qt-data]').value || hoje(),
+  };
+}
+
+/** O que o valor digitado significa: quanto falta, e a diferença para o que o app estimava. */
+function pintarResumoDaQuitacao(painel) {
+  const { dividaId, valor, data } = lerQuitacao(painel);
+  const lugar = painel.querySelector('[data-qt-resumo]');
+  const sim = simularQuitacao(app, dividaId, data);
+  if (!sim) {
+    lugar.innerHTML = '<p class="nota">Nenhuma parcela depois dessa data: não há o que quitar.</p>';
+    return;
+  }
+  const linhas = [`<p>faltam ${sim.restantes} ${sim.restantes > 1 ? 'parcelas' : 'parcela'}, somando ${dinheiroHTML(sim.somaRestante)}, até ${mesAno(sim.termina)}</p>`];
+  if (valor) {
+    const dif = valor - sim.saldo;
+    linhas.push(`<p>o app estimava ${dinheiroHTML(sim.saldo, { estimado: true })}${dif ? ` · o banco cobra ${dinheiroHTML(Math.abs(dif))} ${dif > 0 ? 'a mais' : 'a menos'}` : ''}</p>`);
+    const economia = sim.somaRestante - valor;
+    linhas.push(economia > 0
+      ? `<p class="economia">economiza ${dinheiroHTML(economia)} sobre pagar até o fim</p>`
+      : '<p class="nota">Esse valor é maior que pagar as parcelas até o fim.</p>');
+  }
+  lugar.innerHTML = `<div class="opcao-amortizar">${linhas.join('')}</div>`;
+}
+
+/** O que estava lançado para depois da quitação: sai junto, a menos que se desmarque. */
+function pintarFuturosDaQuitacao(painel) {
+  const { dividaId, data } = lerQuitacao(painel);
+  const lugar = painel.querySelector('[data-qt-futuros]');
+  const sim = simularQuitacao(app, dividaId, data);
+  if (!sim || (!sim.agendados.length && !sim.series.length)) {
+    lugar.innerHTML = '';
+    return;
+  }
+  const caixa = (atributo, id, texto) => `<label class="cancelar-futuro"><input type="checkbox" ${atributo}="${escapar(id)}" checked> ${texto}</label>`;
+  lugar.innerHTML = `<div class="opcao-amortizar">
+    <strong>Ainda lançado para depois — cancelar junto</strong>
+    ${sim.agendados.map((l) => caixa('data-qt-lanc', l.id, `${escapar(diaCurto(l.dataCaixa))} · ${dinheiroHTML(l.valor)}`)).join('')}
+    ${sim.series.map((r) => caixa('data-qt-serie', r.id, `${escapar(r.nome)} · série ${r.valor ? dinheiroHTML(r.valor) : ''} (termina na quitação)`)).join('')}
+  </div>`;
+}
+
+function pintarQuitacao(painel) {
+  pintarResumoDaQuitacao(painel);
+  pintarFuturosDaQuitacao(painel);
+}
+
+document.addEventListener('input', (e) => {
+  const painel = e.target.closest?.('[data-quitacao]');
+  if (painel && e.target.matches('[data-qt-valor]')) pintarResumoDaQuitacao(painel);
+});
+document.addEventListener('change', (e) => {
+  const painel = e.target.closest?.('[data-quitacao]');
+  if (painel && e.target.matches('[data-qt-data]')) pintarQuitacao(painel);
 });
 
 /** Investimentos, dívidas e folha: o saldo, e na folha o aviso do zero (D25). */
@@ -2271,6 +2360,7 @@ document.addEventListener('click', async (e) => {
       detalhesAbertos.delete(id);
       cronogramasAbertos.delete(id);
       if (amortizando === id) amortizando = null;
+      if (quitando === id) quitando = null;
     } else {
       detalhesAbertos.add(id);
     }
@@ -2306,9 +2396,36 @@ document.addEventListener('click', async (e) => {
     pintar();
     return;
   }
+  const quit = e.target.closest('[data-quitar]');
+  if (quit) {
+    quitando = quit.dataset.quitar;
+    amortizando = null;
+    await pintar();
+    const painel = document.querySelector(`[data-quitacao="${CSS.escape(quitando)}"]`);
+    if (painel) pintarQuitacao(painel);
+    painel?.querySelector('[data-qt-valor]')?.select();
+    return;
+  }
+  if (e.target.closest('[data-qt-cancelar]')) {
+    quitando = null;
+    pintar();
+    return;
+  }
+  const quitConfirmar = e.target.closest('[data-qt-confirmar]');
+  if (quitConfirmar) {
+    const painel = quitConfirmar.closest('[data-quitacao]');
+    const pedido = lerQuitacao(painel);
+    if (!pedido.valor || !pedido.origemId) { painel.querySelector('[data-qt-valor]').focus(); return; }
+    const marcados = (atributo) => [...painel.querySelectorAll(`[${atributo}]:checked`)].map((x) => x.getAttribute(atributo));
+    quitConfirmar.disabled = true;
+    quitando = null;
+    await quitar(app, { ...pedido, cancelar: marcados('data-qt-lanc'), encerrar: marcados('data-qt-serie') });
+    return;
+  }
   const amort = e.target.closest('[data-amortizar]');
   if (amort) {
     amortizando = amort.dataset.amortizar;
+    quitando = null;
     await pintar();
     document.querySelector(`[data-amortizacao="${CSS.escape(amortizando)}"] [data-am-valor]`)?.focus();
     return;

@@ -8,7 +8,7 @@ import * as estado from '../core/estado.js';
 import { novoId } from '../core/id.js';
 import * as log from '../core/log.js';
 import { hoje, lancados } from '../core/lancamentos.js';
-import { simularAmortizacao } from '../core/divida.js';
+import { simularAmortizacao, simularQuitacao } from '../core/divida.js';
 import { somarDias } from '../core/datas.js';
 
 /**
@@ -78,6 +78,37 @@ export async function amortizar(app, { dividaId, origemId, valor, data, modo }) 
       ? { modo, restantes: sim.prazo.restantes, ultima: sim.prazo.ultima }
       : { modo, parcela: sim.parcela.parcela };
   await estado.aplicarEvento('divida.amortizada', { id: dividaId, lancamentoId, data, valor: pago, ...resultado });
+  return true;
+}
+
+/**
+ * Quitar: a transferência com o valor que o banco de fato cobrou (não o que o
+ * app estimava), as parcelas que faltavam deixam de cair, e o que estava
+ * lançado para depois some junto: os agendados em `cancelar` são removidos e as
+ * séries em `encerrar` terminam na data da quitação.
+ *
+ * @param {{ dividaId, origemId, valor, data, cancelar?: string[], encerrar?: string[] }} pedido
+ */
+export async function quitar(app, { dividaId, origemId, valor, data, cancelar = [], encerrar = [] }) {
+  if (!simularQuitacao(app, dividaId, data) || !(valor > 0)) return false;
+  const ap = await log.aparelho();
+  const lancamentoId = novoId('lan');
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: lancamentoId,
+    tipo: 'transferencia',
+    valor,
+    dataCompetencia: data,
+    dataCaixa: data,
+    contaId: origemId,
+    contaDestinoId: dividaId,
+    categoriaId: null,
+    confirmado: data <= hoje(),
+    observacao: 'quitação',
+    lancadoPor: ap?.id ?? null,
+  });
+  await estado.aplicarEvento('divida.amortizada', { id: dividaId, lancamentoId, data, valor, modo: 'prazo', restantes: 0 });
+  for (const id of cancelar) await estado.aplicarEvento('lancamento.removido', { id });
+  for (const id of encerrar) await estado.aplicarEvento('recorrencia.alterada', { id, fim: data });
   return true;
 }
 

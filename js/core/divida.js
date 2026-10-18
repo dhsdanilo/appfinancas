@@ -11,7 +11,7 @@
 // resultado escolhido no dia (js/core/contrato.js).
 
 import { hoje } from './datas.js';
-import { visiveis } from './lancamentos.js';
+import { visiveis, lancados } from './lancamentos.js';
 import { saldoPrice, parcelaPrice, taxaImplicita } from './contrato.js';
 import { calendarioDaDivida, amortizacoesValidas, caiAPartirDe } from './parcelas.js';
 
@@ -241,6 +241,34 @@ export function saldoDevedor(estado, dividaId, dia = hoje()) {
 export function jurosDaParcela(estado, dividaId, k) {
   const cr = cronograma(estado, dividaId);
   return cr?.parcelas.find((p) => p.k === k)?.juros ?? null;
+}
+
+/**
+ * Quitar no `dia`: o que o app estimava para quitar, as parcelas que deixam de
+ * cair e o que ainda estava lançado para depois dele — transferências
+ * agendadas para a dívida e séries que continuariam. Null se não há o que quitar.
+ *
+ * { saldo, restantes, somaRestante, termina, agendados: [lançamento], series: [recorrência] }
+ */
+export function simularQuitacao(estado, dividaId, dia = hoje()) {
+  const conta = estado.contas[dividaId];
+  if (!conta?.contrato) return null;
+  const { taxa: i } = taxaDoContrato(estado, conta);
+  const saldo = saldoNoDia(estado, conta, i, dia);
+  const porVir = calendarioDaDivida(estado, conta).filter((p) => p.data > dia);
+  if (!porVir.length) return null;
+  const deAmortizacao = new Set((conta.amortizacoes ?? []).map((a) => a.lancamentoId));
+  return {
+    saldo,
+    restantes: porVir.length,
+    somaRestante: porVir.reduce((t, p) => t + p.valor, 0),
+    termina: porVir[porVir.length - 1].data,
+    agendados: lancados(estado)
+      .filter((l) => l.tipo === 'transferencia' && l.contaDestinoId === dividaId && !l.confirmado && l.dataCaixa > dia && !deAmortizacao.has(l.id))
+      .sort((a, b) => (a.dataCaixa < b.dataCaixa ? -1 : 1)),
+    series: Object.values(estado.recorrencias ?? {})
+      .filter((r) => r.tipo === 'transferencia' && r.contaDestinoId === dividaId && !r.arquivada && (!r.fim || r.fim > dia)),
+  };
 }
 
 /**
