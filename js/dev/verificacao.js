@@ -3019,6 +3019,45 @@ caso('dívida', 'o valor para quitar sai dos juros do contrato, não do valor to
   igual([foto.saldoDevedor, foto.estimado], [650000, false], 'o saldo que o banco mostra continua mandando');
 });
 
+caso('recorrência', '★ transferência de série: o que mudou, e "esta e as próximas" reajusta ou divide a série sem mexer no que já foi lançado', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const { mudancasNaSerie, aplicarNasProximas } = await import('../app/serie-transferencia.js');
+  await estado.aplicarEvento('conta.criada', { id: 'cc', nome: 'Corrente', tipo: 'corrente', saldoInicial: 5000000, dataInicial: '2027-01-01' });
+  await estado.aplicarEvento('conta.criada', { id: 'pp', nome: 'Poupança', tipo: 'corrente', saldoInicial: 0, dataInicial: '2027-01-01' });
+  await estado.aplicarEvento('conta.criada', { id: 'p2', nome: 'Outra', tipo: 'corrente', saldoInicial: 0, dataInicial: '2027-01-01' });
+  await estado.aplicarEvento('recorrencia.criada', { id: 'sr', nome: 'Reserva', tipo: 'transferencia', contaId: 'cc', contaDestinoId: 'pp', tipoValor: 'fixa', valor: 10000, periodicidade: 'mensal', dia: 10, inicio: '2027-01-01' });
+  await estado.aplicarEvento('recorrencia.criada', { id: 'sv', nome: 'Variável', tipo: 'transferencia', contaId: 'cc', contaDestinoId: 'pp', tipoValor: 'variavel', valor: null, periodicidade: 'mensal', dia: 10, inicio: '2027-01-01' });
+  await estado.aplicarEvento('lancamento.registrado', {
+    id: 'jan', tipo: 'transferencia', valor: 10000, contaId: 'cc', contaDestinoId: 'pp', categoriaId: null, recorrenciaId: 'sr',
+    dataCompetencia: '2027-01-10', dataCaixa: '2027-01-10', confirmado: true,
+  });
+  let e = await estado.calcular();
+  const base = { valor: 10000, contaId: 'cc', contaDestinoId: 'pp', dataCompetencia: '2027-02-10' };
+  const tela = { valor: 10000, origem: 'cc', destino: 'pp', data: '2027-02-10' };
+  igual(mudancasNaSerie(e.recorrencias.sr, base, tela), null, 'nada mudou: nenhuma pergunta');
+  igual(mudancasNaSerie(e.recorrencias.sr, base, { ...tela, valor: 12000 }), { valor: 12000 }, 'o valor');
+  igual(mudancasNaSerie(e.recorrencias.sr, base, { ...tela, origem: 'p2', data: '2027-02-15' }), { contaId: 'p2', dia: 15 }, 'a conta e o dia');
+  igual(mudancasNaSerie(e.recorrencias.sv, base, { ...tela, valor: 12000 }), null, 'série estimada: o valor não é da série');
+
+  // Só o valor: reajuste a partir desta ocorrência, na mesma série.
+  igual(await aplicarNasProximas(e, e.recorrencias.sr, base, { ...tela, valor: 12000 }), 'sr', 'a série é a mesma');
+  e = await estado.calcular();
+  igual([previsto.valorVigente(e.recorrencias.sr, '2027-01-10'), previsto.valorVigente(e.recorrencias.sr, '2027-03-10')], [10000, 12000], 'janeiro fica, de fevereiro em diante vale o novo');
+
+  // Conta e dia: a série divide — a antiga termina em janeiro (onde há lançamento) e nasce outra.
+  const nova = await aplicarNasProximas(e, e.recorrencias.sr, base, { valor: 12000, origem: 'p2', destino: 'pp', data: '2027-02-15' });
+  e = await estado.calcular();
+  verdade(nova !== 'sr', 'nasceu outra série');
+  igual([e.recorrencias.sr.fim, e.recorrencias[nova].contaId, e.recorrencias[nova].dia, e.recorrencias[nova].inicio, e.recorrencias[nova].valor], ['2027-01-31', 'p2', 15, '2027-02-01', 12000], 'a antiga fecha em janeiro; a nova é a partir de fevereiro');
+  igual(e.lancamentos.jan.recorrenciaId, 'sr', 'o lançamento de janeiro continua na série antiga');
+
+  // Sem nenhum lançamento fora desta, a série antiga some em vez de ficar vazia.
+  const sem = await aplicarNasProximas(e, e.recorrencias.sv, { ...base, valor: 0 }, { valor: 0, origem: 'p2', destino: 'pp', data: '2027-02-10' });
+  e = await estado.calcular();
+  verdade(sem !== 'sv' && !e.recorrencias.sv && e.recorrencias[sem], 'série sem lançamentos: a antiga some, a nova fica');
+});
+
 caso('dívida', '★ quitar: grava o valor que o banco cobrou, as parcelas restantes somem e o que estava lançado para depois sai junto', async () => {
   await limpar();
   await log.registrarAparelho('meu-pc');

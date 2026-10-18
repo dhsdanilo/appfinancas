@@ -19,7 +19,8 @@ import * as log from '../core/log.js';
 import * as estado from '../core/estado.js';
 import { hoje, nasceConfirmado, correcao, tipoDaTransferencia, lancados } from '../core/lancamentos.js';
 import { parcelaAutomaticaDoMes } from '../core/parcelas.js';
-import { somarDias } from '../core/datas.js';
+import { somarDias, somarMeses, fimDoMes } from '../core/datas.js';
+import { mudancasNaSerie, aplicarNasProximas } from './serie-transferencia.js';
 import { MARCACAO_CAMPO_VALOR, ligarCampoValor } from './campo-valor.js';
 import { ligarZonaDePerigo } from './zona-perigo.js';
 import { umaVez } from './uma-vez.js';
@@ -111,6 +112,15 @@ const MARCACAO = `
     <input type="checkbox" data-papel="eh-parcela"> <span data-papel="texto-eh-parcela"></span>
   </label>
 
+  <!-- Uma ocorrência de série que mudou: só esta, ou esta e as próximas. -->
+  <fieldset class="alcance-serie" data-papel="alcance" hidden>
+    <legend data-papel="alcance-texto"></legend>
+    <label><input type="radio" name="alcance-serie" value="esta" checked> <strong>só esta</strong> — a série continua como era</label>
+    <label><input type="radio" name="alcance-serie" value="proximas"> <strong>esta e as próximas</strong> — as já lançadas ficam como estão</label>
+  </fieldset>
+
+  <p class="serie-acoes" data-papel="serie" hidden></p>
+
   <div class="acoes">
     <button type="button" class="principal" data-papel="b-salvar-nova" disabled>Transferir e nova</button>
     <button type="button" data-papel="b-salvar" disabled>Transferir e fechar</button>
@@ -140,6 +150,8 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
   let editando = null;
   // A série de que esta transferência é a ocorrência, quando veio de um previsto.
   let daSerie = null;
+  // O previsto da série de que esta transferência partiu (para saber o que mudou).
+  let previstoDe = null;
   // A parcela automática de uma dívida que esta transferência corrige.
   let daParcela = null;
 
@@ -267,6 +279,7 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
     if (aoMudarTitulo) aoMudarTitulo(daParcela ? 'Corrigir parcela' : pagandoFatura() ? 'Pagar fatura' : 'Transferência');
     el('recado-parcela').hidden = !daParcela;
     pintarRepete();
+    pintarSerie();
 
     // A recusa diz o que resolve, nunca só que não dá.
     const mesma = origem() && origem() === destino();
@@ -287,6 +300,84 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
     if (recusa) { el('b-salvar').disabled = true; el('b-salvar-nova').disabled = true; }
   }
 
+  // ── a série de que esta transferência é a ocorrência ────────────────────
+
+  /** A série viva da ocorrência na tela (prevista ou em correção), ou null. */
+  function serieDaTela() {
+    if (!app || daParcela) return null;
+    const id = editando ? editando.recorrenciaId : previstoDe?.recorrenciaId;
+    const r = id ? app.recorrencias?.[id] : null;
+    if (!r || r.arquivada) return null;
+    if (editando && r.fim && r.fim <= editando.dataCompetencia) return null;
+    return r;
+  }
+
+  const atualDaTela = () => ({ valor: valor.centavos(), origem: origem(), destino: destino(), data });
+
+  /** O que mudou em relação à ocorrência de partida; null se nada (ou se não é de série). */
+  function mudouNaSerie() {
+    const r = serieDaTela();
+    const base = editando ?? previstoDe;
+    return r && base ? mudancasNaSerie(r, base, atualDaTela()) : null;
+  }
+
+  const voltarAoEsta = () => {
+    for (const x of raiz.querySelectorAll('[name="alcance-serie"]')) x.checked = x.value === 'esta';
+  };
+
+  function pintarSerie() {
+    const faixa = el('serie');
+    const r = serieDaTela();
+    faixa.hidden = !r;
+    el('alcance').hidden = true;
+    if (!r) { voltarAoEsta(); return; }
+    const prevista = !editando && previstoDe;
+    const lancadas = lancados(app).filter((l) => l.recorrenciaId === r.id);
+    const botoes = [];
+    if (prevista) botoes.push('<button type="button" class="elo" data-serie="pular">não veio este mês</button>');
+    botoes.push(`<button type="button" class="elo" data-serie="encerrar">${prevista ? 'encerrar a partir daqui' : 'encerrar a série depois deste mês'}</button>`);
+    if (!lancadas.length) botoes.push('<button type="button" class="elo perigo" data-serie="apagar">apagar a série</button>');
+    faixa.innerHTML = `<span>${escapar(r.nome ?? 'transferência')} repete todo mês</span><span class="acoes-serie">${botoes.join('')}</span>`;
+    const m = mudouNaSerie();
+    el('alcance').hidden = !m;
+    if (!m) { voltarAoEsta(); return; }
+    const o = [
+      m.valor !== undefined ? 'o valor' : '',
+      m.contaId !== undefined || m.contaDestinoId !== undefined ? 'as contas' : '',
+      m.dia !== undefined ? 'o dia' : '',
+    ].filter(Boolean);
+    el('alcance-texto').textContent = `Você mudou ${o.join(', ').replace(/, ([^,]*)$/, ' e $1')}. A mudança vale:`;
+  }
+
+  const alcance = () => raiz.querySelector('[name="alcance-serie"]:checked')?.value ?? 'esta';
+
+  /** A série a que a transferência pertence ao salvar: a mesma, ou a nova se a mudança vale para as próximas. */
+  async function serieAoSalvar(idAtual) {
+    const r = serieDaTela();
+    const base = editando ?? previstoDe;
+    if (!r || !base || !mudouNaSerie() || alcance() !== 'proximas') return idAtual;
+    return aplicarNasProximas(app, r, base, atualDaTela(), { lancamentoId: editando?.id ?? null });
+  }
+
+  el('serie').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-serie]');
+    const r = serieDaTela();
+    if (!b || !r) return;
+    const prevista = !editando && previstoDe;
+    const mes = (editando ?? previstoDe).dataCompetencia.slice(0, 7);
+    if (b.dataset.serie === 'pular') {
+      await estado.aplicarEvento('recorrencia.pulada', { id: r.id, mes });
+    } else if (b.dataset.serie === 'encerrar') {
+      // O mês da ocorrência prevista já não conta; o do lançamento fica.
+      const fim = prevista ? fimDoMes(somarMeses(`${mes}-01`, -1)) : fimDoMes(`${mes}-01`);
+      await estado.aplicarEvento('recorrencia.alterada', { id: r.id, fim });
+    } else if (b.dataset.serie === 'apagar') {
+      await estado.aplicarEvento('recorrencia.removida', { id: r.id });
+    }
+    if (aoSalvar) await aoSalvar();
+    if (aoFechar) aoFechar();
+  });
+
   /**
    * "Repete todo mês" só na transferência nova e avulsa: não na correção, não
    * na ocorrência de uma série que já existe, não na parcela de dívida, e não
@@ -295,7 +386,8 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
    */
   let maisAberto = false;
   function pintarRepete() {
-    const pode = !editando && !daSerie && !daParcela && !pagandoFatura();
+    const avulsaEmCorrecao = editando && !editando.recorrenciaId && !editando.parcelaDe && !editando.automatico;
+    const pode = (!editando || avulsaEmCorrecao) && !daSerie && !daParcela && !pagandoFatura();
     el('linha-mais').hidden = !pode;
     el('linha-repete').hidden = !pode || !maisAberto;
     el('b-mais').textContent = maisAberto ? 'menos ▴' : `mais ▾${el('repete').checked ? ' · repete todo mês' : ''}`;
@@ -343,6 +435,7 @@ export async function criarTransferencia({ raiz, aoSalvar, aoFechar, aoMudarTitu
     pintarData();
     pintarRepete();
     pintarParcelaManual();
+    pintarSerie();
   }
 
   // ── apagar ──────────────────────────────────────────────────────────────
@@ -418,6 +511,7 @@ Gravar assim?`)) return false;
   async function registrar() {
     const ap = await log.aparelho();
     const serie = await criarSerie();
+    const daSerieFinal = await serieAoSalvar(daSerie);
     const ehRepasse = !el('repasse-bloco').hidden && el('repasse').checked;
     await estado.aplicarEvento('lancamento.registrado', {
       id: novoId('lan'),
@@ -430,7 +524,7 @@ Gravar assim?`)) return false;
       // Sem categoria: não é gasto nem ganho (§3.1).
       categoriaId: null,
       confirmado: nasceConfirmado({ manual: true, dataCaixa: data }),
-      recorrenciaId: daSerie ?? serie,
+      recorrenciaId: daSerieFinal ?? serie,
       donos: donos.ler(),
       repasse: ehRepasse,
       parcelaDe: parcelaDeGravar(),
@@ -444,6 +538,7 @@ Gravar assim?`)) return false;
       });
     }
     daSerie = null;
+    previstoDe = null;
     el('repete').checked = false;
     el('cai-sozinha').checked = false;
     await recarregar();
@@ -465,6 +560,14 @@ Gravar assim?`)) return false;
     if (ehRepasse !== Boolean(editando.repasse)) mudancas.repasse = ehRepasse;
     const parcelaDe = parcelaDeGravar();
     if (JSON.stringify(parcelaDe) !== JSON.stringify(editando.parcelaDe ?? null)) mudancas.parcelaDe = parcelaDe;
+    if (!editando.recorrenciaId && !el('linha-mais').hidden && el('repete').checked) {
+      // Avulsa que passa a repetir: nasce a série a partir desta.
+      mudancas.recorrenciaId = await criarSerie();
+    } else if (editando.recorrenciaId) {
+      // De uma série e a mudança vale para as próximas: passa à série que vale daqui.
+      const final = await serieAoSalvar(editando.recorrenciaId);
+      if (final !== editando.recorrenciaId) mudancas.recorrenciaId = final;
+    }
     if (Object.keys(mudancas).length === 0) return true;
 
     await estado.aplicarEvento('lancamento.alterado', { id: editando.id, ...mudancas });
@@ -562,6 +665,10 @@ Gravar assim?`)) return false;
     async carregar(l) {
       editando = l;
       daParcela = null;
+      previstoDe = null;
+      el('repete').checked = false;
+      el('cai-sozinha').checked = false;
+      maisAberto = false;
       // Origem num cartão: a data da compra, não a do vencimento — senão cada salvar anda uma fatura (auditoria G5).
       data = l.cicloFatura ? l.dataCompetencia : l.dataCaixa;
       valor.definir(l.valor);
@@ -594,6 +701,7 @@ Gravar assim?`)) return false;
     limpar: () => {
       editando = null;
       daSerie = null;
+      previstoDe = null;
       daParcela = null;
       data = hoje();
       el('repete').checked = false;
@@ -615,6 +723,7 @@ Gravar assim?`)) return false;
     async preencher(o) {
       editando = null;
       daSerie = o.recorrenciaId;
+      previstoDe = o.recorrenciaId && !o.parcelaDe ? o : null;
       daParcela = o.parcelaDe
         ? { ...o.parcelaDe, valor: o.valor, data: o.dataCompetencia, contaId: o.contaId }
         : null;
@@ -642,6 +751,7 @@ Gravar assim?`)) return false;
       editando = null;
       daParcela = null;
       daSerie = null;
+      previstoDe = null;
       el('repete').checked = false;
       el('cai-sozinha').checked = false;
       data = hoje();

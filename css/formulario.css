@@ -574,7 +574,8 @@ input[type="text"].observacao {
 .conferencia-contrato[hidden] { display: none; }
 
 /* Mudança no contrato que mexe em parcela que já caiu: daqui pra frente ou desde o início. */
-.alcance-contrato {
+.alcance-contrato,
+.alcance-serie {
   flex-basis: 100%;
   width: 100%;
   margin: var(--e2) 0 0;
@@ -586,10 +587,14 @@ input[type="text"].observacao {
   flex-direction: column;
   gap: var(--e2);
 }
-.alcance-contrato legend { padding: 0 var(--e1); color: var(--tinta); font-weight: 600; }
-.alcance-contrato label { display: flex; gap: var(--e2); align-items: baseline; color: var(--tinta-fraca); }
-.alcance-contrato label strong { color: var(--tinta); }
-.alcance-contrato[hidden] { display: none; }
+.alcance-contrato legend,
+.alcance-serie legend { padding: 0 var(--e1); color: var(--tinta); font-weight: 600; }
+.alcance-contrato label,
+.alcance-serie label { display: flex; gap: var(--e2); align-items: baseline; color: var(--tinta-fraca); }
+.alcance-contrato label strong,
+.alcance-serie label strong { color: var(--tinta); }
+.alcance-contrato[hidden],
+.alcance-serie[hidden] { display: none; }
 
 /* A transferência para uma dívida que é a parcela do mês (design/10 §4.4). */
 .parcela-manual {
