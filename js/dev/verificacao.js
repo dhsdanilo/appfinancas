@@ -3045,8 +3045,9 @@ caso('dívida', '★ quitar: grava o valor que o banco cobrou, as parcelas resta
 
   // O banco cobrou mais que o app estimava: vale o que o banco cobrou.
   const cobrado = sim.saldo + 12345;
-  igual(await quitar(e, { dividaId: 'emp', origemId: 'cc', valor: cobrado, data: dia, cancelar: ['ag'], encerrar: ['sr'] }), true, 'quitou');
+  igual(await quitar(e, { dividaId: 'emp', origemId: 'cc', valor: cobrado, data: dia, cancelar: ['ag'], encerrar: ['sr'], arquivar: true }), true, 'quitou');
   e = await estado.calcular();
+  igual([e.contas.emp.arquivada, e.contas.emp.arquivadaEm], [true, dia], 'e arquivou a dívida na data da quitação');
   const t = Object.values(e.lancamentos).find((l) => l.observacao === 'quitação');
   igual([t.valor, t.contaId, t.contaDestinoId], [cobrado, 'cc', 'emp'], 'a transferência leva o valor digitado, não o estimado');
   igual(e.lancamentos.ag.removido, true, 'o agendado marcado foi cancelado');

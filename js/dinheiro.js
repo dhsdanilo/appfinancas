@@ -1251,7 +1251,7 @@ function detalhesDoContrato(c, s) {
     <div class="acoes-contrato">
       <button type="button" class="elo" data-cronograma="${id}" aria-expanded="${cronogramaAberto}">${cronogramaAberto ? 'fechar cronograma' : 'cronograma'}</button>
       ${s.quitada ? '' : `<button type="button" class="elo" data-amortizar="${id}">amortizar</button>`}
-      ${s.quitada ? '' : `<button type="button" class="elo" data-quitar="${id}">quitar</button>`}
+      ${s.quitada ? `<button type="button" class="elo" data-arquivar-divida="${id}">arquivar (quitado)</button>` : `<button type="button" class="elo" data-quitar="${id}">quitar</button>`}
       <span class="foto-divida" data-foto-de="${id}">
         <button type="button" class="elo" data-foto="${id}">saldo do banco</button>
       </span>
@@ -1391,6 +1391,7 @@ function painelDeQuitacao(c) {
     </div>
     <div class="opcoes-amortizar" data-qt-resumo></div>
     <div class="opcoes-amortizar" data-qt-futuros></div>
+    <label class="cancelar-futuro"><input type="checkbox" data-qt-arquivar checked> arquivar a dívida depois de quitar</label>
     <p class="pe-amortizar">
       <button type="button" class="principal" data-qt-confirmar>quitar</button>
       <button type="button" class="elo" data-qt-cancelar>cancelar</button>
@@ -2396,6 +2397,13 @@ document.addEventListener('click', async (e) => {
     pintar();
     return;
   }
+  const arquivarDivida = e.target.closest('[data-arquivar-divida]');
+  if (arquivarDivida) {
+    arquivarDivida.disabled = true;
+    // Arquivada, a parcela para de cair depois deste dia.
+    await estado.aplicarEvento('conta.arquivada', { id: arquivarDivida.dataset.arquivarDivida, arquivada: true, data: hoje() });
+    return;
+  }
   const quit = e.target.closest('[data-quitar]');
   if (quit) {
     quitando = quit.dataset.quitar;
@@ -2419,7 +2427,7 @@ document.addEventListener('click', async (e) => {
     const marcados = (atributo) => [...painel.querySelectorAll(`[${atributo}]:checked`)].map((x) => x.getAttribute(atributo));
     quitConfirmar.disabled = true;
     quitando = null;
-    await quitar(app, { ...pedido, cancelar: marcados('data-qt-lanc'), encerrar: marcados('data-qt-serie') });
+    await quitar(app, { ...pedido, cancelar: marcados('data-qt-lanc'), encerrar: marcados('data-qt-serie'), arquivar: painel.querySelector('[data-qt-arquivar]').checked });
     return;
   }
   const amort = e.target.closest('[data-amortizar]');
