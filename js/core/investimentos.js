@@ -340,6 +340,25 @@ export function resumoDaConta(estado, conta, dia = hoje()) {
 }
 
 /**
+ * Compra e venda por cotas: quantidade, preço de cada e total (antes das taxas) se
+ * completam. `valores` = { quantidade, preco, bruto } (zero = vazio; preço e total em
+ * centavos); `ordem` = os campos na ordem em que foram digitados. Valem os dois
+ * digitados por último; o terceiro sai da conta. Devolve { campo, valor } ou null
+ * se não há dois preenchidos (ou a conta não fecha).
+ */
+export function completarCotas(valores, ordem) {
+  const campos = ['quantidade', 'preco', 'bruto'];
+  const preenchidos = ordem.filter((c) => valores[c] > 0).slice(-2);
+  if (preenchidos.length < 2) return null;
+  const campo = campos.find((c) => !preenchidos.includes(c));
+  const { quantidade: q, preco, bruto } = valores;
+  const valor = campo === 'bruto' ? Math.round(q * preco)
+    : campo === 'preco' ? Math.round(bruto / q)
+      : Math.round((bruto / preco) * 1e8) / 1e8;
+  return valor > 0 ? { campo, valor } : { campo, valor: 0 };
+}
+
+/**
  * Confere uma operação (nova, corrigida ou apagada) contra a história do ativo, no dia dela
  * e nos seguintes (auditoria J1/J2). `op` é null para apagar; `id` é a operação que
  * se corrige ou apaga.

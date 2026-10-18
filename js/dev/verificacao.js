@@ -1386,6 +1386,18 @@ caso('previsto', '★ cofrinho como envelope: só o envelope conta, e abate a fa
   igual(abril().total, 300000, 'sem cofrinho, a fatura pesa inteira');
 });
 
+caso('investimento', '★ venda por cotas: quantidade, preço e total se completam; valem os dois digitados por último', () => {
+  const c = investimentos.completarCotas;
+  igual(c({ quantidade: 10, preco: 0, bruto: 0 }, ['quantidade']), null, 'um só preenchido: nada a calcular');
+  igual(c({ quantidade: 10, preco: 2550, bruto: 0 }, ['quantidade', 'preco']), { campo: 'bruto', valor: 25500 }, 'cotas × preço dá o total');
+  igual(c({ quantidade: 10, preco: 0, bruto: 25500 }, ['bruto', 'quantidade']), { campo: 'preco', valor: 2550 }, 'total ÷ cotas dá o preço');
+  igual(c({ quantidade: 0, preco: 2550, bruto: 25500 }, ['preco', 'bruto']), { campo: 'quantidade', valor: 10 }, 'total ÷ preço dá as cotas');
+  igual(c({ quantidade: 0, preco: 333, bruto: 1000 }, ['preco', 'bruto']), { campo: 'quantidade', valor: 3.003003 }, 'cotas fracionadas até 8 casas');
+  // Os três digitados: o mais antigo é o recalculado.
+  igual(c({ quantidade: 10, preco: 2000, bruto: 25500 }, ['quantidade', 'preco', 'bruto']), { campo: 'quantidade', valor: 12.75 }, 'o mais antigo sai da conta dos outros dois');
+  igual(c({ quantidade: 10, preco: 2550, bruto: 0 }, ['bruto', 'quantidade', 'preco']), { campo: 'bruto', valor: 25500 }, 'campo apagado não conta como digitado');
+});
+
 caso('investimento', '★ cotação automática: o vínculo vira série; o preço entra como avaliação, sem pisar na manual', async () => {
   await limpar();
   await log.registrarAparelho('meu-pc');

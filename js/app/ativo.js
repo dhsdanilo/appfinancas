@@ -12,7 +12,7 @@ import { deTexto, formatar } from '../core/dinheiro.js';
 import { umaVez } from './uma-vez.js';
 import { hoje, diaCurto } from '../core/datas.js';
 import { visiveis } from '../core/lancamentos.js';
-import { CLASSES, CLASSES_POR_COTAS, nomeDaClasse, posicao, contaDoDinheiro, contaDaOperacao, conferirOperacao } from '../core/investimentos.js';
+import { CLASSES, CLASSES_POR_COTAS, nomeDaClasse, posicao, contaDoDinheiro, contaDaOperacao, conferirOperacao, completarCotas } from '../core/investimentos.js';
 import { lugarDaConta, envelopesAtivos } from '../core/envelopes.js';
 import { dependentesDe } from '../core/listas.js';
 import { provisaoDoCartao } from '../core/cofrinho.js';
@@ -95,6 +95,8 @@ const MARCACAO = `
           <input type="text" inputmode="decimal" data-ativo="quantidade" autocomplete="off" placeholder="100"></label>
         <label class="campo-simples" data-ativo="campo-preco" hidden><span class="miudo" data-ativo="rotulo-preco">preço de cada</span>
           <input type="text" inputmode="decimal" data-ativo="preco" autocomplete="off" placeholder="0,00"></label>
+        <label class="campo-simples" data-ativo="campo-bruto" hidden><span class="miudo">total · cotas × preço</span>
+          <input type="text" inputmode="decimal" data-ativo="bruto" autocomplete="off" placeholder="0,00"></label>
         <label class="campo-simples" data-ativo="campo-taxas" hidden><span class="miudo">taxas · opcional</span>
           <input type="text" inputmode="decimal" data-ativo="taxas" autocomplete="off" placeholder="0,00"></label>
         <label class="campo-simples" data-ativo="campo-valor"><span class="miudo" data-ativo="rotulo-valor">valor</span>
@@ -161,6 +163,11 @@ async function refazerCotacao(ativo, desde) {
 
 const quantos = (q) => q.toLocaleString('pt-BR', { maximumFractionDigits: 8 });
 
+/** Os campos da operação que se limpam juntos. */
+const CAMPOS_DA_OPERACAO = ['valor', 'quantidade', 'preco', 'bruto', 'taxas'];
+/** Os três que se completam: preenchidos dois, o terceiro sai da conta (as taxas ficam de fora). */
+const CAMPOS_DA_CONTA = ['quantidade', 'preco', 'bruto'];
+
 export function criarJanelaDoAtivo({ aoSalvar } = {}) {
   document.body.insertAdjacentHTML('beforeend', MARCACAO);
   const janela = document.getElementById('dialogo-ativo');
@@ -218,6 +225,7 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
     const comQuantidade = cotas && (op === 'aplicacao' || op === 'resgate');
     el('campo-quantidade').hidden = !comQuantidade;
     el('campo-preco').hidden = !(comQuantidade || (cotas && op === 'avaliacao'));
+    el('campo-bruto').hidden = !comQuantidade;
     el('campo-taxas').hidden = !comQuantidade;
     el('campo-valor').hidden = comQuantidade || (cotas && op === 'avaliacao');
     el('rotulo-preco').textContent = op === 'avaliacao' ? 'preço de cada hoje' : 'preço de cada';
@@ -327,6 +335,46 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
     el('sugestao').hidden = !sugerido;
   }
 
+  // Quantidade, preço e total: o que se digitou por último vale, e o terceiro é calculado.
+  let ordemDeEdicao = [];
+  let calculado = null;
+
+  const lerDaConta = (campo) => (campo === 'quantidade' ? lerQuantidade(el(campo).value) : Math.abs(deTexto(el(campo).value)));
+
+  function marcarCalculado() {
+    for (const campo of CAMPOS_DA_CONTA) {
+      const rotulo = el(`campo-${campo}`) ?? el(campo).closest('label');
+      if (campo === calculado) rotulo.dataset.calculado = ''; else delete rotulo.dataset.calculado;
+    }
+  }
+
+  function limparConta() {
+    ordemDeEdicao = [];
+    calculado = null;
+    marcarCalculado();
+  }
+
+  /** Dois dos três preenchidos: o terceiro sai da conta. Vazio ou impossível, fica vazio. */
+  function completarConta() {
+    const valores = Object.fromEntries(CAMPOS_DA_CONTA.map((c) => [c, lerDaConta(c)]));
+    const r = completarCotas(valores, ordemDeEdicao);
+    if (calculado && calculado !== r?.campo) el(calculado).value = '';
+    calculado = r?.campo ?? null;
+    if (r) {
+      el(r.campo).value = !r.valor ? '' : r.campo === 'quantidade'
+        ? String(r.valor).replace('.', ',')
+        : formatar(r.valor, { comPrefixo: false });
+    }
+    marcarCalculado();
+  }
+
+  function digitouNaConta(campo) {
+    ordemDeEdicao = ordemDeEdicao.filter((c) => c !== campo);
+    ordemDeEdicao.push(campo);
+    if (calculado === campo) calculado = null;
+    completarConta();
+  }
+
   /** Na compra e na venda por cotas, o total que mexe na conta. */
   function pintarTotal() {
     const cotas = ativo?.unidade === 'cotas' && (op === 'aplicacao' || op === 'resgate');
@@ -335,10 +383,12 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
     const q = lerQuantidade(el('quantidade').value);
     const preco = Math.abs(deTexto(el('preco').value));
     const taxas = Math.abs(deTexto(el('taxas').value));
-    const bruto = Math.round(q * preco);
+    const bruto = Math.abs(deTexto(el('bruto').value)) || Math.round(q * preco);
     const total = op === 'aplicacao' ? bruto + taxas : bruto - taxas;
-    el('total').textContent = q && preco
-      ? `${op === 'aplicacao' ? 'sai' : 'volta'} ${formatar(Math.max(0, total))}${taxas ? ` (${formatar(bruto)} ${op === 'aplicacao' ? '+' : '−'} ${formatar(taxas)} de taxas)` : ''}`
+    el('total').textContent = bruto
+      ? taxas
+        ? `total ${formatar(bruto)} antes das taxas · ${op === 'aplicacao' ? 'sai' : 'volta'} ${formatar(Math.max(0, total))} depois das taxas (${op === 'aplicacao' ? '+' : '−'} ${formatar(taxas)})`
+        : `${op === 'aplicacao' ? 'sai' : 'volta'} ${formatar(Math.max(0, total))} (sem taxas)`
       : '';
   }
 
@@ -498,13 +548,14 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
       const quantidade = lerQuantidade(el('quantidade').value);
       const preco = Math.abs(deTexto(el('preco').value));
       const taxas = Math.abs(deTexto(el('taxas').value));
-      if (!quantidade) { recadar('Falta a quantidade.'); return; }
-      if (!preco) { recadar('Falta o preço de cada.'); return; }
+      if (!quantidade) { recadar('Falta a quantidade: preencha dois entre quantidade, preço e total.'); return; }
+      if (!preco) { recadar('Falta o preço: preencha dois entre quantidade, preço e total.'); return; }
       if (op === 'resgate' && !corrigindo) {
         const tem = posicao(app, ativo.id, data).quantidade;
         if (quantidade > tem + 1e-9) { recadar(`Só havia ${quantos(tem)} na mão em ${diaCurto(data)}.`); return; }
       }
-      const bruto = Math.round(quantidade * preco);
+      // O total antes das taxas é o do campo (digitado ou calculado); as taxas entram por fora.
+      const bruto = Math.abs(deTexto(el('bruto').value)) || Math.round(quantidade * preco);
       valor = op === 'aplicacao' ? bruto + taxas : bruto - taxas;
       extra = { quantidade, preco, taxas: taxas || null };
     }
@@ -561,7 +612,8 @@ Gravar assim?`)) return;
         await refazerCotacao(ativo, antes < data ? antes : data);
         corrigindo = null;
         donosDaCorrecao = [];
-        for (const campo of ['valor', 'quantidade', 'preco', 'taxas']) el(campo).value = '';
+        for (const campo of CAMPOS_DA_OPERACAO) el(campo).value = '';
+        limparConta();
         await recarregar();
         if (aoSalvar) await aoSalvar();
         return;
@@ -582,7 +634,8 @@ Gravar assim?`)) return;
       });
       if (op === 'aplicacao' || op === 'resgate') await refazerCotacao(ativo, data);
     }
-    for (const campo of ['valor', 'quantidade', 'preco', 'taxas']) el(campo).value = '';
+    for (const campo of CAMPOS_DA_OPERACAO) el(campo).value = '';
+    limparConta();
     await recarregar();
     if (aoSalvar) await aoSalvar();
     // Chegou dinheiro sem dono num ativo, e há envelopes: oferece distribuir
@@ -605,9 +658,12 @@ Gravar assim?`)) return;
     el('valor').value = formatar(sugerido, { comPrefixo: false });
     el('sugestao').hidden = true;
   });
-  for (const campo of ['valor', 'quantidade', 'preco', 'taxas']) {
+  for (const campo of CAMPOS_DA_OPERACAO) {
     el(campo).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); registrar(); } });
-    el(campo).addEventListener('input', pintarTotal);
+    el(campo).addEventListener('input', () => {
+      if (CAMPOS_DA_CONTA.includes(campo)) digitouNaConta(campo);
+      pintarTotal();
+    });
   }
   // Ação, FII e cripto se acompanham por cotas; o resto, pelo valor. Só
   // sugere: a pessoa pode trocar.
@@ -664,6 +720,16 @@ Gravar assim?`)) return;
       el('quantidade').value = l.quantidade ? String(l.quantidade).replace('.', ',') : '';
       el('preco').value = l.preco ? formatar(l.preco, { comPrefixo: false }) : '';
       el('taxas').value = l.taxas ? formatar(l.taxas, { comPrefixo: false }) : '';
+      // O total antes das taxas é o valor sem elas; quantidade e preço foram o que se digitou.
+      limparConta();
+      if (l.quantidade && l.preco) {
+        el('bruto').value = formatar(l.tipo === 'aplicacao' ? l.valor - (l.taxas ?? 0) : l.valor + (l.taxas ?? 0), { comPrefixo: false });
+        ordemDeEdicao = ['quantidade', 'preco'];
+        calculado = 'bruto';
+        marcarCalculado();
+      } else {
+        el('bruto').value = '';
+      }
       recadar('');
       pintar();
       el('data').focus();
@@ -764,7 +830,8 @@ Gravar assim?`)) return;
       donosDaCorrecao = [];
       el('donos').hidden = true;
       ofertar('');
-      for (const campo of ['valor', 'quantidade', 'preco', 'taxas']) el(campo).value = '';
+      for (const campo of CAMPOS_DA_OPERACAO) el(campo).value = '';
+      limparConta();
       el('data').value = hoje();
       recadar('');
       pintar();

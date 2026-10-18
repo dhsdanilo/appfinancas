@@ -976,6 +976,8 @@ body[data-pagina="investimentos"] .acoes-topo .atalho { display: none; }
 .dialogo-ativo .linha-operacao { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
 .dialogo-ativo .linha-operacao [hidden] { display: none; }
 .dialogo-ativo .total-operacao { margin: 0; font-weight: 600; }
+/* O campo que o app calculou a partir dos outros dois (quantidade, preço, total). */
+.dialogo-ativo .campo-simples[data-calculado] input { font-style: italic; opacity: 0.75; }
 .dialogo-ativo .total-operacao[hidden] { display: none; }
 .operacoes-lista .valor-lancado.positivo { color: var(--positivo); }
 .operacoes-lista .valor-lancado.negativo { color: var(--alerta); }
