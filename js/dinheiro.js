@@ -45,7 +45,7 @@ import {
 import { temCiclo } from './core/cartao.js';
 import { provisaoDoCartao, temCofrinho } from './core/cofrinho.js';
 import { disponivelDe, aReceber } from './core/repasse.js';
-import { extratoDoMes, resultadoDoMes, aEntrarNoMes, saldoNoDia } from './core/mes-da-conta.js';
+import { extratoDoMes, resultadoDoMes, aEntrarNoMes, saldoNoDia, abatimentoDaAberta } from './core/mes-da-conta.js';
 import { AREAS as ABAS } from './app/areas.js';
 import {
   faturas, faturasNoPeriodo, resumoDoCartao, saldoPrevisto, ocorrenciasPrevistas,
@@ -1948,6 +1948,9 @@ function linhaHTML(l, ids, saldoApos = null) {
     // Ainda aberta, é provisão para o mês do vencimento: diz que é prevista.
     oque = `${l.fatura.situacao === 'fechada' ? 'Fatura' : 'Fatura prevista'} ${destino?.nome ?? ''}`;
     onde = `${conta?.nome ?? '—'} · fecha ${diaCurto(l.fatura.fechamento)}`;
+    // O valor da linha é o total da fatura; o envelope do cartão já cobre parte da aberta.
+    const abatido = l.fatura.situacao === 'aberta' ? abatimentoDaAberta(app, l.cartaoId, l.valor) : 0;
+    if (abatido > 0) onde += ` · saldo a pagar ${formatar(l.valor - abatido)}`;
   } else if (l.liquido) {
     oque = `Salário ${conta?.nome ?? ''} · líquido`;
     onde = `${conta?.nome ?? '—'} → ${destino?.nome ?? '—'} · toque para lançar o contracheque`;

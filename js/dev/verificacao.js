@@ -1377,6 +1377,8 @@ caso('previsto', '★ cofrinho como envelope: só o envelope conta, e abate a fa
   e = await estado.calcular();
   sai = abril();
   igual([sai.faturas[0].abatido, sai.total], [100000, 200000], 'envelope com 1.000 abate 1.000 da fatura de 3.000');
+  igual([mesDaConta.abatimentoDaAberta(e, 'c1', 300000, dia), mesDaConta.abatimentoDaAberta(e, 'c1', 50000, dia), mesDaConta.abatimentoDaAberta(e, 'k1', 300000, dia)],
+    [100000, 50000, 0], 'a linha da fatura: abate o que há, até o valor dela; conta sem envelope, nada');
   // Só a aberta: a do mês seguinte ao seguinte não é abatida, e sem vínculo nada abate.
   igual(mesDaConta.saidasDoMes(e, new Set(['k1']), '2027-05', dia).total, 0, 'só a fatura aberta é abatida');
   await ev('conta.alterada', { id: 'c1', cofrinhoEnvelopeId: null });
@@ -1478,6 +1480,16 @@ caso('repasse', '★ compra no cartão de outro: a repassar = compras − repass
   await estado.aplicarEvento('lancamento.alterado', { id: 't1', valor: 12000 });
   const s2 = repasse.repassesDe(await estado.calcular(), 'p2', dia)[0];
   igual([s2.aRepassar, s2.adiantado], [0, 2000], 'repassou a mais: vira adiantado');
+
+  // O aporte do repasse: o envelope do cartão de quem recebe vira dono do que chega.
+  e = await estado.calcular();
+  igual(repasse.aporteDoRepasse(e, 'cj', 4000), null, 'cartão sem envelope: nada a aportar');
+  await estado.aplicarEvento('envelope.criado', { id: 'fat', nome: 'Fatura João' });
+  await estado.aplicarEvento('conta.alterada', { id: 'ct', cofrinhoEnvelopeId: 'fat' });
+  e = await estado.calcular();
+  igual(repasse.aporteDoRepasse(e, 'cj', 4000), { lugarId: 'cj', envelopeId: 'fat', valor: 4000 }, 'chega em cj: aporta ao envelope do cartão do João');
+  igual(repasse.aporteDoRepasse(e, 'cj', 4000, [{ envelopeId: 'fat', valor: 1500 }]), { lugarId: 'cj', envelopeId: 'fat', valor: 2500 }, 'só o que não veio com dono');
+  igual(repasse.aporteDoRepasse(e, 'cm', 4000), null, 'destino de quem não tem cartão com envelope: nada');
 });
 
 caso('previsto', 'recorrência estimada projeta a média das últimas 3', () => {

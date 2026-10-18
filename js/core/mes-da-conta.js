@@ -145,6 +145,19 @@ export function entradasPrevistas(estado, ids, de, ate, dia = hoje(), ignorarOri
 }
 
 /**
+ * Quanto do envelope do cartão abate a fatura ABERTA: o envelope cobre primeiro
+ * as fechadas que ainda faltam pagar, e o que sobra abate a aberta — até o valor
+ * dela (`valorDaAberta`), nunca além. Zero se o cartão não tem envelope.
+ */
+export function abatimentoDaAberta(estado, cartaoId, valorDaAberta, dia = hoje()) {
+  if (!temCofrinho(estado.contas[cartaoId])) return 0;
+  const prov = provisaoDoCartao(estado, cartaoId, dia);
+  if (!prov) return 0;
+  const fechadas = (faturas(estado, cartaoId, dia) ?? []).filter((f) => f.situacao === 'fechada').reduce((t, f) => t + f.aPagar, 0);
+  return Math.max(0, Math.min(prov.provisionado - fechadas, valorDaAberta));
+}
+
+/**
  * O que vai sair das contas `ids` dentro de um mês seguinte: as faturas que
  * vencem nele (com as recorrentes do cartão que caem nelas), as recorrentes,
  * as parcelas de dívida e os agendados.
@@ -224,10 +237,7 @@ export function saidasDoMes(estado, ids, mes, dia = hoje()) {
     const x = porCartao.get(cartaoId);
     const cartao = estado.contas[cartaoId];
     if (!x || !aberta.vence || !temCofrinho(cartao)) continue;
-    const prov = provisaoDoCartao(estado, cartaoId, dia);
-    if (!prov) continue;
-    const fechadas = (faturas(estado, cartaoId, dia) ?? []).filter((f) => f.situacao === 'fechada').reduce((t, f) => t + f.aPagar, 0);
-    x.abatido = Math.max(0, Math.min(prov.provisionado - fechadas, aberta.aPagar + aberta.recorrentes));
+    x.abatido = abatimentoDaAberta(estado, cartaoId, aberta.aPagar + aberta.recorrentes, dia);
   }
 
   const lista = [...porCartao.values()].filter((x) => x.valor > 0 || x.recorrentes > 0);

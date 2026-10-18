@@ -7,6 +7,7 @@
 
 import { hoje } from './datas.js';
 import { lancados, estornado, sinalDeSaida } from './lancamentos.js';
+import { lugarDaConta } from './envelopes.js';
 
 const CHAVE_APARELHO = 'appfinancas:aparelho-de';
 
@@ -75,6 +76,26 @@ export function repassesDe(estado, pessoaId, dia = hoje()) {
   return [...porTitular.values()]
     .map((x) => ({ ...x, aRepassar: Math.max(0, x.compras - x.repassado), adiantado: Math.max(0, x.repassado - x.compras) }))
     .filter((x) => x.compras || x.repassado);
+}
+
+/**
+ * O aporte que um repasse faz: o dinheiro chega em `contaDestinoId` sem dono, e
+ * o envelope do cartão de quem o recebe passa a ser dono dele. Só o que a
+ * transferência não trouxe já com dono (`donos`). Null se não há onde nem de quem.
+ */
+export function aporteDoRepasse(estado, contaDestinoId, valor, donos = []) {
+  const titular = estado.contas[contaDestinoId]?.titular;
+  const lugar = lugarDaConta(estado, contaDestinoId);
+  if (!titular || !lugar) return null;
+  const cartao = Object.values(estado.contas).find((c) => {
+    if (c.tipo !== 'cartao' || c.titular !== titular || !c.cofrinhoEnvelopeId) return false;
+    const env = estado.envelopes?.[c.cofrinhoEnvelopeId];
+    return env && !env.arquivado && !env.encerradoEm;
+  });
+  if (!cartao) return null;
+  const comDono = donos.reduce((t, d) => t + (d.valor ?? 0), 0);
+  const falta = valor - comDono;
+  return falta > 0 ? { lugarId: lugar.id, envelopeId: cartao.cofrinhoEnvelopeId, valor: falta } : null;
 }
 
 /** O total que a pessoa ainda deve repassar. */

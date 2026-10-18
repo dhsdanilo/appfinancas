@@ -28,7 +28,7 @@ import { pularParcela, corrigirParcela, voltarAoContrato } from './contrato.js';
 import { lugarDaConta } from '../core/envelopes.js';
 import { ligarDonos } from './envelope.js';
 import { provisaoDoCartao } from '../core/cofrinho.js';
-import { aRepassarAo } from '../core/repasse.js';
+import { aRepassarAo, aporteDoRepasse } from '../core/repasse.js';
 
 // Todas as contas que não estão arquivadas. Cartão, dívida e folha entram
 // porque o dinheiro passa por elas de verdade: pagar a fatura é corrente →
@@ -418,6 +418,7 @@ Gravar assim?`)) return false;
   async function registrar() {
     const ap = await log.aparelho();
     const serie = await criarSerie();
+    const ehRepasse = !el('repasse-bloco').hidden && el('repasse').checked;
     await estado.aplicarEvento('lancamento.registrado', {
       id: novoId('lan'),
       tipo: tipoDaTransferencia(app, destino()),
@@ -431,10 +432,17 @@ Gravar assim?`)) return false;
       confirmado: nasceConfirmado({ manual: true, dataCaixa: data }),
       recorrenciaId: daSerie ?? serie,
       donos: donos.ler(),
-      repasse: !el('repasse-bloco').hidden && el('repasse').checked,
+      repasse: ehRepasse,
       parcelaDe: parcelaDeGravar(),
       lancadoPor: ap?.id ?? null,
     });
+    // O dinheiro do repasse é do envelope do cartão (design/16): aporte na conta de destino.
+    const aporte = ehRepasse ? aporteDoRepasse(app, destino(), valor.centavos(), donos.ler()) : null;
+    if (aporte) {
+      await estado.aplicarEvento('envelope.alocado', {
+        id: novoId('alo'), lugarId: aporte.lugarId, de: null, para: aporte.envelopeId, valor: aporte.valor, data,
+      });
+    }
     daSerie = null;
     el('repete').checked = false;
     el('cai-sozinha').checked = false;
