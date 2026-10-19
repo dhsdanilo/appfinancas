@@ -114,6 +114,18 @@ export function ratear(total, pesos) {
   return saida;
 }
 
+/**
+ * A divisão de uma compra entre categorias ([{ categoriaId, valor }]) refeita
+ * para outro total, na mesma proporção — a parcela de uma compra parcelada, a
+ * devolução de parte dela. Sem centavo perdido. Null quando sobra uma categoria só.
+ */
+export function repartirDivisao(divisao, total) {
+  if (!divisao || divisao.length < 2) return null;
+  const valores = ratear(total, divisao.map((p) => p.valor));
+  const partes = divisao.map((p, i) => ({ categoriaId: p.categoriaId, valor: valores[i] })).filter((p) => p.valor > 0);
+  return partes.length > 1 ? partes : null;
+}
+
 /** Zero não é lançável. design/02-modelo-de-dados.md §1.1 */
 export function valorLancavel(centavos) {
   return Number.isInteger(centavos) && centavos > 0;

@@ -682,3 +682,18 @@ input[type="text"].observacao {
 .taxa-com-unidade .valor-e-unidade select { flex: none; width: auto; }
 .taxa-com-unidade .opcional { color: var(--tinta-fraca); font-weight: 400; }
 .conferencia-taxas { margin: 0; font-size: var(--t-apoio); color: var(--tinta-fraca); grid-column: 1 / -1; }
+/* A compra de mais de uma categoria: a barra e as fatias. */
+.divisao-compra { flex-wrap: wrap; }
+.divisao-compra[hidden], .divisao-corpo[hidden] { display: none; }
+.divisao-corpo { flex-basis: 100%; display: flex; flex-direction: column; gap: var(--e2); margin-top: var(--e2); }
+.barra-divisao { display: flex; height: 12px; overflow: hidden; border-radius: 999px; background: var(--fundo-fraco, rgba(127, 127, 127, 0.18)); }
+.barra-divisao span { display: block; height: 100%; }
+.partes-divisao { display: flex; flex-direction: column; gap: var(--e2); }
+.partes-divisao .parte { display: grid; grid-template-columns: minmax(7rem, 1fr) minmax(5rem, 2fr) auto auto; gap: var(--e2); align-items: center; font-size: var(--t-apoio); }
+.partes-divisao .parte-nome { display: flex; align-items: center; gap: var(--e1); min-width: 0; overflow-wrap: anywhere; }
+.partes-divisao .parte-nome i { flex: none; width: 10px; height: 10px; border-radius: 50%; }
+.partes-divisao .parte-resto { grid-column: 2; }
+.partes-divisao .parte-valor { text-align: right; white-space: nowrap; }
+.partes-divisao input[type="range"] { width: 100%; min-width: 0; }
+.nova-parte { display: flex; gap: var(--e2); align-items: center; }
+.nova-parte input { flex: 1; min-width: 0; }

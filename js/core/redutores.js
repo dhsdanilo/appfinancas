@@ -26,7 +26,7 @@ export const AREAS_PADRAO = ['caixa', 'cartoes'];
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 33;
+export const VERSAO_ESTADO = 34;
 
 /** Anota de que dia em diante um lugar é inteiro de um envelope (ou de nenhum). Sem data = desde sempre. */
 function marcarInteiro(e, lugarId, envelopeId, desde) {
@@ -752,6 +752,12 @@ export const redutores = {
       const r = e.recorrencias[id];
       if (r) r.etiquetas = volta(r.etiquetas);
     }
+    // Compras divididas voltam à divisão de antes, se ninguém mexeu nelas depois.
+    for (const x of f.divisoes ?? []) {
+      const l = e.lancamentos[x.id];
+      const hoje = x.depois.length > 1 ? x.depois : null;
+      if (l && JSON.stringify(l.divisao ?? null) === JSON.stringify(hoje)) l.divisao = x.antes;
+    }
     // Pessoa: as contas voltam ao titular de antes, e as compras que a fusão
     // limpou (comprou no cartão dela mesma) voltam a levar a marca.
     for (const id of f.contas ?? []) {
@@ -794,6 +800,9 @@ export const redutores = {
       contaId: d.contaId,
       contaDestinoId: d.contaDestinoId ?? null,
       categoriaId: d.categoriaId ?? null, // nulo em transferência (02 §3.6)
+      // Compra de mais de uma categoria: [{ categoriaId, valor }], somando o valor;
+      // a primeira é a de `categoriaId`. Só os relatórios leem (null = uma só).
+      divisao: d.divisao ?? null,
       detalheId: d.detalheId ?? null,
       etiquetas: d.etiquetas ?? [],
       observacao: d.observacao ?? '',
@@ -937,7 +946,19 @@ function fundir(e, especie, campo, d) {
 
   const movidos = [];
   const substituiu = [];
+  // Compra dividida em categorias: a parte da de origem passa à de destino (somando, se já havia).
+  const divisoes = [];
   for (const l of Object.values(e.lancamentos)) {
+    if (campo === 'categoriaId' && l.divisao?.some((p) => p.categoriaId === d.de)) {
+      const depois = [];
+      for (const p of l.divisao) {
+        const id = p.categoriaId === d.de ? d.para : p.categoriaId;
+        const ja = depois.find((x) => x.categoriaId === id);
+        if (ja) ja.valor += p.valor; else depois.push({ categoriaId: id, valor: p.valor });
+      }
+      divisoes.push({ id: l.id, antes: l.divisao, depois });
+      l.divisao = depois.length > 1 ? depois : null;
+    }
     if (campo === 'etiquetas') {
       if (!l.etiquetas.includes(d.de)) continue;
       // Se o lançamento já tinha as duas, a de origem só sai: não há o que
@@ -990,6 +1011,6 @@ function fundir(e, especie, campo, d) {
   delete e[especie][d.de];
   e.fusoes[d.id] = {
     id: d.id, especie, campo, item, para: d.para,
-    lancamentos: movidos, substituiu, recorrencias, regras, selecoes, etiquetasDeSeries, desfeita: false,
+    lancamentos: movidos, substituiu, recorrencias, regras, selecoes, etiquetasDeSeries, divisoes, desfeita: false,
   };
 }

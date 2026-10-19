@@ -9,7 +9,7 @@
 import * as estado from '../core/estado.js';
 import * as log from '../core/log.js';
 import { novoId } from '../core/id.js';
-import { deTexto, formatar } from '../core/dinheiro.js';
+import { deTexto, formatar, repartirDivisao } from '../core/dinheiro.js';
 import { umaVez } from './uma-vez.js';
 import { hoje, diaCurto } from '../core/datas.js';
 import { nomeDaCategoria, restanteEstornavel, dataVista } from '../core/lancamentos.js';
@@ -97,7 +97,11 @@ export function criarDevolucao({ janela, raiz, aoSalvar }) {
 
     if (editando) {
       const m = {};
-      if (valor !== editando.valor) m.valor = valor;
+      if (valor !== editando.valor) {
+        m.valor = valor;
+        // Compra dividida em categorias: a devolução acompanha a divisão dela.
+        if (compra.divisao) m.divisao = repartirDivisao(compra.divisao, valor);
+      }
       if (data !== (editando.devolvidoEm ?? editando.dataCaixa)) m.devolvidoEm = data;
       if (Object.keys(m).length) await estado.aplicarEvento('lancamento.alterado', { id: editando.id, ...m });
     } else {
@@ -109,6 +113,7 @@ export function criarDevolucao({ janela, raiz, aoSalvar }) {
         estornoDe: compra.id,
         // Herdados da compra: é o que faz o mês dela voltar a ser verdade.
         categoriaId: compra.categoriaId,
+        divisao: repartirDivisao(compra.divisao, valor),
         detalheId: compra.detalheId,
         etiquetas: compra.etiquetas ?? [],
         contaId: compra.contaId,

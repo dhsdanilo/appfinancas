@@ -12,7 +12,7 @@
 // menos as devoluções dela; renda é a receita, nunca somada ao gasto.
 
 import { hoje, fimDoMes, somarMeses, proximoMes } from './datas.js';
-import { lancados } from './lancamentos.js';
+import { lancados, partesDaCompra } from './lancamentos.js';
 import { ehProjeto } from './relatorios.js';
 
 const mesDe = (dia) => dia.slice(0, 7);
@@ -60,19 +60,28 @@ export function movimentos(estado, sel, de, ate) {
   for (const l of lancados(estado)) {
     if (!l.confirmado || l.dataCompetencia < de || l.dataCompetencia > ate) continue;
     if (l.tipo === 'despesa') {
-      const obrigatoria = estado.categorias[l.categoriaId]?.obrigatoria;
-      if (obrigatoria && !sel?.categorias?.includes(l.categoriaId)) continue;
-      if (!casa(sel, l, l)) continue;
-      saida.push({ l, valor: l.valor, natureza: 'gasto', categoriaId: l.categoriaId, detalheId: l.detalheId ?? null, etiquetas: l.etiquetas ?? [], contaId: l.contaId, projeto: ehProjeto(l) });
+      // Compra dividida em categorias: cada parte casa e conta por conta própria;
+      // `repetida` marca as partes além da primeira que entrou, para quem conta compras.
+      let primeira = true;
+      for (const p of partesDaCompra(l)) {
+        const obrigatoria = estado.categorias[p.categoriaId]?.obrigatoria;
+        if (obrigatoria && !sel?.categorias?.includes(p.categoriaId)) continue;
+        if (!casa(sel, l, { ...l, categoriaId: p.categoriaId })) continue;
+        saida.push({ l, valor: p.valor, natureza: 'gasto', categoriaId: p.categoriaId, detalheId: l.detalheId ?? null, etiquetas: l.etiquetas ?? [], contaId: l.contaId, projeto: ehProjeto(l), repetida: !primeira });
+        primeira = false;
+      }
     } else if (l.tipo === 'estorno') {
       const compra = estado.lancamentos[l.estornoDe];
       const ref = {
-        categoriaId: l.categoriaId ?? compra?.categoriaId ?? null,
         detalheId: l.detalheId ?? compra?.detalheId ?? null,
         etiquetas: l.etiquetas?.length ? l.etiquetas : compra?.etiquetas ?? [],
       };
-      if (!casa(sel, l, ref)) continue;
-      saida.push({ l, valor: -l.valor, natureza: 'gasto', ...ref, contaId: l.contaId, projeto: compra ? ehProjeto(compra) : false });
+      let primeira = true;
+      for (const p of partesDaCompra(l, l.categoriaId ?? compra?.categoriaId ?? null)) {
+        if (!casa(sel, l, { ...ref, categoriaId: p.categoriaId })) continue;
+        saida.push({ l, valor: -p.valor, natureza: 'gasto', ...ref, categoriaId: p.categoriaId, contaId: l.contaId, projeto: compra ? ehProjeto(compra) : false, repetida: !primeira });
+        primeira = false;
+      }
     } else if (l.tipo === 'receita') {
       if (!casa(sel, l, l)) continue;
       saida.push({ l, valor: l.valor, natureza: 'renda', categoriaId: l.categoriaId, detalheId: l.detalheId ?? null, etiquetas: l.etiquetas ?? [], contaId: l.contaId, projeto: false });
@@ -133,8 +142,10 @@ function agruparPor(itens, agrupar) {
       if (!mapa.has(chave)) mapa.set(chave, { chave, valor: 0, vezes: 0, lancamentos: [] });
       const g = mapa.get(chave);
       g.valor += x.valor;
-      if (x.valor > 0) g.vezes += 1;
-      g.lancamentos.push(x.l.id);
+      // Duas partes da mesma compra, no mesmo grupo (descrição, conta, etiqueta), são uma compra só.
+      const contaDeNovo = !(x.repetida && agrupar !== 'categoria');
+      if (x.valor > 0 && contaDeNovo) g.vezes += 1;
+      if (contaDeNovo) g.lancamentos.push(x.l.id);
     }
   }
   return [...mapa.values()].sort((a, b) => b.valor - a.valor);

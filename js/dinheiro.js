@@ -496,6 +496,8 @@ function pintarLancamentos() {
 function textoDaLinha(l) {
   return [
     nomeDaCategoria(app, l.categoriaId),
+    // As outras categorias de uma compra dividida também a encontram.
+    ...(l.divisao ?? []).slice(1).map((p) => nomeDaCategoria(app, p.categoriaId)),
     app.detalhes?.[l.detalheId]?.nome,
     app.contas[l.contaId]?.nome,
     app.contas[l.contaDestinoId]?.nome,
@@ -1995,6 +1997,8 @@ const ordenarPelaCompra = (lista) =>
  * como origem → destino, nunca como despesa numa conta e receita na outra.
  */
 function linhaHTML(l, ids, saldoApos = null) {
+  // Compra de mais de uma categoria: a principal, com um "+" (a divisão se vê ao abrir).
+  const categoriaDaLinha = (x) => nomeDaCategoria(app, x.categoriaId) + (x.divisao?.length > 1 ? ' +' : '');
   const est = l.projetado || l.fatura ? (l.dataCaixa < hoje() ? 'vencido' : 'previsto') : estadoDoLancamento(l);
   const conta = app.contas[l.contaId ?? l.contaDestinoId];
   const investimento = ehDeInvestimento(l);
@@ -2056,15 +2060,15 @@ function linhaHTML(l, ids, saldoApos = null) {
     onde = conta?.nome ?? '—';
   } else if (devolucao) {
     const compra = app.lancamentos[l.estornoDe];
-    oque = ['Devolução', nomeDaCategoria(app, l.categoriaId), detalhe].filter(Boolean).join(' · ');
+    oque = ['Devolução', categoriaDaLinha(l), detalhe].filter(Boolean).join(' · ');
     onde = `${conta?.nome ?? '—'}${compra ? ` · da compra de ${diaCurto(dataVista(compra))}` : ''}`;
   } else if (detalhe) {
     // Com descrição, ela é o que se lê primeiro — é o que distingue esta
     // linha das outras da mesma categoria (pedido dele, 03/10/2026).
     oque = detalhe;
-    onde = [nomeDaCategoria(app, l.categoriaId), conta?.nome ?? '—'].filter(Boolean).join(' · ');
+    onde = [categoriaDaLinha(l), conta?.nome ?? '—'].filter(Boolean).join(' · ');
   } else {
-    oque = nomeDaCategoria(app, l.categoriaId) || l.tipo;
+    oque = categoriaDaLinha(l) || l.tipo;
     onde = conta?.nome ?? '—';
     // Importado sem descrição: o texto do banco diz o que foi (design/13 §3).
     if (l.textoBanco) onde = `${l.textoBanco} · ${onde}`;

@@ -3019,6 +3019,52 @@ caso('dívida', 'o valor para quitar sai dos juros do contrato, não do valor to
   igual([foto.saldoDevedor, foto.estimado], [650000, false], 'o saldo que o banco mostra continua mandando');
 });
 
+caso('categoria', '★ compra de mais de uma categoria: os relatórios repartem o valor, o total não muda, e fundir/usar categoria enxerga a divisão', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const ev = (t, d) => estado.aplicarEvento(t, d);
+  await ev('conta.criada', { id: 'cc', nome: 'Corrente', tipo: 'corrente', saldoInicial: 1000000, dataInicial: '2027-01-01' });
+  for (const [id, nome] of [['a', 'Mercado'], ['b', 'Farmácia'], ['c', 'Casa']]) await ev('categoria.criada', { id, nome, pai: null, natureza: 'despesa' });
+  const compra = (id, valor, divisao, extra = {}) => ev('lancamento.registrado', {
+    id, tipo: 'despesa', valor, contaId: 'cc', categoriaId: 'a', divisao, dataCompetencia: '2027-03-10', dataCaixa: '2027-03-10', confirmado: true, ...extra,
+  });
+  await compra('c1', 10000, [{ categoriaId: 'a', valor: 6000 }, { categoriaId: 'b', valor: 4000 }]);
+  await compra('c2', 3000, null);
+  let e = await estado.calcular();
+
+  const g = relatorios.gastos(e, '2027-03-01', '2027-03-31');
+  const por = (lista) => lista.reduce((m, x) => m.set(x.categoriaId, (m.get(x.categoriaId) ?? 0) + x.valor), new Map());
+  igual([...por(g).entries()].sort(), [['a', 9000], ['b', 4000]], 'cada categoria fica com a sua parte');
+  igual(g.reduce((t, x) => t + x.valor, 0), 13000, 'e o total do mês é o das compras');
+  igual(g.filter((x) => x.l.id === 'c1').map((x) => x.repetida), [false, true], 'só a primeira parte conta como a compra');
+
+  const m = explorar.movimentos(e, null, '2027-03-01', '2027-03-31');
+  igual(m.reduce((t, x) => t + x.valor, 0), 13000, 'Explorar: o total também');
+  const so = explorar.movimentos(e, { categorias: ['b'] }, '2027-03-01', '2027-03-31');
+  igual(so.map((x) => [x.l.id, x.valor]), [['c1', 4000]], 'filtrar por Farmácia traz só a parte dela');
+
+  igual([listas.usos(e).categorias.get('a'), listas.usos(e).categorias.get('b'), listas.usos(e).categorias.get('c') ?? 0], [2, 1, 0], 'a categoria da parte conta como usada (não dá para apagar)');
+  igual(dinheiro.repartirDivisao([{ categoriaId: 'a', valor: 6000 }, { categoriaId: 'b', valor: 4000 }], 2500), [{ categoriaId: 'a', valor: 1500 }, { categoriaId: 'b', valor: 1000 }], 'a devolução segue a proporção');
+  igual(dinheiro.repartirDivisao(null, 100), null, 'sem divisão, nada a repartir');
+
+  // Devolução de parte: entra negativa, nas mesmas categorias.
+  await ev('lancamento.registrado', {
+    id: 'e1', tipo: 'estorno', valor: 2500, estornoDe: 'c1', contaId: 'cc', categoriaId: 'a',
+    divisao: [{ categoriaId: 'a', valor: 1500 }, { categoriaId: 'b', valor: 1000 }],
+    dataCompetencia: '2027-03-10', dataCaixa: '2027-03-15', devolvidoEm: '2027-03-15', confirmado: true,
+  });
+  e = await estado.calcular();
+  igual([...por(relatorios.gastos(e, '2027-03-01', '2027-03-31')).entries()].sort(), [['a', 7500], ['b', 3000]], 'a devolução abate de cada categoria');
+
+  // Fundir Farmácia em Mercado: a divisão vira uma categoria só; desfazer devolve a divisão.
+  await ev('categoria.fundida', { id: 'f1', de: 'b', para: 'a' });
+  e = await estado.calcular();
+  igual([e.lancamentos.c1.divisao, e.lancamentos.c1.categoriaId], [null, 'a'], 'fundida: sobra uma categoria só');
+  await ev('fusao.desfeita', { id: 'f1' });
+  e = await estado.calcular();
+  igual(e.lancamentos.c1.divisao, [{ categoriaId: 'a', valor: 6000 }, { categoriaId: 'b', valor: 4000 }], 'desfeita: a divisão volta');
+});
+
 caso('recorrência', '★ transferência de série: o que mudou, e "esta e as próximas" reajusta ou divide a série sem mexer no que já foi lançado', async () => {
   await limpar();
   await log.registrarAparelho('meu-pc');

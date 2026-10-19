@@ -9,7 +9,7 @@
 //   renda disponível = receitas − obrigatórias (D25).
 
 import { hoje, inicioDoMes, fimDoMes, somarMeses, somarDias, proximoMes } from './datas.js';
-import { lancados, visiveis, saldoReal, sinalDeSaida } from './lancamentos.js';
+import { lancados, visiveis, saldoReal, sinalDeSaida, partesDaCompra } from './lancamentos.js';
 import { ocorrenciasPrevistas, faturas, valorDaSerie } from './previsto.js';
 import { posicao, resumoDaConta, ativosDaConta, saldoAte, CLASSES, nomeDaClasse } from './investimentos.js';
 import { saldoDevedor, cronograma } from './divida.js';
@@ -41,12 +41,22 @@ export function gastos(estado, de, ate) {
   const saida = [];
   for (const l of lancados(estado)) {
     if (!l.confirmado || l.dataCompetencia < de || l.dataCompetencia > ate) continue;
+    // Compra dividida em categorias: uma linha por parte (a soma é a da compra);
+    // `repetida` marca as partes além da primeira, para quem conta compras.
     if (l.tipo === 'despesa') {
-      if (estado.categorias[l.categoriaId]?.obrigatoria) continue;
-      saida.push({ l, valor: l.valor, categoriaId: l.categoriaId, projeto: ehProjeto(l) });
+      let primeira = true;
+      for (const p of partesDaCompra(l)) {
+        if (estado.categorias[p.categoriaId]?.obrigatoria) continue;
+        saida.push({ l, valor: p.valor, categoriaId: p.categoriaId, projeto: ehProjeto(l), repetida: !primeira });
+        primeira = false;
+      }
     } else if (l.tipo === 'estorno') {
       const compra = estado.lancamentos[l.estornoDe];
-      saida.push({ l, valor: -l.valor, categoriaId: l.categoriaId ?? compra?.categoriaId ?? null, projeto: compra ? ehProjeto(compra) : false });
+      let primeira = true;
+      for (const p of partesDaCompra(l, l.categoriaId ?? compra?.categoriaId ?? null)) {
+        saida.push({ l, valor: -p.valor, categoriaId: p.categoriaId, projeto: compra ? ehProjeto(compra) : false, repetida: !primeira });
+        primeira = false;
+      }
     }
   }
   return saida;
@@ -415,15 +425,19 @@ export function paraOndeVai(estado, de, ate, meses = 1) {
   let total = 0;
   for (const g of lista) {
     total += g.valor;
+    // Uma compra dividida em categorias é uma compra só: conta uma vez, mesmo com várias partes.
+    const uma = g.repetida ? 0 : 1;
     for (const t of g.l.etiquetas ?? []) {
       if (!etiquetas.has(t)) etiquetas.set(t, { etiquetaId: t, valor: 0, vezes: 0, categorias: new Set(), lancamentos: [] });
       const x = etiquetas.get(t);
-      x.valor += g.valor; x.vezes += 1; x.categorias.add(g.categoriaId); x.lancamentos.push(g.l.id);
+      x.valor += g.valor; x.vezes += uma; x.categorias.add(g.categoriaId);
+      if (uma) x.lancamentos.push(g.l.id);
     }
     if (g.l.detalheId) {
       if (!descricoes.has(g.l.detalheId)) descricoes.set(g.l.detalheId, { detalheId: g.l.detalheId, valor: 0, vezes: 0, categorias: new Map(), lancamentos: [] });
       const x = descricoes.get(g.l.detalheId);
-      x.valor += g.valor; x.vezes += g.l.tipo === 'despesa' ? 1 : 0; somar(x.categorias, g.categoriaId, g.valor); x.lancamentos.push(g.l.id);
+      x.valor += g.valor; x.vezes += g.l.tipo === 'despesa' ? uma : 0; somar(x.categorias, g.categoriaId, g.valor);
+      if (uma) x.lancamentos.push(g.l.id);
     }
     const titular = estado.contas[g.l.contaId]?.titular ?? '';
     somar(titulares, titular, g.valor);

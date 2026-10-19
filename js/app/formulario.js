@@ -12,7 +12,7 @@
 // só no modo correção que aparecem as etiquetas, porque etiquetar é refino, não
 // captura (§2): ninguém pensa em "de qual objeto é isso" na fila do mercado.
 
-import { valorLancavel, formatar } from '../core/dinheiro.js';
+import { valorLancavel, formatar, repartirDivisao } from '../core/dinheiro.js';
 import { novoId } from '../core/id.js';
 import * as log from '../core/log.js';
 import * as estado from '../core/estado.js';
@@ -30,6 +30,7 @@ import { umaVez } from './uma-vez.js';
 import { areaDaConta, opcoesDeConta, categoriaNaArea, areasParaConta } from './areas.js';
 import { envelopesAtivos, envelopesNoLugar, lugarDaConta } from '../core/envelopes.js';
 import { chave, idDaRegra } from '../core/importar.js';
+import { ligarDivisao, MARCACAO_DIVISAO } from './divisao-categorias.js';
 
 // As peças do formulário. O térreo (captura rápida do celular) começa pelo
 // valor, com o teclado já aberto — três toques (03-alimentacao §1). O "Novo
@@ -143,6 +144,7 @@ const P = {
       <div class="chips todas" data-papel="todas" role="group" aria-label="Todas as etiquetas" hidden></div>
     </div>
 
+    ${MARCACAO_DIVISAO}
     <div class="linha-refino" data-papel="linha-parcelas">
       <span class="rotulo-etiquetas">parcelas</span>
       <input type="number" class="parcelas" data-papel="parcelas" min="1" max="99" value="1"
@@ -191,6 +193,7 @@ const P = {
       <div class="chips todas" data-papel="todas" role="group" aria-label="Todas as etiquetas" hidden></div>
     </div>
 
+    ${MARCACAO_DIVISAO}
     <div class="linha-refino" data-papel="linha-parcelas">
       <span class="rotulo-etiquetas">parcelas</span>
       <input type="number" class="parcelas" data-papel="parcelas" min="1" max="99" value="1"
@@ -327,6 +330,7 @@ export async function criarFormulario({
       if (app && custeadoPor) pintarEnvelope();
       pintarReajuste();
       if (app) pintarSimulador();
+      if (app) pintarDivisao();
     },
     aoConfirmar: async (e) => {
       if (!pronto()) { valor.desfocar(); return; }
@@ -338,6 +342,40 @@ export async function criarFormulario({
   });
 
   const pronto = () => valorLancavel(valor.centavos()) && categoriaId && contaId;
+
+  // A compra de mais de uma categoria (só no completo, só em despesa): a barra
+  // reparte o valor; a principal é a categoria escolhida lá em cima.
+  const divisao = ligarDivisao(raiz, {
+    total: () => valor.centavos(),
+    categorias: () => {
+      const ehGrupo = (c) => Object.values(app.categorias).some((o) => o.pai === c.id);
+      return categoriasDaVez(ehGrupo).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    },
+    nome: (id) => app?.categorias[id]?.nome ?? '',
+    criar: criarCategoriaExtra,
+  });
+
+  function pintarDivisao() {
+    const pode = !rapido && tipo === 'despesa' && Boolean(categoriaId);
+    divisao.mostrar(pode);
+    if (pode) divisao.pintar(categoriaId); else divisao.limpar();
+  }
+
+  /** Categoria acrescentada à divisão: acha pelo nome ou cria, sem trocar a principal. */
+  async function criarCategoriaExtra(texto) {
+    const nome = texto.trim();
+    if (!nome) return null;
+    const chaveNome = chaveDoNome(nome);
+    let existente = Object.values(app.categorias).find((c) => chaveDoNome(c.nome) === chaveNome && c.natureza === tipo);
+    if (existente?.arquivada) await estado.aplicarEvento('categoria.arquivada', { id: existente.id, arquivada: false });
+    if (!existente) {
+      const id = novoId('cat');
+      await estado.aplicarEvento('categoria.criada', { id, nome, pai: null, natureza: tipo, areas: areasParaConta(app.contas[contaId]) });
+      existente = { id };
+    }
+    app = await estado.calcular();
+    return existente.id;
+  }
 
   // ── listas ──────────────────────────────────────────────────────────────
 
@@ -917,6 +955,7 @@ export async function criarFormulario({
     pintarParcelas();
     pintarRepete();
     pintarEnvelope();
+    pintarDivisao();
   }
 
   // O que o envelope tem na conta que paga: calculado só quando muda o
@@ -1194,6 +1233,9 @@ Gravar assim?`)) return false;
     });
     // Gasto pago por envelope é extraordinário por construção (D19).
     if (mudancas.custeadoPor !== undefined) mudancas.extraordinario = Boolean(mudancas.custeadoPor);
+    // A divisão entre categorias (o valor ou a categoria principal mudando a refaz).
+    const novaDivisao = tipo === 'despesa' && !rapido ? divisao.ler(categoriaId) : null;
+    if (JSON.stringify(novaDivisao) !== JSON.stringify(editando.divisao ?? null)) mudancas.divisao = novaDivisao;
 
     const mexeuNaSerie = await aplicarMudancaDeRepete();
 
@@ -1240,7 +1282,9 @@ Gravar assim?`)) return false;
     const comuns = Object.fromEntries(
       Object.entries(mudancas).filter(([campo]) => DA_COMPRA.includes(campo))
     );
-    if (!Object.keys(comuns).length) return;
+    // A divisão entre categorias também é da compra: cada parcela a leva na mesma proporção.
+    const mudouDivisao = mudancas.divisao !== undefined;
+    if (!Object.keys(comuns).length && !mudouDivisao) return;
 
     const irmas = Object.values(app.lancamentos).filter(
       (l) =>
@@ -1249,7 +1293,11 @@ Gravar assim?`)) return false;
         l.parcela?.compraId === editando.parcela.compraId
     );
     for (const irma of irmas) {
-      await estado.aplicarEvento('lancamento.alterado', { id: irma.id, ...comuns });
+      await estado.aplicarEvento('lancamento.alterado', {
+        id: irma.id,
+        ...comuns,
+        ...(mudouDivisao ? { divisao: repartirDivisao(mudancas.divisao, irma.valor) } : {}),
+      });
     }
   }
 
@@ -1271,6 +1319,8 @@ Gravar assim?`)) return false;
       valor: valor.centavos(),
       contaId,
       categoriaId,
+      // Compra de mais de uma categoria: vale em cada parcela (o valor é o da parcela).
+      divisao: tipo === 'despesa' && !rapido ? divisao.ler(categoriaId) : null,
       detalheId,
       etiquetas: [...etiquetas],
       observacao: el('observacao').value.trim(),
@@ -1328,6 +1378,7 @@ Gravar assim?`)) return false;
     // a categoria: a próxima nota raramente é da mesma.
     detalheId = null;
     etiquetas = [];
+    divisao.limpar();
     el('observacao').value = '';
     el('parcelas').value = '1';
     repete = 'nao';
@@ -1818,6 +1869,7 @@ Gravar assim?`)) return false;
       custeadoPor = l.custeadoPor ?? null;
       escolhaComprador = null;
       valor.definir(l.valor);
+      divisao.definir(l.divisao ?? null, l.valor);
       el('desfazer').hidden = true;
       el('nova-etiqueta').value = '';
       // O "repete" mostra como o lançamento está: dentro de uma série viva,
@@ -1944,6 +1996,7 @@ Gravar assim?`)) return false;
       el('parcelas').value = '1';
       el('observacao').value = '';
       valor.limpar();
+      divisao.limpar();
       el('desfazer').hidden = true;
       pintarData();
       pintarRefino();

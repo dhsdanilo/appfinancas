@@ -27,6 +27,8 @@ export function usos(estado) {
 
   for (const l of visiveis(estado)) {
     soma(categorias, l.categoriaId);
+    // Compra dividida: as outras categorias dela também a usam.
+    for (const p of l.divisao ?? []) if (p.categoriaId !== l.categoriaId) soma(categorias, p.categoriaId);
     soma(contas, l.contaId);
     // A transferência toca duas contas, e pesa nas duas.
     soma(contas, l.contaDestinoId);
