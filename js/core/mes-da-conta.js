@@ -158,6 +158,32 @@ export function abatimentoDaAberta(estado, cartaoId, valorDaAberta, dia = hoje()
 }
 
 /**
+ * O cofrinho do cartão olhado mês a mês, a partir do mês em que vence a fatura aberta
+ * (`inicio`). Nesse mês ele paga o que puder da aberta; o que sobra (`sobra`) vai
+ * cobrindo as seguintes, e o que falta para a fatura do mês seguinte (`falta`) é o que se
+ * precisa guardar neste mês — o já cadastrado dela, parcelas e recorrentes, menos a sobra.
+ * Guardado isso, a fatura do mês seguinte chega paga: nesse mês ela não pesa na conta, e é
+ * a próxima que se passa a guardar. Null antes de `inicio`, ou sem cofrinho.
+ */
+function cadeiaDoCofrinho(estado, cartao, mes, dia) {
+  if (!temCofrinho(cartao)) return null;
+  const prov = provisaoDoCartao(estado, cartao.id, dia);
+  const lista = faturas(estado, cartao.id, dia) ?? [];
+  const aberta = lista.find((f) => f.situacao === 'aberta');
+  if (!prov || !aberta) return null;
+  const inicio = aberta.vencimento.slice(0, 7);
+  if (mes < inicio) return null;
+  const fechadas = lista.filter((f) => f.situacao === 'fechada').reduce((t, f) => t + f.aPagar, 0);
+  const conhecida = (m) => faturasNoPeriodo(estado, cartao.id, `${m}-01`, fimDoMes(`${m}-01`), dia)[0] ?? null;
+  let sobra = Math.max(0, prov.provisionado - fechadas - (conhecida(inicio)?.previsto ?? 0));
+  for (let m = inicio; m < mes; m = proximoMes(m)) {
+    sobra = Math.max(0, sobra - (conhecida(proximoMes(m))?.previsto ?? 0));
+  }
+  const seguinte = conhecida(proximoMes(mes));
+  return { inicio, sobra, falta: Math.max(0, (seguinte?.previsto ?? 0) - sobra), seguinte };
+}
+
+/**
  * O que vai sair das contas `ids` dentro de um mês seguinte: as faturas que
  * vencem nele (com as recorrentes do cartão que caem nelas), as recorrentes,
  * as parcelas de dívida e os agendados.
@@ -231,29 +257,22 @@ export function saidasDoMes(estado, ids, mes, dia = hoje()) {
     if (saida > 0) agendados += saida;
   }
 
-  // O abatimento: o cofrinho cobre primeiro as fechadas que ainda faltam pagar,
-  // e o que sobra abate a aberta — até o valor dela, nunca além.
-  for (const [cartaoId, aberta] of abertas) {
-    const x = porCartao.get(cartaoId);
-    const cartao = estado.contas[cartaoId];
-    if (!x || !aberta.vence || !temCofrinho(cartao)) continue;
-    x.abatido = abatimentoDaAberta(estado, cartaoId, aberta.aPagar + aberta.recorrentes, dia);
-  }
-
-  // A fatura seguinte: o cofrinho pagou a deste mês, e o que já se sabe da próxima
-  // (parcelas e recorrentes cadastradas) precisa ser guardado nele — menos o que sobrou.
+  // O cofrinho, mês a mês (cadeiaDoCofrinho): no mês em que a aberta vence, ele cobre o que
+  // puder dela; nos seguintes, a fatura do mês já foi guardada no mês anterior (a reserva
+  // de lá) e não pesa de novo — o que pesa é guardar a que vem depois.
   const proximo = proximoMes(mes);
   const reservas = [];
-  for (const [cartaoId, aberta] of abertas) {
-    const cartao = estado.contas[cartaoId];
-    if (!aberta.vence || !temCofrinho(cartao)) continue;
-    const prov = provisaoDoCartao(estado, cartaoId, dia);
-    if (!prov) continue;
-    const fechadas = (faturas(estado, cartaoId, dia) ?? []).filter((f) => f.situacao === 'fechada').reduce((t, f) => t + f.aPagar, 0);
-    const sobra = Math.max(0, prov.provisionado - fechadas - (aberta.aPagar + aberta.recorrentes));
-    const seguinte = faturasNoPeriodo(estado, cartaoId, `${proximo}-01`, fimDoMes(`${proximo}-01`), dia)[0];
-    const falta = Math.max(0, (seguinte?.previsto ?? 0) - sobra);
-    if (falta > 0) reservas.push({ cartao, valor: falta, vencimento: seguinte.vencimento, estimado: Boolean(seguinte.estimado) });
+  for (const c of cartoes) {
+    const cadeia = cadeiaDoCofrinho(estado, c, mes, dia);
+    if (!cadeia) continue;
+    const x = porCartao.get(c.id);
+    if (x) {
+      const aberta = abertas.get(c.id);
+      x.abatido = cadeia.inicio === mes
+        ? abatimentoDaAberta(estado, c.id, (aberta?.aPagar ?? 0) + (aberta?.recorrentes ?? 0), dia)
+        : x.valor + x.recorrentes;
+    }
+    if (cadeia.falta > 0) reservas.push({ cartao: c, valor: cadeia.falta, vencimento: cadeia.seguinte.vencimento, estimado: Boolean(cadeia.seguinte.estimado) });
   }
   const reserva = reservas.reduce((t, x) => t + x.valor, 0);
   if (reservas.some((x) => x.estimado)) estimado = true;

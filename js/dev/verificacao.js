@@ -1410,6 +1410,17 @@ caso('previsto', '★ cofrinho pagou a fatura do mês: o que se sabe da seguinte
   const r = mesDaConta.resultadoDoMes(e, new Set(['k1']), '2027-04', dia);
   igual(r.resultado, r.entra.total - 100000, 'o resultado do mês desconta o que falta guardar');
 
+  // Os meses seguintes em cadeia: a fatura de maio já foi guardada em abril e não pesa de novo; em maio guarda-se a de junho.
+  await ev('lancamento.registrado', { id: 'q', tipo: 'despesa', valor: 50000, contaId: 'c1', categoriaId: 'x', dataCompetencia: '2027-05-10', dataCaixa: '2027-05-10', confirmado: false });
+  e = await estado.calcular();
+  const mesDe = (m) => mesDaConta.saidasDoMes(e, new Set(['k1']), m, dia);
+  igual([mesDe('2027-04').reserva], [100000], 'abril: a de maio (2.000) menos a sobra do cofrinho (1.000)');
+  const maio = mesDe('2027-05');
+  igual([maio.faturas[0].valor, maio.faturas[0].abatido, maio.total, maio.reserva, maio.proximoMes], [200000, 200000, 0, 50000, '2027-06'], 'maio: a fatura de maio já estava guardada (R$ 0 na conta) e guarda-se a de junho (500)');
+  const junho = mesDe('2027-06');
+  igual([junho.faturas[0].valor, junho.faturas[0].abatido, junho.total, junho.reserva], [50000, 50000, 0, 0], 'junho: idem, e nada a guardar para julho');
+  igual(mesDe('2027-03').reserva, 0, 'antes do mês em que a aberta vence, não há cadeia');
+
   // Cofrinho com menos: sobra zero, guarda a seguinte inteira.
   await ev('envelope.alocado', { id: 'x3', lugarId: 'cdb', de: 'fat', para: null, valor: 300000, data: '2027-03-02' });
   e = await estado.calcular();
