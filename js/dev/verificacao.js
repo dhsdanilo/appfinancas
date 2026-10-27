@@ -3019,6 +3019,49 @@ caso('dívida', 'o valor para quitar sai dos juros do contrato, não do valor to
   igual([foto.saldoDevedor, foto.estimado], [650000, false], 'o saldo que o banco mostra continua mandando');
 });
 
+caso('cartão', '★ compra pendente (o banco ainda não debitou): fora do total da fatura, dentro do limite; a baixa a leva para a fatura do dia, e desfazer volta', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const pend = await import('../core/pendencia.js');
+  const ev = (t, d) => estado.aplicarEvento(t, d);
+  await ev('conta.criada', { id: 'cc', nome: 'Corrente', tipo: 'corrente', saldoInicial: 1000000, dataInicial: '2027-01-01' });
+  await ev('conta.criada', { id: 'ct', nome: 'Cartão', tipo: 'cartao', diaFechamento: 3, diaVencimento: 10, pagaCom: 'cc', limite: 500000, dataInicial: '2027-01-01' });
+  const compra = (id, valor, extra = {}) => ev('lancamento.registrado', {
+    id, tipo: 'despesa', valor, contaId: 'ct', categoriaId: null, dataCompetencia: '2027-03-01', dataCaixa: '2027-03-01', confirmado: true, ...extra,
+  });
+  await compra('n1', 10000);
+  await compra('p1', 5000, { confirmado: false, pendente: true });
+  let e = await estado.calcular();
+  const aberta = (dia) => previsto.faturas(e, 'ct', dia).find((f) => f.situacao === 'aberta');
+  igual([aberta('2027-03-02').total, aberta('2027-03-02').pendentes.map((l) => l.id)], [10000, ['p1']], 'a pendente fica fora do total da fatura');
+  let r = previsto.resumoDoCartao(e, 'ct', '2027-03-02');
+  igual([r.divida, r.pendente, r.limiteLivre], [15000, 5000, 485000], 'mas pesa no limite');
+
+  // O banco debitou depois do fechamento (dia 3): cai na fatura seguinte, a do dia da baixa.
+  const baixa = pend.dadosDaBaixa(e, e.lancamentos.p1, '2027-03-05');
+  igual([baixa.confirmado, baixa.pendente, baixa.faturaDesloca, baixa.baixaDe.faturaDesloca], [true, false, 1, 0], 'baixa depois do fechamento: a fatura seguinte');
+  await ev('lancamento.alterado', { id: 'p1', ...baixa });
+  e = await estado.calcular();
+  const depois = previsto.faturas(e, 'ct', '2027-03-06');
+  igual(depois.map((f) => [f.fechamento, f.total]), [['2027-03-03', 10000], ['2027-04-03', 5000]], 'a compra entrou na fatura de abril, a data dela continua 01/03');
+  igual(e.lancamentos.p1.dataCompetencia, '2027-03-01', 'a data da compra não muda');
+
+  // Desfazer a baixa: volta a pendente e à fatura de antes.
+  await ev('lancamento.alterado', { id: 'p1', ...pend.dadosDeFicarPendente(e, e.lancamentos.p1) });
+  e = await estado.calcular();
+  igual([e.lancamentos.p1.pendente, e.lancamentos.p1.confirmado, e.lancamentos.p1.faturaDesloca, e.lancamentos.p1.baixaDe], [true, false, 0, null], 'voltou a pendente');
+  igual(previsto.faturas(e, 'ct', '2027-03-06').find((f) => f.fechamento === '2027-03-03').total, 10000, 'fora do total de novo');
+
+  // Fora do cartão: agendado com data futura cai no dia da baixa; ↩ devolve a data.
+  await ev('lancamento.registrado', { id: 'ag', tipo: 'despesa', valor: 3000, contaId: 'cc', categoriaId: null, dataCompetencia: '2027-04-20', dataCaixa: '2027-04-20', confirmado: false });
+  e = await estado.calcular();
+  const b2 = pend.dadosDaBaixa(e, e.lancamentos.ag, '2027-03-10');
+  igual([b2.dataCaixa, b2.baixaDe.dataCaixa], ['2027-03-10', '2027-04-20'], 'baixa de agendado: cai no dia, guardando a data');
+  await ev('lancamento.alterado', { id: 'ag', ...b2 });
+  e = await estado.calcular();
+  igual(pend.dadosDeFicarPendente(e, e.lancamentos.ag).dataCaixa, '2027-04-20', 'desfazer devolve a data original');
+});
+
 caso('categoria', '★ compra de mais de uma categoria: os relatórios repartem o valor, o total não muda, e fundir/usar categoria enxerga a divisão', async () => {
   await limpar();
   await log.registrarAparelho('meu-pc');

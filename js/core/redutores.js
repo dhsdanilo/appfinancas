@@ -26,7 +26,7 @@ export const AREAS_PADRAO = ['caixa', 'cartoes'];
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 34;
+export const VERSAO_ESTADO = 35;
 
 /** Anota de que dia em diante um lugar é inteiro de um envelope (ou de nenhum). Sem data = desde sempre. */
 function marcarInteiro(e, lugarId, envelopeId, desde) {
@@ -809,6 +809,10 @@ export const redutores = {
       // Confirmado = o dinheiro se moveu. Não é escolhido: vem da origem e da
       // data (D2). O ESTADO (realizado/previsto/vencido) é calculado disto.
       confirmado: d.confirmado !== false,
+      // Pendente: existe, mas o dinheiro ainda não se moveu (o banco não debitou). No
+      // cartão, fica fora do total da fatura. `baixaDe`: de onde a baixa veio, para desfazê-la.
+      pendente: d.pendente ?? false,
+      baixaDe: d.baixaDe ?? null,
       origemValor: d.origemValor ?? 'digitado',
       valorEstimadoOriginal: d.valorEstimadoOriginal ?? null,
       recorrenciaId: d.recorrenciaId ?? null,

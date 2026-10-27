@@ -42,6 +42,8 @@ export function faturas(estado, cartaoId, dia = hoje(), { pagoAte = null } = {})
         vencimento: vencimento ?? vencimentoDoCiclo(conta, fechamento),
         total: 0,
         itens: [],
+        // Compras que o banco ainda não debitou: ficam fora do total (design/11 §pendente).
+        pendentes: [],
       });
     }
     return porCiclo.get(fechamento);
@@ -64,6 +66,7 @@ export function faturas(estado, cartaoId, dia = hoje(), { pagoAte = null } = {})
   for (const l of doCartao) {
     if (l.contaId === cartaoId && l.cicloFatura) {
       const c = ciclo(l.cicloFatura);
+      if (l.pendente) { c.pendentes.push(l); continue; }
       c.total += sinalDeSaida(l);
       c.itens.push(l);
     } else if (l.contaDestinoId === cartaoId) {
@@ -97,8 +100,11 @@ export function resumoDoCartao(estado, cartaoId, dia = hoje()) {
 
   const fechadas = lista.filter((c) => c.situacao === 'fechada' && c.aPagar > 0);
   const aberta = lista.find((c) => c.situacao === 'aberta');
-  const divida = lista.reduce((t, c) => t + c.aPagar, 0);
+  // O que o banco ainda não debitou fora da fatura, mas já pesa no limite.
+  const pendente = lista.reduce((t, c) => t + c.pendentes.reduce((s, l) => s + sinalDeSaida(l), 0), 0);
+  const divida = lista.reduce((t, c) => t + c.aPagar, 0) + pendente;
   return {
+    pendente,
     fechada: fechadas.length
       ? {
           aPagar: fechadas.reduce((t, c) => t + c.aPagar, 0),

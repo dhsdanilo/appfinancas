@@ -10,7 +10,7 @@ import { novoId } from '../core/id.js';
  * @param {object} o  a ocorrência prevista (js/core/previsto.js)
  * @param {{ valor?: number, confirmado?: boolean, dataCaixa?: string }} [opcoes]
  */
-export async function lancarOcorrencia(o, { valor = o.valor, confirmado = true, dataCaixa = o.dataCompetencia } = {}) {
+export async function lancarOcorrencia(o, { valor = o.valor, confirmado = true, dataCaixa = o.dataCompetencia, baixaDe = null } = {}) {
   const ap = await log.aparelho();
   await estado.aplicarEvento('lancamento.registrado', {
     id: novoId('lan'),
@@ -25,6 +25,7 @@ export async function lancarOcorrencia(o, { valor = o.valor, confirmado = true, 
     dataCompetencia: o.dataCompetencia,
     dataCaixa,
     confirmado,
+    baixaDe,
     // O estimado e o realizado ficam os dois: sem isso a R18 é impossível
     // de reconstruir depois (03 §5).
     origemValor: valor === o.valor ? o.origemValor ?? 'digitado' : 'digitado',

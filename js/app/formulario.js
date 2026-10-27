@@ -31,6 +31,7 @@ import { areaDaConta, opcoesDeConta, categoriaNaArea, areasParaConta } from './a
 import { envelopesAtivos, envelopesNoLugar, lugarDaConta } from '../core/envelopes.js';
 import { chave, idDaRegra } from '../core/importar.js';
 import { ligarDivisao, MARCACAO_DIVISAO } from './divisao-categorias.js';
+import { dadosDaBaixa, dadosDeFicarPendente } from '../core/pendencia.js';
 
 // As peças do formulário. O térreo (captura rápida do celular) começa pelo
 // valor, com o teclado já aberto — três toques (03-alimentacao §1). O "Novo
@@ -170,6 +171,10 @@ const P = {
       <span class="pista-repete" data-papel="pista-envelope"></span>
     </div>
 
+    <label class="linha-refino pendente-compra" data-papel="linha-pendente">
+      <span class="rotulo-etiquetas">pendente</span>
+      <input type="checkbox" data-papel="pendente"> ainda não debitou / não saiu da conta
+    </label>
     <div class="linha-refino">
       <span class="rotulo-etiquetas">obs</span>
       <input type="text" class="observacao" data-papel="observacao" autocomplete="off"
@@ -219,6 +224,10 @@ const P = {
       <span class="pista-repete" data-papel="pista-envelope"></span>
     </div>
 
+    <label class="linha-refino pendente-compra" data-papel="linha-pendente">
+      <span class="rotulo-etiquetas">pendente</span>
+      <input type="checkbox" data-papel="pendente"> ainda não debitou / não saiu da conta
+    </label>
     <div class="linha-refino">
       <span class="rotulo-etiquetas">obs</span>
       <input type="text" class="observacao" data-papel="observacao" autocomplete="off"
@@ -1233,6 +1242,15 @@ Gravar assim?`)) return false;
     });
     // Gasto pago por envelope é extraordinário por construção (D19).
     if (mudancas.custeadoPor !== undefined) mudancas.extraordinario = Boolean(mudancas.custeadoPor);
+    // Pendente: marcar guarda como estava e para de contar; desmarcar é a baixa (no cartão, a fatura do dia).
+    const pendenteAgora = el('pendente').checked && (tipo === 'despesa' || tipo === 'receita');
+    if (pendenteAgora !== Boolean(editando.pendente)) {
+      const mudou = pendenteAgora ? dadosDeFicarPendente(app, editando) : dadosDaBaixa(app, editando);
+      // Se a data ou a fatura foram mexidas nesta mesma correção, o que se escolheu vale.
+      if (mudancas.dataCaixa !== undefined) delete mudou.dataCaixa;
+      if (mudancas.faturaDesloca !== undefined) delete mudou.faturaDesloca;
+      Object.assign(mudancas, mudou);
+    }
     // A divisão entre categorias (o valor ou a categoria principal mudando a refaz).
     const novaDivisao = tipo === 'despesa' && !rapido ? divisao.ler(categoriaId) : null;
     if (JSON.stringify(novaDivisao) !== JSON.stringify(editando.divisao ?? null)) mudancas.divisao = novaDivisao;
@@ -1313,6 +1331,8 @@ Gravar assim?`)) return false;
     // No cartão a parcela é realizada desde a compra (D4): o que vem depois é
     // o pagamento, não o gasto. Na corrente, parcela futura é compromisso.
     const noCartao = app.contas[contaId]?.tipo === 'cartao';
+    // "Ainda não debitou": existe, mas não conta como dinheiro que saiu (e, no cartão, fica fora da fatura).
+    const pendente = el('pendente').checked && (tipo === 'despesa' || tipo === 'receita');
 
     const comum = {
       tipo,
@@ -1346,8 +1366,10 @@ Gravar assim?`)) return false;
         ...comum,
         dataCompetencia: dia,
         dataCaixa: dia,
-        // Não é escolha de ninguém: vem da origem e da data (D2).
-        confirmado: nasceConfirmado({ manual: true, dataCaixa: noCartao ? data : dia }),
+        // Não é escolha de ninguém: vem da origem e da data (D2) — a não ser que o
+        // banco ainda não tenha debitado: então fica pendente.
+        confirmado: pendente ? false : nasceConfirmado({ manual: true, dataCaixa: noCartao ? data : dia }),
+        pendente,
         parcela: compraId ? { compraId, numero: i + 1, total: quantas } : null,
       });
     }
@@ -1379,6 +1401,7 @@ Gravar assim?`)) return false;
     detalheId = null;
     etiquetas = [];
     divisao.limpar();
+    el('pendente').checked = false;
     el('observacao').value = '';
     el('parcelas').value = '1';
     repete = 'nao';
@@ -1870,6 +1893,7 @@ Gravar assim?`)) return false;
       escolhaComprador = null;
       valor.definir(l.valor);
       divisao.definir(l.divisao ?? null, l.valor);
+      el('pendente').checked = Boolean(l.pendente);
       el('desfazer').hidden = true;
       el('nova-etiqueta').value = '';
       // O "repete" mostra como o lançamento está: dentro de uma série viva,
@@ -1997,6 +2021,7 @@ Gravar assim?`)) return false;
       el('observacao').value = '';
       valor.limpar();
       divisao.limpar();
+      el('pendente').checked = false;
       el('desfazer').hidden = true;
       pintarData();
       pintarRefino();

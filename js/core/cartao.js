@@ -66,5 +66,5 @@ export function datarNoCartao(l, conta) {
   l.cicloFatura = fechamento;
   l.dataCaixa = vencimento;
   l.dataVencimento = vencimento;
-  if (l.parcela) l.confirmado = true;
+  if (l.parcela && !l.pendente) l.confirmado = true;
 }

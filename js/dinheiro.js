@@ -21,6 +21,7 @@ import { criarRecebimento } from './app/recebimento.js';
 import { linhasDoHolerite, lancadosNoMes, ehAvulsa } from './core/holerite.js';
 import { situacao, saldoDevedor, jurosDaParcela, cronograma, simularAmortizacao, simularQuitacao } from './core/divida.js';
 import { fotografar, amortizar, quitar, pularParcela } from './app/contrato.js';
+import { dadosDaBaixa, dadosDeFicarPendente } from './core/pendencia.js';
 import { lancarOcorrencia } from './app/ocorrencia.js';
 import { criarJanelaDoAtivo } from './app/ativo.js';
 import { iniciarPaginaDoAtivo } from './app/ativo-detalhe.js';
@@ -875,7 +876,9 @@ function faturaDoMes(c) {
   const f = faturasNoPeriodo(app, c.id, `${vista.mes}-01`, fimDoMes(`${vista.mes}-01`))[0];
   if (!f) return null;
   const aVir = f.projetadas.reduce((t, o) => t + sinalDeSaida(o), 0);
-  return { ...f, previsto0: f.total + aVir };
+  // Pendente: comprado, mas o banco ainda não debitou — fora do total, dito à parte.
+  const pendente = (f.pendentes ?? []).reduce((t, l) => t + sinalDeSaida(l), 0);
+  return { ...f, previsto0: f.total + aVir, pendente };
 }
 
 /**
@@ -901,14 +904,15 @@ function blocoLeveDoCartao(c) {
     const situacao = f.situacao === 'aberta' ? 'aberta' : f.situacao === 'futura' ? 'por vir' : f.aPagar > 0 ? (f.vencimento < hoje() ? 'vencida' : 'fechada') : 'paga';
     const til = f.estimado ? '~' : '';
     const detalhes = [`fecha ${diaCurto(f.fechamento)} · vence ${diaCurto(f.vencimento)}`];
-    if (f.previsto0 !== f.total) detalhes.push(`já lançado ${formatar(f.total)}`);
     if (f.situacao === 'fechada' && f.pago) detalhes.push(`pago ${formatar(f.pago)}${f.aPagar > 0 ? ` · falta ${formatar(f.aPagar)}` : ''}`);
     const paga = f.aPagar > 0 && f.situacao !== 'futura'
       ? `<button type="button" class="principal" data-pagar="${escapar(c.id)}" data-valor="${f.aPagar}">Pagar fatura</button>` : '';
     fatura = `<div class="fatura-destaque ${situacao === 'vencida' ? 'vencida' : ''}">
         <div>
           <div class="rotulo-numero">fatura de ${escapar(mesNome)} · ${situacao}</div>
-          <div class="valor-grande">${til}${formatar(f.previsto0)}</div>
+          <div class="valor-grande">${formatar(f.total)}</div>
+          ${f.previsto0 !== f.total ? `<div class="valor-previsto">com previstos ${til}${formatar(f.previsto0)}</div>` : ''}
+          ${f.pendente ? `<div class="valor-previsto">pendente de débito ${formatar(f.pendente)} · fora do total</div>` : ''}
           <div class="fino">${detalhes.join(' · ')}</div>
         </div>
         ${paga}
@@ -1015,8 +1019,11 @@ function blocoDosCartoes(cartoes) {
     const partes = [numeroDaFaixa(`fatura de ${mesNome}`, situacao)];
     if (um) partes.push(numeroDaFaixa('fecha · vence', `${diaCurto(f.fechamento)} · ${diaCurto(f.vencimento)}`));
     const estimado = fs.some((x) => x.f.estimado);
-    partes.push(numeroDaFaixa('total', `${estimado ? '~' : ''}${formatar(total)}`));
-    if (total !== lancado) partes.push(numeroDaFaixa('já lançado', formatar(lancado)));
+    // O valor real (já lançado) é o total; com os previstos e o pendente vêm depois.
+    partes.push(numeroDaFaixa('total', formatar(lancado)));
+    if (total !== lancado) partes.push(numeroDaFaixa('com previstos', `${estimado ? '~' : ''}${formatar(total)}`));
+    const pendente = fs.reduce((t, x) => t + x.f.pendente, 0);
+    if (pendente) partes.push(numeroDaFaixa('pendente de débito', formatar(pendente)));
     if (f.situacao === 'fechada' || !um) {
       partes.push(numeroDaFaixa('pago', formatar(pago)));
       if (aPagar > 0 && pago > 0) partes.push(numeroDaFaixa('falta', formatar(aPagar)));
@@ -2081,7 +2088,7 @@ function linhaHTML(l, ids, saldoApos = null) {
     if (l.custeadoPor && app.envelopes?.[l.custeadoPor]) onde += ` · envelope ${app.envelopes[l.custeadoPor].nome}`;
   }
   const rotuloEstado = (l.corrigida ? ' · corrigida' : '') + (l.caiuSozinha ? ' · caiu sozinha' : '') +
-    (est === 'realizado' ? (l.automatico ? ' · automática' : '') : ` · ${l.projetado ? 'previsto' : est}`);
+    (est === 'realizado' ? (l.automatico ? ' · automática' : '') : ` · ${l.projetado ? 'previsto' : l.pendente ? 'pendente de débito' : est}`);
 
   const parcela = l.parcela ? `<span class="parcela">${l.parcela.numero}/${l.parcela.total}</span>` : '';
   const etiquetas = (l.etiquetas ?? [])
@@ -2122,14 +2129,18 @@ function linhaHTML(l, ids, saldoApos = null) {
   // futuro — vira lançamento e cai na conta; o agendado que já está gravado é
   // confirmado. A vaga do botão existe em TODA linha, para os valores não saírem do prumo.
   const baixaDoPrevisto = l.projetado && l.recorrenciaId && !l.automatico;
-  const baixaDoAgendado = !l.projetado && !l.automatico && !l.fatura && !l.liquido && !l.confirmado && !l.cicloFatura && l.tipo !== 'ajuste_caixa';
+  const baixaDoAgendado = !l.projetado && !l.automatico && !l.fatura && !l.liquido && !l.confirmado && (!l.cicloFatura || l.pendente) && l.tipo !== 'ajuste_caixa';
+  // A baixa dada por aqui se desfaz: volta a pendente, como estava antes dela.
+  const desfazivel = !l.projetado && !l.automatico && !l.fatura && !l.liquido && l.confirmado && Boolean(l.baixaDe);
   const cairHoje = (l.dataCaixa ?? l.dataCompetencia) > hoje();
   const tituloDaBaixa = cairHoje ? 'Dar baixa hoje: cai na conta agora' : 'Dar baixa: cai na conta';
   const rapido = baixaDoPrevisto
     ? `<button type="button" class="lancar-rapido" data-lancar-previsto="${escapar(l.id)}" title="${tituloDaBaixa}" aria-label="Dar baixa em ${escapar(oque)}">✓</button>`
     : baixaDoAgendado
       ? `<button type="button" class="lancar-rapido" data-dar-baixa="${escapar(l.id)}" title="${tituloDaBaixa}" aria-label="Dar baixa em ${escapar(oque)}">✓</button>`
-      : '<span class="lancar-rapido sem-ir" aria-hidden="true"></span>';
+      : desfazivel
+        ? `<button type="button" class="lancar-rapido desfazer-baixa" data-desfazer-baixa="${escapar(l.id)}" title="Desfazer a baixa: volta a pendente" aria-label="Desfazer a baixa de ${escapar(oque)}">↩</button>`
+        : '<span class="lancar-rapido sem-ir" aria-hidden="true"></span>';
 
   // A conta do outro lado, a um toque, no mesmo período (pedido dele, 05/10/2026).
   const lado = ladoDaLinha(l, ids, investimento, transferencia);
@@ -2377,8 +2388,8 @@ document.addEventListener('click', async (e) => {
     const o = previstosNaTela.get(rapido.dataset.lancarPrevisto);
     if (!o) return;
     rapido.disabled = true;
-    // Futuro: cai hoje, na competência dele; vencido: na data dele.
-    await lancarOcorrencia(o, { dataCaixa: o.dataCompetencia > hoje() ? hoje() : o.dataCompetencia });
+    // Futuro: cai hoje, na competência dele; vencido: na data dele. A baixa se desfaz (↩).
+    await lancarOcorrencia(o, { dataCaixa: o.dataCompetencia > hoje() ? hoje() : o.dataCompetencia, baixaDe: { dataCaixa: o.dataCompetencia, faturaDesloca: 0 } });
     return;
   }
   const baixa = e.target.closest('[data-dar-baixa]');
@@ -2386,12 +2397,17 @@ document.addEventListener('click', async (e) => {
     const l = app.lancamentos[baixa.dataset.darBaixa];
     if (!l || l.removido || l.confirmado) return;
     baixa.disabled = true;
-    // Agendado ou vencido que já está gravado: confirma. Futuro, cai hoje.
-    await estado.aplicarEvento('lancamento.alterado', {
-      id: l.id,
-      confirmado: true,
-      ...(l.dataCaixa > hoje() ? { dataCaixa: hoje() } : {}),
-    });
+    // Agendado, vencido ou pendente que já está gravado: confirma. Futuro, cai hoje; no
+    // cartão, na fatura do dia em que o banco debitou. Guarda de onde veio, para desfazer.
+    await estado.aplicarEvento('lancamento.alterado', { id: l.id, ...dadosDaBaixa(app, l) });
+    return;
+  }
+  const desfazer = e.target.closest('[data-desfazer-baixa]');
+  if (desfazer) {
+    const l = app.lancamentos[desfazer.dataset.desfazerBaixa];
+    if (!l || l.removido || !l.confirmado) return;
+    desfazer.disabled = true;
+    await estado.aplicarEvento('lancamento.alterado', { id: l.id, ...dadosDeFicarPendente(app, l) });
     return;
   }
   const cron = e.target.closest('[data-cronograma]');
