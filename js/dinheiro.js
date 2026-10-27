@@ -721,13 +721,9 @@ function blocoDeCaixa(nome, p, total = false, conta = null, aEntrar = null, faix
   if (conta?.titular) {
     const d = disponivelDe(app, conta.titular, (id) => saldoReal(app, id));
     if (d.aRepassar > 0) {
-      // O disponível é da PESSOA, não desta conta: soma as contas de caixa dela. Com mais de uma, diz isso
-      // — senão o número parece maior que o saldo desta conta e o a repassar não parece descontado.
-      const dona = app.pessoas?.[conta.titular]?.nome ?? 'dona';
-      const origem = d.contas > 1
-        ? `<span class="fino">disponível de ${escapar(dona)}: soma das ${d.contas} contas dela (${formatar(d.saldo)}) − ${formatar(d.aRepassar)} a repassar</span>`
-        : '';
-      repasse = `<p class="composicao"><span class="chave">repasse</span> ${numeroEmLinha('a repassar', menos(d.aRepassar))}${numeroEmLinha(d.contas > 1 ? `disponível de verdade · ${dona}` : 'disponível de verdade', `${d.disponivel < 0 ? '−' : ''}${formatar(Math.abs(d.disponivel))}`, null, d.disponivel < 0 ? '' : 'positivo')}${origem}</p>`;
+      // No card de uma conta, o disponível é o desta conta: o saldo real dela menos o que ainda se deve repassar.
+      const disponivel = saldoReal(app, conta.id) - d.aRepassar;
+      repasse = `<p class="composicao"><span class="chave">repasse</span> ${numeroEmLinha('a repassar', menos(d.aRepassar))}${numeroEmLinha('disponível de verdade', `${disponivel < 0 ? '−' : ''}${formatar(Math.abs(disponivel))}`, null, disponivel < 0 ? '' : 'positivo')}</p>`;
     }
   }
 
