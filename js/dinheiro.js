@@ -920,8 +920,7 @@ function blocoLeveDoCartao(c) {
         <div>
           <div class="rotulo-numero">fatura de ${escapar(mesNome)} · ${situacao}</div>
           <div class="valor-grande">${formatar(f.total)}</div>
-          ${f.previsto0 !== f.total ? `<div class="valor-previsto">com previstos ${til}${formatar(f.previsto0)}</div>` : ''}
-          ${f.pendente ? `<div class="valor-previsto">pendente de débito ${formatar(f.pendente)} · fora do total</div>` : ''}
+          ${f.previsto0 + f.pendente !== f.total ? `<div class="valor-previsto">com previstos ${til}${formatar(f.previsto0 + f.pendente)}</div>` : ''}
           <div class="fino">${detalhes.join(' · ')}</div>
         </div>
         ${paga}
@@ -1030,9 +1029,9 @@ function blocoDosCartoes(cartoes) {
     const estimado = fs.some((x) => x.f.estimado);
     // O valor real (já lançado) é o total; com os previstos e o pendente vêm depois.
     partes.push(numeroDaFaixa('total', formatar(lancado)));
-    if (total !== lancado) partes.push(numeroDaFaixa('com previstos', `${estimado ? '~' : ''}${formatar(total)}`));
+    // Os previstos e o pendente (que o banco ainda não debitou) vão juntos na linha de baixo.
     const pendente = fs.reduce((t, x) => t + x.f.pendente, 0);
-    if (pendente) partes.push(numeroDaFaixa('pendente de débito', formatar(pendente)));
+    if (total + pendente !== lancado) partes.push(numeroDaFaixa('com previstos', `${estimado ? '~' : ''}${formatar(total + pendente)}`));
     if (f.situacao === 'fechada' || !um) {
       partes.push(numeroDaFaixa('pago', formatar(pago)));
       if (aPagar > 0 && pago > 0) partes.push(numeroDaFaixa('falta', formatar(aPagar)));
