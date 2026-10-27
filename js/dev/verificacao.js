@@ -1386,6 +1386,40 @@ caso('previsto', '★ cofrinho como envelope: só o envelope conta, e abate a fa
   igual(abril().total, 300000, 'sem cofrinho, a fatura pesa inteira');
 });
 
+caso('previsto', '★ cofrinho pagou a fatura do mês: o que se sabe da seguinte precisa ser guardado, e sai do resultado', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const dia = '2027-03-05';
+  const ev = (t, d) => estado.aplicarEvento(t, d);
+  await ev('conta.criada', { id: 'k1', nome: 'Corrente', tipo: 'corrente', saldoInicial: 1000000 });
+  await ev('conta.criada', { id: 'inv', nome: 'Banco', tipo: 'investimento', caixaEm: 'k1' });
+  await ev('ativo.criado', { id: 'cdb', contaId: 'inv', nome: 'CDB', classe: 'renda_fixa' });
+  await ev('conta.criada', { id: 'c1', nome: 'Cartão', tipo: 'cartao', diaFechamento: 3, diaVencimento: 10, pagaCom: 'k1' });
+  await ev('envelope.criado', { id: 'fat', nome: 'Fatura do cartão' });
+  await ev('lancamento.registrado', { id: 'ap', tipo: 'aplicacao', valor: 800000, contaId: null, ativoId: 'cdb', dataCompetencia: '2027-03-01', confirmado: true });
+  await ev('envelope.alocado', { id: 'x1', lugarId: 'cdb', de: null, para: 'fat', valor: 400000, data: '2027-03-01' });
+  await ev('conta.alterada', { id: 'c1', cofrinhoEnvelopeId: 'fat' });
+  // A aberta (fecha 03/04, vence 10/04): 3.000. A seguinte (fecha 03/05, vence 10/05): 2.000 já cadastrados (uma parcela).
+  await ev('lancamento.registrado', { id: 'b', tipo: 'despesa', valor: 300000, contaId: 'c1', categoriaId: 'x', dataCompetencia: dia, dataCaixa: dia, confirmado: true });
+  await ev('lancamento.registrado', { id: 'p', tipo: 'despesa', valor: 200000, contaId: 'c1', categoriaId: 'x', dataCompetencia: '2027-04-10', dataCaixa: '2027-04-10', confirmado: false });
+  let e = await estado.calcular();
+  const abril = () => mesDaConta.saidasDoMes(e, new Set(['k1']), '2027-04', dia);
+  let sai = abril();
+  igual([sai.faturas[0].abatido, sai.total], [300000, 0], 'a fatura de abril está toda no cofrinho: nada sai da conta');
+  igual([sai.reserva, sai.proximoMes, sai.reservas[0].vencimento], [100000, '2027-05', '2027-05-10'], 'a de maio (2.000) menos o que sobra no cofrinho (1.000) = 1.000 a guardar');
+  const r = mesDaConta.resultadoDoMes(e, new Set(['k1']), '2027-04', dia);
+  igual(r.resultado, r.entra.total - 100000, 'o resultado do mês desconta o que falta guardar');
+
+  // Cofrinho com menos: sobra zero, guarda a seguinte inteira.
+  await ev('envelope.alocado', { id: 'x3', lugarId: 'cdb', de: 'fat', para: null, valor: 300000, data: '2027-03-02' });
+  e = await estado.calcular();
+  igual(abril().reserva, 200000, 'sem sobra no cofrinho, a fatura seguinte inteira');
+  // Sem cofrinho, nada a reservar: a fatura de maio simplesmente pesa em maio.
+  await ev('conta.alterada', { id: 'c1', cofrinhoEnvelopeId: null });
+  e = await estado.calcular();
+  igual(abril().reserva, 0, 'sem cofrinho vinculado, não há reserva');
+});
+
 caso('investimento', '★ venda por cotas: quantidade, preço e total se completam; valem os dois digitados por último', () => {
   const c = investimentos.completarCotas;
   igual(c({ quantidade: 10, preco: 0, bruto: 0 }, ['quantidade']), null, 'um só preenchido: nada a calcular');

@@ -817,7 +817,7 @@ function blocoDoMesSeguinte(nome, r, mes) {
   const menos = (v, est = false) => `−${est ? '~' : ''}${formatar(v)}`;
   const { entra, sai } = r;
   const mesNome = nomeDoMes(mes).split(' ')[0];
-  const nada = !entra.total && !sai.total;
+  const nada = !entra.total && !sai.total && !sai.reserva;
   if (nada) {
     return `<div class="bloco largo">
     <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(`${nome} · ${mesNome}`)}</p>
@@ -841,7 +841,8 @@ function blocoDoMesSeguinte(nome, r, mes) {
     const vence = faturas.length === 1 && faturas[0].vencimento ? ` · vence ${diaCurto(faturas[0].vencimento)}` : '';
     const partes = faturas.map((f) => `${f.cartao.nome}${f.vencimento ? ` (vence ${diaCurto(f.vencimento)})` : ''}: ${formatar(f.valor + f.recorrentes)}${f.abatido > 0 ? ` − ${formatar(f.abatido)} no cofrinho` : ''}`).join(' · ');
     const para = { conta: faturas[0].cartao.id, mes: faturas[0].vencimento?.slice(0, 7) ?? mes };
-    numeros.push(numeroDaFaixa(`fatura prevista${vence}`, menos(total, faturas.some((f) => f.estimado)), para, partes));
+    // O que sai da conta pela fatura, depois do que o cofrinho já cobre.
+    numeros.push(numeroDaFaixa(`fatura a pagar${vence}`, menos(total, faturas.some((f) => f.estimado)), para, partes));
   }
   const despesas = sai.recorrentes + sai.parcelas + sai.agendados;
   if (despesas > 0) {
@@ -853,6 +854,12 @@ function blocoDoMesSeguinte(nome, r, mes) {
     numeros.push(numeroDaFaixa('despesas previstas', menos(despesas, sai.estimadoDespesas), null, partes));
   }
   numeros.push(numeroDaFaixa('total de despesas', menos(sai.total, sai.estimado)));
+  // O cofrinho pagou a fatura deste mês; o que já se sabe da seguinte precisa ser guardado nele.
+  if (sai.reserva > 0) {
+    const proxima = nomeDoMes(sai.proximoMes).split(' ')[0].toLocaleLowerCase('pt-BR');
+    const partes = sai.reservas.map((x) => `${x.cartao.nome} (vence ${diaCurto(x.vencimento)}): ${formatar(x.valor)}`).join(' · ');
+    numeros.push(numeroDaFaixa(`reservar p/ fatura de ${proxima}`, menos(sai.reserva, sai.reservas.some((x) => x.estimado)), null, `${partes} — parcelas e recorrentes já cadastradas, menos o que sobrar no cofrinho`));
+  }
   numeros.push(destaqueDaFaixa('resultado previsto', r.resultado, r.estimado));
   return `<div class="bloco largo">
     <p class="nome-bloco"><span class="ponto-area" aria-hidden="true"></span>${escapar(`${nome} · ${mesNome}`)}</p>

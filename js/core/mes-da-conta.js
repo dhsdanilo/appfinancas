@@ -11,7 +11,7 @@
 
 import { hoje, inicioDoMes, fimDoMes, proximoMes, somarDias } from './datas.js';
 import { visiveis, sinalDeSaida } from './lancamentos.js';
-import { ocorrenciasPrevistas, faturas } from './previsto.js';
+import { ocorrenciasPrevistas, faturas, faturasNoPeriodo } from './previsto.js';
 import { liquidoPrevisto } from './holerite.js';
 import { provisaoDoCartao, temCofrinho } from './cofrinho.js';
 
@@ -240,9 +240,27 @@ export function saidasDoMes(estado, ids, mes, dia = hoje()) {
     x.abatido = abatimentoDaAberta(estado, cartaoId, aberta.aPagar + aberta.recorrentes, dia);
   }
 
+  // A fatura seguinte: o cofrinho pagou a deste mês, e o que já se sabe da próxima
+  // (parcelas e recorrentes cadastradas) precisa ser guardado nele — menos o que sobrou.
+  const proximo = proximoMes(mes);
+  const reservas = [];
+  for (const [cartaoId, aberta] of abertas) {
+    const cartao = estado.contas[cartaoId];
+    if (!aberta.vence || !temCofrinho(cartao)) continue;
+    const prov = provisaoDoCartao(estado, cartaoId, dia);
+    if (!prov) continue;
+    const fechadas = (faturas(estado, cartaoId, dia) ?? []).filter((f) => f.situacao === 'fechada').reduce((t, f) => t + f.aPagar, 0);
+    const sobra = Math.max(0, prov.provisionado - fechadas - (aberta.aPagar + aberta.recorrentes));
+    const seguinte = faturasNoPeriodo(estado, cartaoId, `${proximo}-01`, fimDoMes(`${proximo}-01`), dia)[0];
+    const falta = Math.max(0, (seguinte?.previsto ?? 0) - sobra);
+    if (falta > 0) reservas.push({ cartao, valor: falta, vencimento: seguinte.vencimento, estimado: Boolean(seguinte.estimado) });
+  }
+  const reserva = reservas.reduce((t, x) => t + x.valor, 0);
+  if (reservas.some((x) => x.estimado)) estimado = true;
+
   const lista = [...porCartao.values()].filter((x) => x.valor > 0 || x.recorrentes > 0);
   const total = lista.reduce((t, x) => t + x.valor + x.recorrentes - x.abatido, 0) + recorrentes + parcelas + agendados;
-  return { faturas: lista, recorrentes, parcelas, agendados, total, estimado, estimadoDespesas };
+  return { faturas: lista, recorrentes, parcelas, agendados, total, reservas, reserva, proximoMes: proximo, estimado, estimadoDespesas };
 }
 
 /** O que um mês seguinte deixa: entra − sai, sem o saldo de hoje. */
@@ -250,7 +268,8 @@ export function resultadoDoMes(estado, ids, mes, dia = hoje()) {
   const de = `${mes}-01`;
   const entra = entradasPrevistas(estado, ids, de, fimDoMes(de), dia);
   const sai = saidasDoMes(estado, ids, mes, dia);
-  return { entra, sai, resultado: entra.total - sai.total, estimado: entra.estimado || sai.estimado };
+  // O que falta guardar no cofrinho para a fatura seguinte também sai do mês.
+  return { entra, sai, resultado: entra.total - sai.total - sai.reserva, estimado: entra.estimado || sai.estimado };
 }
 
 /** O que ainda vai entrar no mês atual, para o "previsto com a renda". */
