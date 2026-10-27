@@ -1976,7 +1976,8 @@ function pintarListaDeCartoes(cartoes) {
           <span class="fino">fecha ${diaCurto(f.fechamento)} · vence ${diaCurto(f.vencimento)} · ${situacao}</span></span>
         <span class="valor-grupo">${dinheiroHTML(estimadoDaFatura, { estimado: f.estimado })}${projetadas.length ? ` <span class="fino">lançado ${dinheiroHTML(f.total)}</span>` : ''}${f.pago && f.aPagar ? ` <span class="fino">falta ${dinheiroHTML(f.aPagar)}</span>` : ''}</span>
       </li>`);
-      const itens = ordenarPelaCompra([...f.itens, ...projetadas, ...pagamentos]);
+      // A compra pendente (o banco ainda não debitou) fica fora do total, mas na lista, esmaecida como a prevista.
+      const itens = ordenarPelaCompra([...f.itens, ...(f.pendentes ?? []), ...projetadas, ...pagamentos]);
       html.push(
         ...(itens.length
           ? itens.map((l) => linhaHTML(l, new Set([c.id])))
@@ -2015,7 +2016,10 @@ const ordenarPelaCompra = (lista) =>
 function linhaHTML(l, ids, saldoApos = null) {
   // Compra de mais de uma categoria: a principal, com um "+" (a divisão se vê ao abrir).
   const categoriaDaLinha = (x) => nomeDaCategoria(app, x.categoriaId) + (x.divisao?.length > 1 ? ' +' : '');
-  const est = l.projetado || l.fatura ? (l.dataCaixa < hoje() ? 'vencido' : 'previsto') : estadoDoLancamento(l);
+  // A compra pendente no cartão não é vencida: o que falta é o banco debitar. Esmaece como a prevista.
+  const est = l.pendente && l.cicloFatura
+    ? 'previsto'
+    : l.projetado || l.fatura ? (l.dataCaixa < hoje() ? 'vencido' : 'previsto') : estadoDoLancamento(l);
   const conta = app.contas[l.contaId ?? l.contaDestinoId];
   const investimento = ehDeInvestimento(l);
   const transferencia = ehTransferencia(l) || investimento;
