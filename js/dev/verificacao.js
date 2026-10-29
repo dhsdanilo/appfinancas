@@ -3362,6 +3362,8 @@ caso('energia', 'a despesa da fatura: agendada no vencimento, na conta escolhida
   igual(energia.lancamentoDaFatura(cfg, { ...r, conta: null }, 'cat'), null, 'sem a conta paga, não gera');
   igual(energia.lancamentoDaFatura(cfg, { ...r, vencimento: null }, 'cat'), null, 'sem o vencimento, não gera');
   igual(energia.lancamentoDaFatura(null, r, 'cat'), null, 'sem vínculo, não gera');
+  const est = energia.lancamentoDaFatura(cfg, { ...r, estimada: true }, 'cat');
+  igual(/estimado pelas leituras/.test(est.observacao), true, 'a fatura sem valor digitado nasce estimada e diz isso');
 });
 
 caso('envelope', 'auditoria I1: poupança — o dia do passado usa o saldo daquele dia, não o de hoje', async () => {
@@ -3541,7 +3543,7 @@ caso('energia', 'custo de disponibilidade: o mínimo é piso do que se paga e n�
   igual(c.minimoPagar, Math.round((30 * (345333 + 598000)) / 10000), 'mínimo = 30 kWh × tarifa');
   igual(c.contaEsperada, c.minimoPagar, 'sem consumo líquido, a conta esperada é o mínimo');
   const sem = energia.calculoDoMes({ ...r, minimo: undefined });
-  igual([sem.minimoPagar, sem.contaEsperada], [null, null], 'sem mínimo informado, nada muda');
+  igual(sem.minimoPagar, null, 'sem mínimo informado, não há mínimo a mostrar');
   const casaVazia = energia.calculoDoMes({ ...r, producao: 692, injetado: 692 });
   igual(casaVazia.custoIntegral, Math.round((30 * (345333 + 598000)) / 10000), 'consumo real abaixo do mínimo: o custo sem o sistema é o mínimo');
 });

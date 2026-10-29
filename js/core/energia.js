@@ -60,7 +60,7 @@ export function calculoDoMes(r) {
     minimo,
     // O menor que a fatura pode ser, e a conta que as leituras indicam (com o mínimo como piso).
     minimoPagar: minimo ? Math.round((minimo * tarifa6) / 10000) + (r.ilum ?? 0) : null,
-    contaEsperada: minimo ? Math.round((Math.max(0, r.consumo - injetado, minimo) * tarifa6) / 10000) + (r.ilum ?? 0) : null,
+    contaEsperada: Math.round((Math.max(0, r.consumo - injetado, minimo) * tarifa6) / 10000) + (r.ilum ?? 0),
     tarifa6,
     custoEnergia,
     ilum: r.ilum ?? 0,
@@ -127,6 +127,7 @@ export function resumoDeEnergia(meses) {
  * O id é fixo por mês, para corrigir o mês corrigir a mesma despesa.
  */
 export function lancamentoDaFatura(config, r, categoriaId) {
+  // Sem o valor digitado, a fatura existe do mesmo jeito: nasce com a conta estimada pelas leituras (`r.estimada`).
   if (!config?.contaId || !r?.conta || !r.vencimento) return null;
   return {
     id: `energia-${r.mes}`,
@@ -138,7 +139,7 @@ export function lancamentoDaFatura(config, r, categoriaId) {
     dataCaixa: r.vencimento,
     dataVencimento: r.vencimento,
     confirmado: false,
-    observacao: `Conta de energia · ${nomeDoMes(r.mes)}`,
+    observacao: `Conta de energia · ${nomeDoMes(r.mes)}${r.estimada ? ' · valor estimado pelas leituras' : ''}`,
     energiaMes: r.mes,
   };
 }

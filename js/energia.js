@@ -285,7 +285,7 @@ function abrir(mes = null) {
   const gera = Boolean(app.energiaConfig?.contaId);
   $('en-campo-vencimento').hidden = !gera;
   $('en-lanca').hidden = !gera;
-  if (gera) $('en-lanca').textContent = `A conta paga vira despesa agendada em ${app.contas[app.energiaConfig.contaId]?.nome ?? 'a conta escolhida'}, na data do vencimento.`;
+  if (gera) $('en-lanca').textContent = `A fatura vira despesa agendada em ${app.contas[app.energiaConfig.contaId]?.nome ?? 'a conta escolhida'}, no vencimento: com o valor que você digitar ou, se ainda não tiver, estimado pelas leituras.`;
   f.vencimento.value = existente?.vencimento ?? (ultimo?.vencimento ? somarMeses(ultimo.vencimento, 1) : '');
   $('titulo-energia').textContent = existente ? `Registro de ${nomeDoMes(existente.mes)}` : 'Novo registro do mês';
   $('en-apagar').hidden = !existente;
@@ -340,12 +340,17 @@ async function sincronizarFatura(registro) {
   const a = await estado.calcular();
   const id = `energia-${registro.mes}`;
   const atual = a.lancamentos[id] && !a.lancamentos[id].removido ? a.lancamentos[id] : null;
-  const quer = !registro.removido && lancamentoDaFatura(a.energiaConfig, registro, null);
+  // A fatura do mês existe mesmo sem o valor digitado: nasce com a conta estimada pelas leituras e passa a valer a
+  // do papel quando ela é digitada.
+  const calc = registro.removido ? null : calculoDoMes(registro);
+  const estimada = registro.conta == null && calc?.contaEsperada > 0;
+  const comValor = estimada ? { ...registro, conta: calc.contaEsperada, estimada: true } : registro;
+  const quer = !registro.removido && lancamentoDaFatura(a.energiaConfig, comValor, null);
   if (!quer) {
     if (atual && !atual.confirmado) await estado.aplicarEvento('lancamento.removido', { id });
     return;
   }
-  const dados = lancamentoDaFatura(a.energiaConfig, registro, await categoriaDaEnergia());
+  const dados = lancamentoDaFatura(a.energiaConfig, comValor, await categoriaDaEnergia());
   if (!atual) await estado.aplicarEvento('lancamento.registrado', dados);
   else if (!atual.confirmado) {
     const { tipo, confirmado, energiaMes, ...campos } = dados;
