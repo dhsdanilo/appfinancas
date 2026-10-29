@@ -35,7 +35,7 @@ export function kwhDeTexto(texto) {
  * Devolve null enquanto faltar o que a conta precisa (consumo, produção e as duas tarifas).
  * `inconsistente`: injetou mais do que produziu — os dois medidores não batem; o direto vira 0.
  */
-export function calculoDoMes(r) {
+export function calculoDoMes(r, creditos = 0) {
   if (!r || r.consumo == null || r.producao == null || !r.te6 || !r.tusd6) return null;
   const injetado = r.injetado ?? 0;
   const inconsistente = r.producao < injetado;
@@ -60,13 +60,15 @@ export function calculoDoMes(r) {
     minimo,
     // O menor que a fatura pode ser, e a conta que as leituras indicam (com o mínimo como piso).
     minimoPagar: minimo ? Math.round((minimo * tarifa6) / 10000) + (r.ilum ?? 0) : null,
-    contaEsperada: Math.round((Math.max(0, r.consumo - injetado, minimo) * tarifa6) / 10000) + (r.ilum ?? 0),
+    contaEsperada: Math.round((Math.max(0, r.consumo - injetado - creditos, minimo) * tarifa6) / 10000) + (r.ilum ?? 0),
     tarifa6,
     custoEnergia,
     ilum: r.ilum ?? 0,
     custoIntegral,
     conta,
     economia: conta != null ? custoIntegral - conta : null,
+    // Sem a fatura digitada: o que a economia seria pela conta estimada (não entra nas somas).
+    economiaEstimada: conta == null ? custoIntegral - (Math.round((Math.max(0, r.consumo - injetado - creditos, minimo) * tarifa6) / 10000) + (r.ilum ?? 0)) : null,
     inconsistente,
     // Injetou mais do que consumiu: o que passa disso vira crédito de kWh para os meses seguintes.
     sobra: Math.max(0, injetado - r.consumo),
@@ -90,11 +92,20 @@ export function sugestaoDeSaldo(estado, mes, consumo, injetado) {
   return { anterior, sugerido: Math.max(0, anterior + (injetado ?? 0) - consumo) };
 }
 
+/** Os créditos de kWh que vinham de antes de `mes`: o saldo do último mês registrado antes dele (0 se não há). */
+export function creditosAntes(estado, mes) {
+  const antes = Object.values(estado.energia ?? {})
+    .filter((r) => r.mes < mes && r.saldo != null)
+    .sort((a, b) => (a.mes < b.mes ? -1 : 1))
+    .pop();
+  return antes?.saldo ?? 0;
+}
+
 /** Os meses registrados, do mais antigo ao mais novo, já com a conta de cada um. */
 export function mesesDeEnergia(estado) {
   return Object.values(estado.energia ?? {})
     .sort((a, b) => (a.mes < b.mes ? -1 : a.mes > b.mes ? 1 : 0))
-    .map((r) => ({ registro: r, calculo: calculoDoMes(r) }));
+    .map((r) => ({ registro: r, calculo: calculoDoMes(r, creditosAntes(estado, r.mes)) }));
 }
 
 /** Os meses entre `de` e `ate` (AAAA-MM), inclusive; `de` null = desde o primeiro registro. */

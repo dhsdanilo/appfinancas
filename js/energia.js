@@ -6,7 +6,7 @@ import * as estado from './core/estado.js';
 import { formatar, deTexto } from './core/dinheiro.js';
 import { hoje, nomeDoMes, somarMeses } from './core/datas.js';
 import {
-  calculoDoMes, mesesDeEnergia, resumoDeEnergia, tarifaDeTexto, tarifaParaTexto, kwhDeTexto, sugestaoDeSaldo, lancamentoDaFatura,
+  calculoDoMes, mesesDeEnergia, resumoDeEnergia, tarifaDeTexto, tarifaParaTexto, kwhDeTexto, sugestaoDeSaldo, creditosAntes, lancamentoDaFatura,
 } from './core/energia.js';
 import { envelopesAtivos } from './core/envelopes.js';
 import { linhas as graficoDeLinhas, cor } from './app/graficos.js';
@@ -92,8 +92,9 @@ async function pintar() {
     ? `<tr data-en-mes="${esc(r.mes)}" tabindex="0">
         <td>${esc(mesCurto(r.mes))}${c.inconsistente ? ' <span class="aviso-mini" title="Injetou mais do que produziu: confira as leituras">!</span>' : ''}</td>
         <td>${kwh(c.consumoReal)}</td><td>${kwh(c.consumo)}</td><td>${kwh(c.injetado)}</td><td>${kwh(c.diretoFV)}</td>
-        <td>${reais(c.custoIntegral)}</td><td>${c.conta != null ? reais(c.conta) : '—'}</td>
-        <td class="${c.economia > 0 ? 'positivo' : c.economia < 0 ? 'negativo' : ''}">${c.economia != null ? reais(c.economia) : '—'}</td>
+        <td>${reais(c.custoIntegral)}</td>
+        <td>${c.conta != null ? reais(c.conta) : `<span class="estimado-energia" title="Estimada pelas leituras: vale a da fatura quando você digitar">~${reais(c.contaEsperada)}</span>`}${r.vencimento ? `<small class="fino-energia">vence ${esc(r.vencimento.slice(8, 10))}/${esc(r.vencimento.slice(5, 7))}</small>` : ''}</td>
+        <td class="${(c.economia ?? c.economiaEstimada) > 0 ? 'positivo' : (c.economia ?? c.economiaEstimada) < 0 ? 'negativo' : ''}">${c.economia != null ? reais(c.economia) : `<span class="estimado-energia">~${reais(c.economiaEstimada)}</span>`}</td>
         <td>${c.saldo != null ? kwh(c.saldo) : '—'}</td></tr>`
     : `<tr data-en-mes="${esc(r.mes)}" tabindex="0" class="incompleto"><td>${esc(mesCurto(r.mes))}</td><td colspan="8">faltam dados para a conta · toque para completar</td></tr>`).join('');
   const rodape = resumo.meses
@@ -106,7 +107,7 @@ async function pintar() {
     <div class="ferramentas-detalhe">${grandezas}</div>
     <div id="g-energia"></div>
     <div class="rolagem-energia"><table class="tabela-energia">
-      <thead><tr><th>mês</th><th>consumo real</th><th>da concessionária</th><th>injetado</th><th>FV direto</th><th>custo integral</th><th>conta paga</th><th>economia</th><th>saldo de créditos</th></tr></thead>
+      <thead><tr><th>mês</th><th>consumo real</th><th>da concessionária</th><th>injetado</th><th>FV direto</th><th>custo integral</th><th>conta</th><th>economia</th><th>saldo de créditos</th></tr></thead>
       <tbody>${linhasDaTabela}</tbody>${rodape}</table></div>
     <p class="nota-rel">Consumo real = consumo da concessionária + o que o sistema produziu e foi consumido na hora (produzido − injetado). Custo integral = consumo real × (TE + TUSD + bandeira) + iluminação pública. Economia = custo integral − conta paga.</p>`;
   desenhar(calendario, porMes);
@@ -231,7 +232,8 @@ function lerRegistro() {
 /** A conta ao vivo, embaixo dos campos, enquanto se digita. */
 function pintarPrevia() {
   pintarSugestao();
-  const c = calculoDoMes(lerRegistro());
+  const reg = lerRegistro();
+  const c = calculoDoMes(reg, creditosAntes(app, reg.mes));
   const saida = $('en-previa');
   if (!c) { saida.hidden = true; return; }
   saida.hidden = false;
@@ -342,7 +344,7 @@ async function sincronizarFatura(registro) {
   const atual = a.lancamentos[id] && !a.lancamentos[id].removido ? a.lancamentos[id] : null;
   // A fatura do mês existe mesmo sem o valor digitado: nasce com a conta estimada pelas leituras e passa a valer a
   // do papel quando ela é digitada.
-  const calc = registro.removido ? null : calculoDoMes(registro);
+  const calc = registro.removido ? null : calculoDoMes(registro, creditosAntes(a, registro.mes));
   const estimada = registro.conta == null && calc?.contaEsperada > 0;
   const comValor = estimada ? { ...registro, conta: calc.contaEsperada, estimada: true } : registro;
   const quer = !registro.removido && lancamentoDaFatura(a.energiaConfig, comValor, null);

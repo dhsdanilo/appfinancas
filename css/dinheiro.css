@@ -1611,6 +1611,8 @@ a.dono-ativo:hover { text-decoration: underline; }
 .tabela-energia { width: 100%; border-collapse: collapse; font-size: var(--t-apoio); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tabela-energia th, .tabela-energia td { padding: var(--e2) var(--e2); text-align: right; border-bottom: 1px solid var(--borda); }
 .tabela-energia th:first-child, .tabela-energia td:first-child { text-align: left; }
+.tabela-energia .estimado-energia { color: var(--tinta-fraca); font-style: italic; }
+.tabela-energia .fino-energia { display: block; color: var(--tinta-fraca); font-size: var(--t-miudo); font-weight: 400; }
 .tabela-energia th { color: var(--tinta-fraca); font-weight: 400; }
 .tabela-energia tbody tr { cursor: pointer; }
 .tabela-energia tbody tr:hover { background: var(--acento-fundo); }
