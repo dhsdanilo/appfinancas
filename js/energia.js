@@ -93,7 +93,7 @@ async function pintar() {
         <td>${esc(mesCurto(r.mes))}${c.inconsistente ? ' <span class="aviso-mini" title="Injetou mais do que produziu: confira as leituras">!</span>' : ''}</td>
         <td>${kwh(c.consumoReal)}</td><td>${kwh(c.consumo)}</td><td>${kwh(c.injetado)}</td><td>${kwh(c.diretoFV)}</td>
         <td>${reais(c.custoIntegral)}</td>
-        <td>${c.conta != null ? reais(c.conta) : `<span class="estimado-energia" title="Estimada pelas leituras: vale a da fatura quando você digitar">~${reais(c.contaEsperada)}</span>`}${r.vencimento ? `<small class="fino-energia">vence ${esc(r.vencimento.slice(8, 10))}/${esc(r.vencimento.slice(5, 7))}</small>` : ''}</td>
+        <td>${c.conta != null ? reais(c.conta) : `<span class="estimado-energia" title="Estimada pelas leituras: vale a da fatura quando você digitar">~${reais(c.contaEsperada)}</span>`}${c.fioB > 0 ? `<small class="fino-energia">com Fio B ${reais(c.fioB)}</small>` : ''}${r.vencimento ? `<small class="fino-energia">vence ${esc(r.vencimento.slice(8, 10))}/${esc(r.vencimento.slice(5, 7))}</small>` : ''}</td>
         <td class="${(c.economia ?? c.economiaEstimada) > 0 ? 'positivo' : (c.economia ?? c.economiaEstimada) < 0 ? 'negativo' : ''}">${c.economia != null ? reais(c.economia) : `<span class="estimado-energia">~${reais(c.economiaEstimada)}</span>`}</td>
         <td>${c.saldo != null ? kwh(c.saldo) : '—'}</td></tr>`
     : `<tr data-en-mes="${esc(r.mes)}" tabindex="0" class="incompleto"><td>${esc(mesCurto(r.mes))}</td><td colspan="8">faltam dados para a conta · toque para completar</td></tr>`).join('');
@@ -220,6 +220,9 @@ function lerRegistro() {
     producao: kwhDeTexto(f.producao.value),
     saldo: kwhDeTexto(f.saldo.value),
     minimo: kwhDeTexto(f.minimo.value),
+    fiob6: tarifaDeTexto(f.fiob.value) || null,
+    fiobPct: kwhDeTexto(f.fiobPct.value),
+    fiobValor: f.fiobValor.value.trim() ? Math.abs(deTexto(f.fiobValor.value)) : null,
     te6: tarifaDeTexto(f.te.value),
     tusd6: tarifaDeTexto(f.tusd.value),
     bandeira6: tarifaDeTexto(f.bandeira.value),
@@ -238,6 +241,7 @@ function pintarPrevia() {
   if (!c) { saida.hidden = true; return; }
   saida.hidden = false;
   saida.innerHTML = `<span>direto do FV <strong>${kwh(c.diretoFV)}</strong></span><span>consumo real <strong>${kwh(c.consumoReal)}</strong></span>
+    ${c.fioB > 0 ? `<span>Fio B <strong>${reais(c.fioB)}</strong> (${c.fioBPct}% sobre ${kwh(c.compensada)} compensados)</span>` : ''}
     ${c.minimoPagar != null ? `<span>mínimo a pagar <strong>${reais(c.minimoPagar)}</strong> (${kwh(c.minimo)})</span><span>conta pelas leituras <strong>${reais(c.contaEsperada)}</strong></span>` : ''}
     <span>custo integral <strong>${reais(c.custoIntegral)}</strong></span>${c.economia != null ? `<span>economia <strong class="${c.economia >= 0 ? 'positivo' : 'negativo'}">${reais(c.economia)}</strong></span>` : ''}
     ${c.sobra > 0 ? `<span>injetou ${kwh(c.sobra)} a mais do que consumiu: vira crédito</span>` : ''}
@@ -278,6 +282,9 @@ function abrir(mes = null) {
   f.saldo.value = existente ? campoKwh(existente.saldo) : '';
   // O mínimo é do medidor, não do mês: o mês novo parte do último.
   f.minimo.value = campoKwh(existente ? existente.minimo : ultimo?.minimo);
+  f.fiob.value = (existente ? existente.fiob6 : ultimo?.fiob6) ? tarifaParaTexto(existente ? existente.fiob6 : ultimo.fiob6) : '';
+  f.fiobPct.value = campoKwh(existente?.fiobPct);
+  f.fiobValor.value = existente?.fiobValor != null ? campoReais(existente.fiobValor) : '';
   f.te.value = base.te6 ? tarifaParaTexto(base.te6) : '';
   f.tusd.value = base.tusd6 ? tarifaParaTexto(base.tusd6) : '';
   f.bandeira.value = base.bandeira6 ? tarifaParaTexto(base.bandeira6) : '';

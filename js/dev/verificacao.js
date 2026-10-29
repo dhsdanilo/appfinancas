@@ -3548,6 +3548,18 @@ caso('energia', 'custo de disponibilidade: o mínimo é piso do que se paga e n�
   igual(casaVazia.custoIntegral, Math.round((30 * (345333 + 598000)) / 10000), 'consumo real abaixo do mínimo: o custo sem o sistema é o mínimo');
 });
 
+caso('energia', 'Fio B separado: a parte do ano sobre a energia compensada, ou o valor da fatura', () => {
+  igual([2023, 2026, 2028, 2029, 2030].map((a) => energia.fioBPercentual(`${a}-05`)), [15, 60, 90, 100, 100], 'Lei 14.300: 15% em 2023 a 100% em 2029');
+  const r = { mes: '2026-10', consumo: 338, injetado: 480, producao: 752, te6: 345333, tusd6: 598000, bandeira6: 0, ilum: 0, minimo: 30, fiob6: 200000 };
+  const c = energia.calculoDoMes(r, 692);
+  igual([c.compensada, c.fioBPct, c.fioB], [338, 60, Math.round((338 * 200000 * 60) / 100 / 10000)], 'compensa o consumo da rede; 60% do Fio B em 2026');
+  igual(c.contaEsperada, Math.round((30 * (345333 + 598000)) / 10000) + c.fioB, 'o Fio B soma na conta esperada');
+  igual(energia.calculoDoMes({ ...r, fiobValor: 5000 }, 692).fioB, 5000, 'o valor da fatura manda');
+  igual(energia.calculoDoMes({ ...r, fiobPct: 0 }, 692).fioB, 0, 'parte 0%: regime antigo, sem Fio B');
+  igual(energia.calculoDoMes({ ...r, fiob6: null }, 692).fioB, 0, 'sem a tarifa do Fio B, nada a somar');
+  igual(c.custoIntegral, energia.calculoDoMes({ ...r, fiob6: null }, 692).custoIntegral, 'o custo sem o sistema não tem Fio B');
+});
+
 async function limpar() {
   db.usarBanco(BANCO_DE_TESTE);
   await db.apagarTudo();

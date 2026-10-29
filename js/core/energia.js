@@ -35,6 +35,17 @@ export function kwhDeTexto(texto) {
  * Devolve null enquanto faltar o que a conta precisa (consumo, produção e as duas tarifas).
  * `inconsistente`: injetou mais do que produziu — os dois medidores não batem; o direto vira 0.
  */
+/**
+ * A parte do Fio B (componente da TUSD) que se paga sobre a energia compensada, pela Lei 14.300, art. 27, para quem
+ * pediu acesso depois de 07/07/2023: 15% em 2023, 30% em 2024, 45% em 2025, 60% em 2026, 75% em 2027, 90% em 2028 e
+ * 100% de 2029 em diante. Quem pediu antes tem outra regra (GD I e II): aí se digita a parte cobrada, ou 0.
+ */
+export function fioBPercentual(mes) {
+  const ano = Number(String(mes).slice(0, 4));
+  if (!ano || ano < 2023) return 0;
+  return Math.min(100, (ano - 2022) * 15 + (ano >= 2029 ? 10 : 0));
+}
+
 export function calculoDoMes(r, creditos = 0) {
   if (!r || r.consumo == null || r.producao == null || !r.te6 || !r.tusd6) return null;
   const injetado = r.injetado ?? 0;
@@ -45,6 +56,11 @@ export function calculoDoMes(r, creditos = 0) {
   // O custo de disponibilidade (30, 50 ou 100 kWh): a concessionária cobra no mínimo isso, em dinheiro, e ele
   // nunca mexe nas leituras nem nos créditos — só no que se paga e no que se pagaria sem o sistema.
   const minimo = r.minimo ?? 0;
+  // O Fio B: cobrado sobre a energia compensada (o que a rede consumiu e foi abatido pela injeção e pelos créditos).
+  // O valor da fatura, quando digitado, manda; senão, parte do ano × tarifa do Fio B × kWh compensados.
+  const compensada = Math.max(0, Math.min(r.consumo, injetado + creditos));
+  const fioBPct = r.fiobPct ?? fioBPercentual(r.mes);
+  const fioB = r.fiobValor ?? (r.fiob6 ? Math.round((compensada * r.fiob6 * fioBPct) / 100 / 10000) : 0);
   const custoEnergia = Math.round((Math.max(consumoReal, minimo) * tarifa6) / 10000);
   const custoIntegral = custoEnergia + (r.ilum ?? 0);
   const conta = r.conta ?? null;
@@ -60,7 +76,10 @@ export function calculoDoMes(r, creditos = 0) {
     minimo,
     // O menor que a fatura pode ser, e a conta que as leituras indicam (com o mínimo como piso).
     minimoPagar: minimo ? Math.round((minimo * tarifa6) / 10000) + (r.ilum ?? 0) : null,
-    contaEsperada: Math.round((Math.max(0, r.consumo - injetado - creditos, minimo) * tarifa6) / 10000) + (r.ilum ?? 0),
+    contaEsperada: Math.round((Math.max(0, r.consumo - injetado - creditos, minimo) * tarifa6) / 10000) + (r.ilum ?? 0) + fioB,
+    fioB,
+    fioBPct,
+    compensada,
     tarifa6,
     custoEnergia,
     ilum: r.ilum ?? 0,
@@ -68,7 +87,7 @@ export function calculoDoMes(r, creditos = 0) {
     conta,
     economia: conta != null ? custoIntegral - conta : null,
     // Sem a fatura digitada: o que a economia seria pela conta estimada (não entra nas somas).
-    economiaEstimada: conta == null ? custoIntegral - (Math.round((Math.max(0, r.consumo - injetado - creditos, minimo) * tarifa6) / 10000) + (r.ilum ?? 0)) : null,
+    economiaEstimada: conta == null ? custoIntegral - (Math.round((Math.max(0, r.consumo - injetado - creditos, minimo) * tarifa6) / 10000) + (r.ilum ?? 0) + fioB) : null,
     inconsistente,
     // Injetou mais do que consumiu: o que passa disso vira crédito de kWh para os meses seguintes.
     sobra: Math.max(0, injetado - r.consumo),
