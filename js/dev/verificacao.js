@@ -3533,6 +3533,19 @@ caso('cartão', 'auditoria L1: mudar o fechamento não manda compra da fatura ab
   igual([antes > hojeDia, depois > hojeDia], [true, true], 'continua numa fatura que ainda não fechou');
 });
 
+caso('energia', 'custo de disponibilidade: o mínimo é piso do que se paga e não mexe nas leituras', () => {
+  // Outubro da fatura dele: nada puxado da rede, 692 injetados, 30 kWh mínimos.
+  const r = { mes: '2026-10', consumo: 0, injetado: 692, producao: 1000, te6: 345333, tusd6: 598000, bandeira6: 0, ilum: 0, minimo: 30, conta: 2888 };
+  const c = energia.calculoDoMes(r);
+  igual([c.consumo, c.injetado], [0, 692], 'as leituras seguem como são');
+  igual(c.minimoPagar, Math.round((30 * (345333 + 598000)) / 10000), 'mínimo = 30 kWh × tarifa');
+  igual(c.contaEsperada, c.minimoPagar, 'sem consumo líquido, a conta esperada é o mínimo');
+  const sem = energia.calculoDoMes({ ...r, minimo: undefined });
+  igual([sem.minimoPagar, sem.contaEsperada], [null, null], 'sem mínimo informado, nada muda');
+  const casaVazia = energia.calculoDoMes({ ...r, producao: 692, injetado: 692 });
+  igual(casaVazia.custoIntegral, Math.round((30 * (345333 + 598000)) / 10000), 'consumo real abaixo do mínimo: o custo sem o sistema é o mínimo');
+});
+
 async function limpar() {
   db.usarBanco(BANCO_DE_TESTE);
   await db.apagarTudo();

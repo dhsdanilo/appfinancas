@@ -26,7 +26,7 @@ export const AREAS_PADRAO = ['caixa', 'cartoes'];
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 36;
+export const VERSAO_ESTADO = 37;
 
 /** Anota de que dia em diante um lugar é inteiro de um envelope (ou de nenhum). Sem data = desde sempre. */
 function marcarInteiro(e, lugarId, envelopeId, desde) {
@@ -443,6 +443,8 @@ export const redutores = {
       consumo: d.consumo ?? null,
       // O número do mostrador do medidor (consumo e injeção); o kWh do mês sai da diferença para o mês anterior.
       // As "anteriores" só existem no primeiro mês, que não tem um registro antes dele.
+      // O custo de disponibilidade em kWh (monofásico 30, bifásico 50, trifásico 100): o mínimo que se paga.
+      minimo: d.minimo ?? null,
       leituraConsumo: d.leituraConsumo ?? null,
       leituraInjetada: d.leituraInjetada ?? null,
       antConsumo: d.antConsumo ?? null,

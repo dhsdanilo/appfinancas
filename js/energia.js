@@ -218,6 +218,7 @@ function lerRegistro() {
     antInjetada: mesComLeituraAntes(f.mes.value) ? null : kwhDeTexto(f.antInjetada.value),
     producao: kwhDeTexto(f.producao.value),
     saldo: kwhDeTexto(f.saldo.value),
+    minimo: kwhDeTexto(f.minimo.value),
     te6: tarifaDeTexto(f.te.value),
     tusd6: tarifaDeTexto(f.tusd.value),
     bandeira6: tarifaDeTexto(f.bandeira.value),
@@ -235,6 +236,7 @@ function pintarPrevia() {
   if (!c) { saida.hidden = true; return; }
   saida.hidden = false;
   saida.innerHTML = `<span>direto do FV <strong>${kwh(c.diretoFV)}</strong></span><span>consumo real <strong>${kwh(c.consumoReal)}</strong></span>
+    ${c.minimoPagar != null ? `<span>mínimo a pagar <strong>${reais(c.minimoPagar)}</strong> (${kwh(c.minimo)})</span><span>conta pelas leituras <strong>${reais(c.contaEsperada)}</strong></span>` : ''}
     <span>custo integral <strong>${reais(c.custoIntegral)}</strong></span>${c.economia != null ? `<span>economia <strong class="${c.economia >= 0 ? 'positivo' : 'negativo'}">${reais(c.economia)}</strong></span>` : ''}
     ${c.sobra > 0 ? `<span>injetou ${kwh(c.sobra)} a mais do que consumiu: vira crédito</span>` : ''}
     ${c.inconsistente ? '<span class="negativo">Injetou mais do que produziu: confira as leituras.</span>' : ''}`;
@@ -272,6 +274,8 @@ function abrir(mes = null) {
   f.injetado.value = existente ? campoKwh(existente.injetado) : '';
   f.producao.value = existente ? campoKwh(existente.producao) : '';
   f.saldo.value = existente ? campoKwh(existente.saldo) : '';
+  // O mínimo é do medidor, não do mês: o mês novo parte do último.
+  f.minimo.value = campoKwh(existente ? existente.minimo : ultimo?.minimo);
   f.te.value = base.te6 ? tarifaParaTexto(base.te6) : '';
   f.tusd.value = base.tusd6 ? tarifaParaTexto(base.tusd6) : '';
   f.bandeira.value = base.bandeira6 ? tarifaParaTexto(base.bandeira6) : '';

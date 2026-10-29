@@ -42,7 +42,10 @@ export function calculoDoMes(r) {
   const diretoFV = Math.max(0, r.producao - injetado);
   const consumoReal = r.consumo + diretoFV;
   const tarifa6 = r.te6 + r.tusd6 + (r.bandeira6 ?? 0);
-  const custoEnergia = Math.round((consumoReal * tarifa6) / 10000);
+  // O custo de disponibilidade (30, 50 ou 100 kWh): a concessionária cobra no mínimo isso, em dinheiro, e ele
+  // nunca mexe nas leituras nem nos créditos — só no que se paga e no que se pagaria sem o sistema.
+  const minimo = r.minimo ?? 0;
+  const custoEnergia = Math.round((Math.max(consumoReal, minimo) * tarifa6) / 10000);
   const custoIntegral = custoEnergia + (r.ilum ?? 0);
   const conta = r.conta ?? null;
   return {
@@ -54,6 +57,10 @@ export function calculoDoMes(r) {
     consumoReal,
     // O que a concessionária de fato cobra por energia: o consumo menos o abatido.
     faturado: Math.max(0, r.consumo - injetado),
+    minimo,
+    // O menor que a fatura pode ser, e a conta que as leituras indicam (com o mínimo como piso).
+    minimoPagar: minimo ? Math.round((minimo * tarifa6) / 10000) + (r.ilum ?? 0) : null,
+    contaEsperada: minimo ? Math.round((Math.max(0, r.consumo - injetado, minimo) * tarifa6) / 10000) + (r.ilum ?? 0) : null,
     tarifa6,
     custoEnergia,
     ilum: r.ilum ?? 0,
