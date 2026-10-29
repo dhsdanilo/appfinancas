@@ -409,7 +409,25 @@
       </div>
       <p class="nota" id="en-existe" hidden>Este mês já tem registro: ao salvar, ele é substituído.</p>
     </div>
-    <p class="titulo-bloco">leituras · kWh</p>
+    <p class="titulo-bloco">leituras do medidor · número do mostrador</p>
+    <div class="campo">
+      <label for="en-leitura-consumo">Leitura atual · consumo</label>
+      <input type="text" id="en-leitura-consumo" name="leituraConsumo" inputmode="decimal" autocomplete="off" placeholder="14870">
+    </div>
+    <div class="campo" id="en-campo-ant-consumo" hidden>
+      <label for="en-ant-consumo">Leitura anterior · consumo</label>
+      <input type="text" id="en-ant-consumo" name="antConsumo" inputmode="decimal" autocomplete="off" placeholder="13945">
+    </div>
+    <div class="campo">
+      <label for="en-leitura-injetada">Leitura atual · injeção</label>
+      <input type="text" id="en-leitura-injetada" name="leituraInjetada" inputmode="decimal" autocomplete="off" placeholder="3210">
+    </div>
+    <div class="campo" id="en-campo-ant-injetada" hidden>
+      <label for="en-ant-injetada">Leitura anterior · injeção</label>
+      <input type="text" id="en-ant-injetada" name="antInjetada" inputmode="decimal" autocomplete="off" placeholder="2981">
+    </div>
+    <p class="nota-rel" id="en-leituras-nota" hidden></p>
+    <p class="titulo-bloco">kWh do mês · saem das leituras (ou digite)</p>
     <div class="campo">
       <label for="en-consumo">Consumo da concessionária</label>
       <input type="text" id="en-consumo" name="consumo" inputmode="decimal" autocomplete="off" placeholder="925">

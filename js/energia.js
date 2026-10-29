@@ -164,9 +164,46 @@ const avisoDeExistente = () => {
   $('en-existe').hidden = !(mes && app?.energia?.[mes] && mes !== editando);
 };
 const seletor = ligarSeletorDeMes($('en-mes'), {
-  aoMudar: avisoDeExistente,
+  aoMudar: () => { avisoDeExistente(); aplicarLeituras(); },
   marcados: () => new Set(Object.keys(app?.energia ?? {})),
 });
+
+/** O mês anterior que tem leitura do medidor (antes de `mes`), ou null. */
+function mesComLeituraAntes(mes) {
+  return mesesDeEnergia(app).map((x) => x.registro)
+    .filter((r) => r.mes < mes && r.leituraConsumo != null)
+    .pop() ?? null;
+}
+
+/**
+ * As leituras viram kWh: leitura atual − a do mês anterior (ou a "anterior" digitada, no primeiro mês).
+ * Preenche os campos de kWh, que continuam podendo ser corrigidos à mão.
+ */
+function aplicarLeituras() {
+  const f = campos();
+  const mes = f.mes.value;
+  const antes = mes ? mesComLeituraAntes(mes) : null;
+  $('en-campo-ant-consumo').hidden = Boolean(antes);
+  $('en-campo-ant-injetada').hidden = Boolean(antes);
+  const nota = $('en-leituras-nota');
+  const par = (atual, anterior, destino, nome) => {
+    if (atual == null || anterior == null) return null;
+    if (atual < anterior) { nota.textContent = `A leitura de ${nome} é menor que a anterior (${anterior}): confira os números.`; nota.hidden = false; return false; }
+    destino.value = campoKwh(atual - anterior);
+    return true;
+  };
+  nota.hidden = true;
+  const consumoAtual = kwhDeTexto(f.leituraConsumo.value);
+  const injetadaAtual = kwhDeTexto(f.leituraInjetada.value);
+  const consumoAnt = antes ? antes.leituraConsumo : kwhDeTexto(f.antConsumo.value);
+  const injetadaAnt = antes ? antes.leituraInjetada : kwhDeTexto(f.antInjetada.value);
+  par(consumoAtual, consumoAnt, f.consumo, 'consumo');
+  par(injetadaAtual, injetadaAnt, f.injetado, 'injeção');
+  if (antes && (consumoAtual != null || injetadaAtual != null)) {
+    nota.textContent = `Anterior (${nomeDoMes(antes.mes)}): consumo ${antes.leituraConsumo}${antes.leituraInjetada != null ? `, injeção ${antes.leituraInjetada}` : ''}.`;
+    nota.hidden = false;
+  }
+}
 
 function lerRegistro() {
   const f = campos();
@@ -175,6 +212,10 @@ function lerRegistro() {
     mes: f.mes.value,
     consumo: kwhDeTexto(f.consumo.value),
     injetado: kwhDeTexto(f.injetado.value) ?? 0,
+    leituraConsumo: kwhDeTexto(f.leituraConsumo.value),
+    leituraInjetada: kwhDeTexto(f.leituraInjetada.value),
+    antConsumo: mesComLeituraAntes(f.mes.value) ? null : kwhDeTexto(f.antConsumo.value),
+    antInjetada: mesComLeituraAntes(f.mes.value) ? null : kwhDeTexto(f.antInjetada.value),
     producao: kwhDeTexto(f.producao.value),
     saldo: kwhDeTexto(f.saldo.value),
     te6: tarifaDeTexto(f.te.value),
@@ -223,6 +264,10 @@ function abrir(mes = null) {
   const base = existente ?? (ultimo ? { te6: ultimo.te6, tusd6: ultimo.tusd6, bandeira6: ultimo.bandeira6, ilum: ultimo.ilum } : {});
   seletor.definir(existente ? existente.mes : ultimo ? somarMeses(`${ultimo.mes}-01`, 1).slice(0, 7) : hoje().slice(0, 7));
   avisoDeExistente();
+  f.leituraConsumo.value = existente?.leituraConsumo != null ? campoKwh(existente.leituraConsumo) : '';
+  f.leituraInjetada.value = existente?.leituraInjetada != null ? campoKwh(existente.leituraInjetada) : '';
+  f.antConsumo.value = existente?.antConsumo != null ? campoKwh(existente.antConsumo) : '';
+  f.antInjetada.value = existente?.antInjetada != null ? campoKwh(existente.antInjetada) : '';
   f.consumo.value = existente ? campoKwh(existente.consumo) : '';
   f.injetado.value = existente ? campoKwh(existente.injetado) : '';
   f.producao.value = existente ? campoKwh(existente.producao) : '';
@@ -242,9 +287,15 @@ function abrir(mes = null) {
   $('en-apagar').hidden = !existente;
   $('en-apagar').textContent = 'apagar este mês';
   $('en-aviso').hidden = true;
+  // Os kWh do mês que vêm das leituras só se refazem quando se mexe nelas (o que está gravado vale ao reabrir).
+  const nota = $('en-leituras-nota');
+  nota.hidden = true;
+  const antes = mesComLeituraAntes(f.mes.value);
+  $('en-campo-ant-consumo').hidden = Boolean(antes);
+  $('en-campo-ant-injetada').hidden = Boolean(antes);
   pintarPrevia();
   $('dialogo-energia').showModal();
-  f.consumo.focus();
+  f.leituraConsumo.focus();
 }
 
 const avisar = (t) => { $('en-aviso').textContent = t; $('en-aviso').hidden = !t; };
@@ -394,7 +445,10 @@ document.addEventListener('keydown', (e) => {
   if (linha) abrir(linha.dataset.enMes);
 });
 
-$('f-energia')?.addEventListener('input', pintarPrevia);
+$('f-energia')?.addEventListener('input', (ev) => {
+  if (['leituraConsumo', 'leituraInjetada', 'antConsumo', 'antInjetada'].includes(ev.target.name)) aplicarLeituras();
+  pintarPrevia();
+});
 $('f-energia')?.addEventListener('submit', async (e) => {
   if (e.submitter?.value !== 'salvar') return;
   e.preventDefault();
