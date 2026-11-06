@@ -3553,7 +3553,7 @@ caso('energia', 'Fio B separado: a parte do ano sobre a energia compensada, ou o
   const r = { mes: '2026-10', consumo: 338, injetado: 480, producao: 752, te6: 345333, tusd6: 598000, bandeira6: 0, ilum: 0, minimo: 30, fiob6: 200000 };
   const c = energia.calculoDoMes(r, 692);
   igual([c.compensada, c.fioBPct, c.fioB], [338, 60, Math.round((338 * 200000 * 60) / 100 / 10000)], 'compensa o consumo da rede; 60% do Fio B em 2026');
-  igual(c.contaEsperada, Math.round((30 * (345333 + 598000)) / 10000) + c.fioB, 'o Fio B soma na conta esperada');
+  igual(c.contaEsperada, Math.max(c.fioB, Math.round((30 * (345333 + 598000)) / 10000)), 'o Fio B vale se passa do mínimo (que ele já cobre)');
   igual(energia.calculoDoMes({ ...r, fiobValor: 5000 }, 692).fioB, 5000, 'o valor da fatura manda');
   igual(energia.calculoDoMes({ ...r, fiobPct: 0 }, 692).fioB, 0, 'parte 0%: regime antigo, sem Fio B');
   igual(energia.calculoDoMes({ ...r, fiob6: null }, 692).fioB, 0, 'sem a tarifa do Fio B, nada a somar');
@@ -3567,6 +3567,17 @@ caso('cartão', 'parcela mostra a data da compra, como o app do banco, e ordena 
   igual(lanc.dataDaCompra(antiga), '2026-09-03', 'parcela antiga, sem a data gravada: volta (número − 1) meses');
   igual(lanc.dataDaCompra({ cicloFatura: '2026-11-25', dataCompetencia: '2026-11-03', parcela: null }), '2026-11-03', 'compra à vista: a própria data');
   igual(lanc.dataDaCompra({ cicloFatura: null, dataCompetencia: '2026-11-03', dataCaixa: '2026-11-05', parcela: { numero: 2, total: 3 } }), '2026-11-05', 'fora do cartão não muda');
+});
+
+caso('energia', 'a fatura de novembro: o Fio B sai da TUSD do consumo menos a da energia injetada', () => {
+  // CONSUMO TE/TUSD 338 kWh a 0,341183 / 0,590976; ENERGIA INJETADA TUSD −338 kWh a 0,450030; iluminação R$ 5,34; total R$ 52,98.
+  const r = { mes: '2026-11', consumo: 338, injetado: 480, producao: 752, te6: 341183, tusd6: 590976, tusdInj6: 450030, ilum: 534, minimo: 30, conta: 5298 };
+  const c = energia.calculoDoMes(r, 692);
+  igual([c.fioB6, c.compensada, c.fioB], [140946, 338, 4764], 'Fio B = 338 × (0,590976 − 0,450030) = R$ 47,64');
+  igual(c.contaEsperada, 5298, 'a conta esperada fecha com a fatura: R$ 47,64 + iluminação R$ 5,34');
+  igual(energia.calculoDoMes({ ...r, tusdInj6: null }, 692).fioB, 0, 'sem a TUSD da injetada (e sem o jeito antigo), não há Fio B');
+  const outubro = energia.calculoDoMes({ mes: '2026-10', consumo: 0, injetado: 692, producao: 1000, te6: 345333, tusd6: 598000, tusdInj6: 450030, minimo: 30 }, 0);
+  igual([outubro.compensada, outubro.fioB, outubro.contaEsperada], [0, 0, outubro.minimoPagar], 'sem consumo da rede, sem Fio B: paga o mínimo');
 });
 
 async function limpar() {

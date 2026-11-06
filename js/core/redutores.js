@@ -26,7 +26,7 @@ export const AREAS_PADRAO = ['caixa', 'cartoes'];
  * **Suba este número sempre que mexer em `estadoVazio()` ou na forma que um
  * redutor produz.** O cache é descartável: subir aqui custa um recálculo.
  */
-export const VERSAO_ESTADO = 38;
+export const VERSAO_ESTADO = 39;
 
 /** Anota de que dia em diante um lugar é inteiro de um envelope (ou de nenhum). Sem data = desde sempre. */
 function marcarInteiro(e, lugarId, envelopeId, desde) {
@@ -447,6 +447,8 @@ export const redutores = {
       minimo: d.minimo ?? null,
       // O Fio B, separado: a tarifa (milionésimos de real por kWh), a parte do ano que se cobra (%, vazio = pela lei) e o
       // valor cobrado na fatura (centavos, vazio = calculado).
+      // O jeito de hoje: a TUSD da "energia injetada" da fatura; o Fio B sai da diferença para a TUSD do consumo.
+      tusdInj6: d.tusdInj6 ?? null,
       fiob6: d.fiob6 ?? null,
       fiobPct: d.fiobPct ?? null,
       fiobValor: d.fiobValor ?? null,
