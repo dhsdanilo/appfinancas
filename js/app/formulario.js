@@ -1370,7 +1370,7 @@ Gravar assim?`)) return false;
         // banco ainda não tenha debitado: então fica pendente.
         confirmado: pendente ? false : nasceConfirmado({ manual: true, dataCaixa: noCartao ? data : dia }),
         pendente,
-        parcela: compraId ? { compraId, numero: i + 1, total: quantas } : null,
+        parcela: compraId ? { compraId, numero: i + 1, total: quantas, dataCompra: data } : null,
       });
     }
 

@@ -41,7 +41,7 @@ import { csvDosLancamentos } from './core/exportar.js';
 import { rendaDaFolha, liquidoPrevisto } from './core/holerite.js';
 import {
   visiveis, porDataDecrescente, estadoDoLancamento, saldoReal, nomeDaCategoria,
-  sinalDeSaida, ehTransferencia, dataVista, estornado, ehDeInvestimento,
+  sinalDeSaida, ehTransferencia, dataVista, dataDaCompra, estornado, ehDeInvestimento,
 } from './core/lancamentos.js';
 import { temCiclo } from './core/cartao.js';
 import { provisaoDoCartao, temCofrinho } from './core/cofrinho.js';
@@ -478,8 +478,8 @@ function pintarLancamentos() {
     .filter((l) => !vista.categoria || l.categoriaId === vista.categoria)
     .filter((l) => !busca || textoDaLinha(l).includes(busca))
     .sort((a, b) => {
-      const da = dataVista(a);
-      const db = dataVista(b);
+      const da = dataDaCompra(a);
+      const db = dataDaCompra(b);
       return da !== db ? (da < db ? 1 : -1) : a.id < b.id ? 1 : -1;
     });
 
@@ -1997,8 +1997,8 @@ function pintarListaDeCartoes(cartoes) {
 
 const ordenarPelaCompra = (lista) =>
   lista.sort((a, b) => {
-    const da = dataVista(a);
-    const db = dataVista(b);
+    const da = dataDaCompra(a);
+    const db = dataDaCompra(b);
     if (da !== db) return da < db ? 1 : -1;
     return a.id < b.id ? 1 : -1;
   });
@@ -2108,7 +2108,7 @@ function linhaHTML(l, ids, saldoApos = null) {
     .filter(Boolean)
     .map((e) => `<span class="etiqueta">${escapar(e)}</span>`)
     .join('');
-  const dia = dataVista(l);
+  const dia = dataDaCompra(l);
   linhasNaTela.push({
     data: dia,
     tipo: nomeDoTom,

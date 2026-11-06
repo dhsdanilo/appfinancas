@@ -3560,6 +3560,15 @@ caso('energia', 'Fio B separado: a parte do ano sobre a energia compensada, ou o
   igual(c.custoIntegral, energia.calculoDoMes({ ...r, fiob6: null }, 692).custoIntegral, 'o custo sem o sistema não tem Fio B');
 });
 
+caso('cartão', 'parcela mostra a data da compra, como o app do banco, e ordena por ela', () => {
+  const parcela3 = { cicloFatura: '2026-11-25', dataCompetencia: '2026-11-03', parcela: { compraId: 'c', numero: 3, total: 10, dataCompra: '2026-09-03' } };
+  igual(lanc.dataDaCompra(parcela3), '2026-09-03', 'a data gravada da compra');
+  const antiga = { ...parcela3, parcela: { compraId: 'c', numero: 3, total: 10 } };
+  igual(lanc.dataDaCompra(antiga), '2026-09-03', 'parcela antiga, sem a data gravada: volta (número − 1) meses');
+  igual(lanc.dataDaCompra({ cicloFatura: '2026-11-25', dataCompetencia: '2026-11-03', parcela: null }), '2026-11-03', 'compra à vista: a própria data');
+  igual(lanc.dataDaCompra({ cicloFatura: null, dataCompetencia: '2026-11-03', dataCaixa: '2026-11-05', parcela: { numero: 2, total: 3 } }), '2026-11-05', 'fora do cartão não muda');
+});
+
 async function limpar() {
   db.usarBanco(BANCO_DE_TESTE);
   await db.apagarTudo();
