@@ -161,6 +161,9 @@ async function refazerCotacao(ativo, desde) {
   await cotacoes.atualizar({ forcar: true });
 }
 
+// O título vem do cotacoes.json (arquivo de fora do aparelho): nunca entra na página sem escapar.
+const escaparHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
 const quantos = (q) => q.toLocaleString('pt-BR', { maximumFractionDigits: 8 });
 
 /** Os campos da operação que se limpam juntos. */
@@ -492,7 +495,7 @@ export function criarJanelaDoAtivo({ aoSalvar } = {}) {
       const sel = el('cotacao-titulo');
       const antes = sel.value;
       sel.innerHTML = '<option value="">escolha o título</option>' +
-        cotacoes.titulosDoTesouro(cot).map((t) => `<option value="${t.chave}">${t.nome}</option>`).join('');
+        cotacoes.titulosDoTesouro(cot).map((t) => `<option value="${escaparHtml(t.chave)}">${escaparHtml(t.nome)}</option>`).join('');
       sel.value = antes;
     }
     const v = lerCotacao();

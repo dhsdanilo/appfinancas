@@ -202,7 +202,7 @@ async function pintarDonoDoAparelho() {
   curarPessoaDoAparelho(app);
   const pessoas = Object.values(app.pessoas ?? {});
   sel.innerHTML = '<option value="">ninguém em especial</option>' +
-    pessoas.map((p) => `<option value="${p.id}">${p.nome}</option>`).join('');
+    pessoas.map((p) => `<option value="${escapar(p.id)}">${escapar(p.nome)}</option>`).join('');
   sel.value = pessoaDoAparelho() ?? '';
 }
 document.getElementById('ap-pessoa')?.addEventListener('change', (e) => definirPessoaDoAparelho(e.target.value || null));
