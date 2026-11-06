@@ -487,7 +487,7 @@ function pintarLancamentos() {
   const umaConta = contas.length === 1 && contas[0].tipo !== 'cartao' ? contas[0] : null;
   const saldoApos = umaConta ? saldosCorridos(umaConta) : null;
   $('lista').innerHTML = linhas.length
-    ? linhas.map((l) => linhaHTML(l, ids, saldoApos)).join('')
+    ? linhasPorDia(linhas, (l) => linhaHTML(l, ids, saldoApos)).join('')
     : `<li class="vazio">Nada ${busca || vista.categoria ? 'com estes filtros' : vista.modo === 'mes' ? `em ${nomeDoMes(vista.mes)}` : 'neste período'}.</li>`;
   pintarTotais(linhas, ids);
   guardarVista();
@@ -1856,14 +1856,14 @@ function pintarLista(aba, contas) {
     }
   }
 
-  linhas.sort(porDataDecrescente);
+  ordenarPelaCompra(linhas);
 
   // Com uma conta em foco, cada linha realizada leva o saldo depois dela — é
   // o extrato que o banco mostra, e o jeito de achar onde a conta divergiu.
   const saldoApos = contas.length === 1 && aba.id !== 'dividas' ? saldosCorridos(contas[0]) : null;
 
   $('lista').innerHTML = linhas.length
-    ? linhas.map((l) => linhaHTML(l, ids, saldoApos)).join('')
+    ? linhasPorDia(linhas, (l) => linhaHTML(l, ids, saldoApos)).join('')
     : `<li class="vazio">Nada ${vista.modo === 'mes' ? `em ${nomeDoMes(vista.mes)}` : 'neste período'}.</li>`;
   pintarTotais(linhas, ids);
 }
@@ -1956,7 +1956,7 @@ function pintarListaDeCartoes(cartoes) {
       lancado += compras.filter((l) => !l.projetado).reduce((t, l) => t + sinalDeSaida(l), 0);
       if (!compras.length && !pagamentos.length) continue;
       html.push(`<li class="grupo">${escapar(c.nome)}</li>`);
-      html.push(...ordenarPelaCompra([...compras, ...pagamentos]).map((l) => linhaHTML(l, new Set([c.id]))));
+      html.push(...linhasPorDia(ordenarPelaCompra([...compras, ...pagamentos]), (l) => linhaHTML(l, new Set([c.id]))));
       continue;
     }
 
@@ -1979,7 +1979,7 @@ function pintarListaDeCartoes(cartoes) {
       const itens = ordenarPelaCompra([...f.itens, ...(f.pendentes ?? []), ...projetadas, ...pagamentos]);
       html.push(
         ...(itens.length
-          ? itens.map((l) => linhaHTML(l, new Set([c.id])))
+          ? linhasPorDia(itens, (l) => linhaHTML(l, new Set([c.id])))
           : ['<li class="vazio">Nenhuma compra nesta fatura.</li>'])
       );
     }
@@ -1993,6 +1993,31 @@ function pintarListaDeCartoes(cartoes) {
   if (total) partes.push(`compras ${dinheiroHTML(total)}${total !== lancado ? ` (já lançado ${dinheiroHTML(lancado)})` : ''}`);
   if (pago) partes.push(`pago ${dinheiroHTML(pago)}`);
   $('totais').innerHTML = partes.join(' · ');
+}
+
+const NOMES_DO_DIA = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+/** "Quinta, 5 de nov" (com o ano quando não é o de hoje): o separador de dia, como no app do banco. */
+function cabecalhoDoDia(dia) {
+  const data = new Date(`${dia}T12:00:00`);
+  const ano = dia.slice(0, 4) !== hoje().slice(0, 4) ? ` de ${dia.slice(0, 4)}` : '';
+  return `${NOMES_DO_DIA[data.getDay()]}, ${Number(dia.slice(8, 10))} de ${MESES_CURTOS[data.getMonth()]}${ano}`;
+}
+
+/** As linhas já ordenadas, com um cabeçalho de dia sempre que o dia muda (a data da compra, como no banco). */
+function linhasPorDia(itens, linha) {
+  const saida = [];
+  let ultimo = null;
+  for (const l of itens) {
+    const dia = dataDaCompra(l);
+    if (dia !== ultimo) {
+      saida.push(`<li class="dia-grupo">${escapar(cabecalhoDoDia(dia))}</li>`);
+      ultimo = dia;
+    }
+    saida.push(linha(l));
+  }
+  return saida;
 }
 
 const ordenarPelaCompra = (lista) =>

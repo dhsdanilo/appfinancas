@@ -444,6 +444,18 @@ body.abas-no-topo #painel-relatorios { margin-top: 0; border-top-left-radius: 0;
 .lista > li.grupo .fino { display: block; color: var(--tinta-fraca); font-size: var(--t-miudo); font-weight: 400; }
 .lista > li.grupo .valor-grupo { white-space: nowrap; text-align: right; }
 
+/* O separador de dia dentro das listas: "Quinta, 5 de nov". */
+.lista > li.dia-grupo {
+  margin-top: var(--e4);
+  padding: var(--e1) 0;
+  color: var(--tinta-fraca);
+  font-size: var(--t-miudo);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border-bottom: 1px solid var(--borda);
+}
+.lista > li.grupo + li.dia-grupo, .lista > li.dia-grupo:first-child { margin-top: var(--e2); }
+
 @media (max-width: 600px) {
   .linha.com-saldo { grid-template-columns: 26px 40px 1fr auto; }
   .linha.com-saldo .saldo-apos { grid-column: 3 / -1; font-size: var(--t-miudo); }
