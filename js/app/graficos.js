@@ -23,9 +23,16 @@ function redondo(v) {
 }
 
 /** A escala vertical: mínimo e máximo redondos, com o zero dentro. */
-function escala(valores, alturaUtil, cima) {
-  let min = Math.min(0, ...valores);
-  let max = Math.max(0, ...valores);
+function escala(valores, alturaUtil, cima, semZero = false) {
+  // `semZero`: um preço que varia pouco não cabe num eixo que parte do zero — a subida some. O eixo parte de logo
+  // abaixo do menor valor.
+  let min = semZero ? Math.min(...valores) : Math.min(0, ...valores);
+  let max = semZero ? Math.max(...valores) : Math.max(0, ...valores);
+  if (semZero) {
+    const folga = Math.max((max - min) * 0.15, Math.abs(max) * 0.01);
+    min -= folga;
+    max += folga;
+  }
   if (max === min) max = min + 100;
   const passo = redondo((max - min) / 4);
   min = Math.floor(min / passo) * passo;
@@ -193,11 +200,11 @@ export function areas(raiz, { pontos, acima, abaixo, linha, formatar, altura = 2
  * `series`: [{ nome, cor, valores: [y|null], fina }] — mesma quantidade de
  * pontos. `rotulos`: o texto do eixo X de cada ponto. `dica(i)`: HTML da dica.
  */
-export function linhas(raiz, { series, rotulos, dica, formatar, altura = 200, marcas = [] }) {
+export function linhas(raiz, { series, rotulos, dica, formatar, altura = 200, marcas = [], semZero = false }) {
   const largura = larguraDe(raiz);
   const m = { cima: 16, baixo: 26, esq: 62, dir: 16 };
   const n = rotulos.length;
-  const { y, marcas: ticks } = escala(series.flatMap((s) => s.valores.filter((v) => v != null)), altura - m.cima - m.baixo, m.cima);
+  const { y, marcas: ticks } = escala(series.flatMap((s) => s.valores.filter((v) => v != null)), altura - m.cima - m.baixo, m.cima, semZero);
   const x = (i) => m.esq + (n === 1 ? 0 : (i / (n - 1)) * (largura - m.esq - m.dir));
   const grade = ticks.map((v) => `<line class="grade" x1="${m.esq}" x2="${largura - m.dir}" y1="${y(v)}" y2="${y(v)}"/>
     <text class="eixo" x="${m.esq - 8}" y="${y(v) + 4}" text-anchor="end">${esc(formatar(v))}</text>`).join('');

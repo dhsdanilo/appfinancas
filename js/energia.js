@@ -106,6 +106,9 @@ async function pintar() {
     <div class="numeros-detalhe">${numerosHTML}</div>
     <div class="ferramentas-detalhe">${grandezas}</div>
     <div id="g-energia"></div>
+    <p class="titulo-bloco">quanto custa o kWh · sem o sistema solar</p>
+    <div id="g-energia-preco"></div>
+    <div id="g-energia-preco-nota"></div>
     <div class="rolagem-energia"><table class="tabela-energia">
       <thead><tr><th>mês</th><th>consumo real</th><th>da concessionária</th><th>injetado</th><th>FV direto</th><th>custo integral</th><th>conta</th><th>economia</th><th>saldo de créditos</th></tr></thead>
       <tbody>${linhasDaTabela}</tbody>${rodape}</table></div>
@@ -116,7 +119,7 @@ async function pintar() {
 function desenhar(calendario, porMes) {
   const raiz = $('g-energia');
   const registrados = calendario.filter((m) => porMes.has(m));
-  if (registrados.length < 2) { raiz.innerHTML = '<p class="nota-rel">O gráfico aparece a partir de dois meses registrados.</p>'; return; }
+  if (registrados.length < 2) { raiz.innerHTML = '<p class="nota-rel">O gráfico aparece a partir de dois meses registrados.</p>'; $('g-energia-preco').innerHTML = ''; $('g-energia-preco-nota').innerHTML = ''; return; }
   const valor = (m, f) => { const x = porMes.get(m); return x ? f(x.registro, x.calculo) : null; };
   const real = (r, c) => c?.consumoReal ?? null;
   const series = grandeza === 'kwh'
@@ -150,6 +153,54 @@ function desenhar(calendario, porMes) {
     formatar: grandeza === 'kwh' ? (v) => Math.round(v).toLocaleString('pt-BR') : eixoReais,
     altura: 230,
   });
+  desenharPreco(calendario, porMes);
+}
+
+const reaisKwh = (v) => `R$ ${v.toFixed(3).replace('.', ',')}`;
+
+/**
+ * O preço do kWh de quem não tem sistema solar, mês a mês: a tarifa da fatura (TE + TUSD + bandeira, com tributos) e o
+ * preço "tudo incluído" (com a iluminação pública, dividido pelo consumo real). Mostra o quanto subiu.
+ */
+function desenharPreco(calendario, porMes) {
+  const raiz = $('g-energia-preco');
+  const nota = $('g-energia-preco-nota');
+  const tarifa = (r) => (r?.te6 && r?.tusd6 ? (r.te6 + r.tusd6 + (r.bandeira6 ?? 0)) / 1e6 : null);
+  const porMesTarifa = calendario.map((m) => tarifa(porMes.get(m)?.registro));
+  if (porMesTarifa.filter((v) => v != null).length < 2) { raiz.innerHTML = '<p class="nota-rel">O gráfico aparece a partir de dois meses com as tarifas registradas.</p>'; nota.innerHTML = ''; return; }
+  const tudo = calendario.map((m) => {
+    const c = porMes.get(m)?.calculo;
+    return c && c.consumoReal > 0 ? c.custoIntegral / 100 / c.consumoReal : null;
+  });
+  graficoDeLinhas(raiz, {
+    series: [
+      { nome: 'tarifa (TE + TUSD + bandeira)', cor: cor(1), valores: porMesTarifa.map((v) => (v == null ? null : v * 100)) },
+      ...(tudo.filter((v) => v != null).length >= 2 ? [{ nome: 'com iluminação, por kWh', cor: cor(3), fina: true, valores: tudo.map((v) => (v == null ? null : v * 100)) }] : []),
+    ],
+    rotulos: calendario.map(mesCurto),
+    dica: (i) => {
+      const t = porMesTarifa[i];
+      if (t == null) return `<strong>${esc(nomeDoMes(calendario[i]))}</strong><span>sem tarifas</span>`;
+      const r = porMes.get(calendario[i]).registro;
+      const linhas = [`TE ${reaisKwh(r.te6 / 1e6)} · TUSD ${reaisKwh(r.tusd6 / 1e6)}${r.bandeira6 ? ` · bandeira ${reaisKwh(r.bandeira6 / 1e6)}` : ''}`, `tarifa ${reaisKwh(t)}`];
+      if (tudo[i] != null) linhas.push(`com iluminação ${reaisKwh(tudo[i])}`);
+      return `<strong>${esc(nomeDoMes(calendario[i]))}</strong>${linhas.map((x) => `<span class="fino">${esc(x)}</span>`).join('')}`;
+    },
+    // Em centavos por kWh, para o eixo ter degraus redondos; o eixo não parte do zero (a subida seria invisível).
+    formatar: (v) => (v / 100).toFixed(2).replace('.', ','),
+    semZero: true,
+    altura: 200,
+  });
+  // O quanto subiu: do primeiro ao último mês com tarifa, e nos últimos 12 meses.
+  const idx = porMesTarifa.map((v, i) => (v != null ? i : -1)).filter((i) => i >= 0);
+  const [primeiro, ultimo] = [idx[0], idx[idx.length - 1]];
+  const pct = (de, ate) => ((porMesTarifa[ate] / porMesTarifa[de] - 1) * 100);
+  const sinal = (p) => `${p >= 0 ? '+' : '−'}${Math.abs(p).toFixed(1).replace('.', ',')}%`;
+  const partes = [`${mesCurto(calendario[primeiro])} → ${mesCurto(calendario[ultimo])}: ${reaisKwh(porMesTarifa[primeiro])} → ${reaisKwh(porMesTarifa[ultimo])} (<strong>${sinal(pct(primeiro, ultimo))}</strong>)`];
+  const alvo = somarMeses(`${calendario[ultimo]}-01`, -12).slice(0, 7);
+  const j = idx.find((i) => calendario[i] >= alvo && i < ultimo);
+  if (j != null && calendario[j] > calendario[primeiro]) partes.push(`em 12 meses: <strong>${sinal(pct(j, ultimo))}</strong> (desde ${mesCurto(calendario[j])})`);
+  nota.innerHTML = `<p class="nota-rel">${partes.join(' · ')}. É o preço com tributos que a distribuidora cobra, sem descontar nada do sistema solar.</p>`;
 }
 
 // ── o registro de um mês ─────────────────────────────────────────────────────
