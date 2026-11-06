@@ -22,8 +22,7 @@ Depois abra <http://localhost:8123>.
 |---|---|
 | `index.html` | Captura em tela cheia — é onde o app abre no celular |
 | `extrato.html` | Lançamentos e saldos, com captura, correção e transferência |
-| `bancada.html` | Contas, categorias e etiquetas |
-| `verificacao.html` | A suíte de verificação, rodando em banco separado |
+| `verificacao.html` | A suíte de verificação, rodando em banco separado — só no computador (fora do site público) |
 
 ## As quatro decisões que sustentam tudo
 

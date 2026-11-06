@@ -10,13 +10,13 @@
 
 import * as db from './db.js';
 import * as estado from './estado.js';
-import { novoSal, derivarChave, cifrar, decifrar, criarSelo, seloConfere } from './cripto.js';
+import { novoSal, derivarChave, cifrar, decifrar, criarSelo, seloConfere, TAMANHO_MINIMO_DA_FRASE } from './cripto.js';
 import { hoje } from './datas.js';
 
 const FORMATO = 'app-financas-copia';
 const VERSAO = 1;
 const CHAVE_ULTIMA = 'appfinancas:ultima-copia';
-export const TAMANHO_MINIMO_DA_FRASE = 8;
+export { TAMANHO_MINIMO_DA_FRASE };
 
 export class ErroDaCopia extends Error {}
 

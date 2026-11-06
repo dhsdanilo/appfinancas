@@ -11,6 +11,9 @@
 const ITERACOES = 310000; // PBKDF2-SHA-256, recomendação OWASP de 2023
 const SELO = 'app-financas';
 
+/** A frase de quem começa uma família (ou de uma cópia): curta cai por força bruta se o repositório vazar. */
+export const TAMANHO_MINIMO_DA_FRASE = 12;
+
 const texto = new TextEncoder();
 const letras = new TextDecoder();
 

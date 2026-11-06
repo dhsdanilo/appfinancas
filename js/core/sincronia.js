@@ -13,7 +13,7 @@ import * as db from './db.js';
 import * as log from './log.js';
 import * as estado from './estado.js';
 import { criarCliente, ErroDoGitHub } from './github.js';
-import { novoSal, derivarChave, cifrar, decifrar, criarSelo, seloConfere } from './cripto.js';
+import { novoSal, derivarChave, cifrar, decifrar, criarSelo, seloConfere, TAMANHO_MINIMO_DA_FRASE } from './cripto.js';
 import { slug } from './id.js';
 
 const CONFIG = 'sincronia';
@@ -77,7 +77,11 @@ export async function parear({ repo, token, frase, aparelho }, { cliente } = {})
       );
     }
   } else {
-    // Primeira família neste repositório.
+    // Primeira família neste repositório: a frase que os outros aparelhos vão repetir precisa ser forte. (Quem entra
+    // numa família que já existe usa a que ela tem, qualquer que seja.)
+    if (String(frase).length < TAMANHO_MINIMO_DA_FRASE) {
+      throw new ErroDeSincronia(`a frase precisa ter pelo menos ${TAMANHO_MINIMO_DA_FRASE} caracteres: três ou quatro palavras que só vocês conhecem`);
+    }
     const sal = novoSal();
     chave = await derivarChave(frase, sal);
     config = { versao: 1, sal, selo: await criarSelo(chave), criadoEm: agora() };

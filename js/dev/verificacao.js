@@ -3580,6 +3580,20 @@ caso('energia', 'a fatura de novembro: o Fio B sai da TUSD do consumo menos a da
   igual([outubro.compensada, outubro.fioB, outubro.contaEsperada], [0, 0, outubro.minimoPagar], 'sem consumo da rede, sem Fio B: paga o mínimo');
 });
 
+caso('sincronia', 'segurança: a frase de quem começa a família precisa de 12 caracteres; quem entra usa a que existe', async () => {
+  const nuvem = repositorioFalso();
+  await limpar();
+  await log.registrarAparelho('pc');
+  await lanca(
+    () => sincronia.parear({ ...ACESSO, frase: 'frase curta', aparelho: 'pc' }, { cliente: nuvem }),
+    sincronia.ErroDeSincronia,
+    'frase curta no primeiro aparelho: recusada',
+  );
+  igual(nuvem.arquivos.size, 0, 'e nada foi gravado no repositório');
+  await sincronia.parear({ ...ACESSO, frase: 'doze letras ok', aparelho: 'pc' }, { cliente: nuvem });
+  igual(nuvem.arquivos.has('sincronia.json'), true, 'com 12 ou mais, a família nasce');
+});
+
 async function limpar() {
   db.usarBanco(BANCO_DE_TESTE);
   await db.apagarTudo();
