@@ -94,6 +94,28 @@ export async function seloConfere(chave, seloCifrado) {
   }
 }
 
+/**
+ * A impressão de um texto curto (o PIN): PBKDF2 devolvido em base64, para guardar e comparar. Não serve de chave de
+ * criptografia — é só o jeito de nunca guardar o PIN em si.
+ */
+export async function impressao(textoCurto, salBase64, iteracoes = 150000) {
+  const semente = await crypto.subtle.importKey('raw', texto.encode(String(textoCurto)), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: deBase64(salBase64), iterations: iteracoes, hash: 'SHA-256' },
+    semente,
+    256
+  );
+  return paraBase64(new Uint8Array(bits));
+}
+
+/** Comparação que não para no primeiro byte diferente. */
+export function mesmoTexto(a, b) {
+  if (a.length !== b.length) return false;
+  let diferenca = 0;
+  for (let i = 0; i < a.length; i += 1) diferenca |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diferenca === 0;
+}
+
 // ── base64 ────────────────────────────────────────────────────────────────
 //
 // `btoa` só entende bytes, e o histórico tem acento em tudo. A conversão passa

@@ -43,6 +43,7 @@ import * as copia from '../core/copia.js';
 import * as avisos from '../core/avisos.js';
 import * as icones from '../core/icones-conta.js';
 import * as parcelas from '../core/parcelas.js';
+import * as pin from '../core/pin.js';
 
 const BANCO_DE_TESTE = 'appfinancas-teste';
 
@@ -3592,6 +3593,41 @@ caso('sincronia', 'segurança: a frase de quem começa a família precisa de 12 
   igual(nuvem.arquivos.size, 0, 'e nada foi gravado no repositório');
   await sincronia.parear({ ...ACESSO, frase: 'doze letras ok', aparelho: 'pc' }, { cliente: nuvem });
   igual(nuvem.arquivos.has('sincronia.json'), true, 'com 12 ou mais, a família nasce');
+});
+
+caso('segurança', 'PIN: guarda só a impressão, errar faz esperar (nunca apaga), trocar e tirar pedem o de agora', async () => {
+  await limpar();
+  igual(await pin.pinAtivo(), false, 'começa sem PIN');
+  igual(pin.pinValido('12345'), false, '5 dígitos não vale');
+  igual(pin.pinValido('12a456'), false, 'letra não vale');
+  await lanca(() => pin.definirPin('123'), pin.ErroDoPin, 'PIN curto é recusado');
+  await pin.definirPin('483920');
+  igual(await pin.pinAtivo(), true, 'com PIN');
+  const guardado = JSON.stringify(await db.lerMeta('pin'));
+  igual(guardado.includes('483920'), false, 'o número não fica guardado em lugar nenhum');
+  igual((await pin.conferirPin('483920')).ok, true, 'o certo abre');
+  const t0 = 1_000_000;
+  let r;
+  for (let i = 1; i <= 4; i += 1) { r = await pin.conferirPin('000000', t0); igual([r.ok, r.esperarMs], [false, 0], `erro ${i}: ainda sem esperar`); }
+  r = await pin.conferirPin('000000', t0);
+  igual([r.ok, r.esperarMs], [false, 30000], 'o 5º erro seguido faz esperar 30 s');
+  r = await pin.conferirPin('483920', t0 + 1000);
+  igual([r.ok, r.esperarMs > 0], [false, true], 'durante a espera nem o PIN certo vale');
+  r = await pin.conferirPin('483920', t0 + 31000);
+  igual(r.ok, true, 'passada a espera, o certo abre e zera os erros');
+  const t1 = t0 + 100000;
+  for (let i = 0; i < 5; i += 1) r = await pin.conferirPin('111111', t1);
+  igual(r.esperarMs, 30000, 'a primeira rodada de 5 erros espera 30 s');
+  for (let i = 0; i < 5; i += 1) r = await pin.conferirPin('111111', t1 + 31000);
+  igual(r.esperarMs, 60000, 'se segue errando, a rodada seguinte espera o dobro (1 min)');
+  await pin.conferirPin('483920', t1 + 31000 + 61000);
+  await lanca(() => pin.trocarPin('999999', '135790'), pin.ErroDoPin, 'trocar com o PIN de agora errado: recusado');
+  await lanca(() => pin.removerPin('999999'), pin.ErroDoPin, 'tirar com o PIN de agora errado: recusado');
+  igual(await pin.pinAtivo(), true, 'e o PIN continua');
+  igual(pin.devePedirDeNovo(null, 5_000_000, 3), false, 'sem ter saído, não pede');
+  igual([pin.devePedirDeNovo(1_000_000, 1_000_000 + 2 * 60000, 3), pin.devePedirDeNovo(1_000_000, 1_000_000 + 3 * 60000, 3)], [false, true], 'pede de novo a partir de 3 min fora');
+  await limpar();
+  igual(await pin.pinAtivo(), false, 'o PIN mora no banco do aparelho (some com ele)');
 });
 
 async function limpar() {

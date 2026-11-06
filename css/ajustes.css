@@ -105,3 +105,39 @@
 #lista-recorrencias .reajustes { color: var(--tinta-fraca); font-size: var(--t-miudo); }
 .historico-valores { flex: 1 1 100%; margin: 0; padding-left: var(--e4); font-size: var(--t-apoio); }
 .historico-valores .fino { color: var(--tinta-fraca); font-size: var(--t-miudo); }
+
+/* ── o PIN do aparelho (design/07 §4.1) ─────────────────────────────────── */
+
+/* O app só aparece depois que o bloqueio decidiu. Se o script falhar, a página se mostra sozinha em 4 s. */
+html.aguarda-bloqueio body { visibility: hidden; animation: mostrar-pagina 0s 4s forwards; }
+@keyframes mostrar-pagina { to { visibility: visible; } }
+
+.acoes-pin { display: flex; gap: var(--e2); flex-wrap: wrap; margin-bottom: var(--e3); }
+
+.tela-bloqueio {
+  width: 100%; max-width: none; height: 100%; max-height: none; margin: 0; padding: 0; border: 0;
+  background: var(--fundo); color: var(--tinta);
+}
+.tela-bloqueio::backdrop { background: var(--fundo); }
+.tela-bloqueio[open] { display: flex; align-items: center; justify-content: center; }
+.bloqueio-caixa { display: flex; flex-direction: column; align-items: center; gap: var(--e3); width: min(320px, 92vw); padding: var(--e4); }
+.bloqueio-caixa h2 { margin: 0; font-size: var(--t-titulo, 1.3rem); }
+.bloqueio-msg { margin: 0; min-height: 1.4em; color: var(--tinta-fraca); text-align: center; }
+.bloqueio-msg.erro { color: var(--alerta); }
+.bloqueio-pontos { display: flex; gap: var(--e3); height: 16px; }
+.bloqueio-pontos i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--borda-forte); }
+.bloqueio-pontos i.cheio { background: var(--tinta); border-color: var(--tinta); }
+/* O campo de verdade existe para o teclado do computador e para leitores de tela; não precisa aparecer. */
+.bloqueio-entrada { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
+.bloqueio-teclas { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--e3); width: 100%; }
+.bloqueio-teclas button {
+  min-height: 56px; border-radius: 50%; aspect-ratio: 1; font-size: 1.4rem; background: var(--superficie);
+  border: 1px solid var(--borda); color: var(--tinta); cursor: pointer;
+}
+.bloqueio-teclas button:disabled { opacity: 0.4; cursor: default; }
+.bloqueio-teclas .bloqueio-lateral { font-size: 0.8rem; background: transparent; border-color: transparent; color: var(--tinta-fraca); }
+.bloqueio-esqueci { display: flex; flex-direction: column; gap: var(--e2); width: 100%; font-size: var(--t-apoio); }
+.bloqueio-esqueci input { width: 100%; }
+.bloqueio-acoes { display: flex; flex-direction: column; gap: var(--e2); align-items: stretch; }
+.tela-bloqueio.balanca .bloqueio-pontos { animation: balanca 0.35s; }
+@keyframes balanca { 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }

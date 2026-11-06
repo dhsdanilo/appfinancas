@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" class="aguarda-bloqueio">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -350,6 +350,29 @@
     (para o "a repassar"). Fica só neste aparelho.
   </p>
 
+  <p class="titulo-bloco">proteção do aparelho</p>
+  <p class="nota" id="pin-estado"></p>
+  <div class="acoes-pin">
+    <button type="button" id="pin-definir">Criar PIN</button>
+    <button type="button" id="pin-trocar" hidden>Trocar PIN</button>
+    <button type="button" id="pin-remover" hidden>Tirar PIN</button>
+  </div>
+  <div class="campo" id="pin-campo-tempo" hidden>
+    <label for="pin-minutos">Pedir o PIN de novo depois de</label>
+    <select id="pin-minutos" name="minutos">
+      <option value="1">1 minuto fora do app</option>
+      <option value="3">3 minutos fora do app</option>
+      <option value="5">5 minutos fora do app</option>
+      <option value="15">15 minutos fora do app</option>
+    </select>
+  </div>
+  <label class="linha-check" id="pin-campo-bio" hidden><input type="checkbox" id="pin-bio"> <span>Entrar com a biometria do aparelho (o PIN continua valendo)</span></label>
+  <p class="nota">
+    O PIN é uma tranca de porta, não um cofre: ele barra quem pega o celular destravado e abre o app. Quem sabe mexer nas
+    ferramentas do navegador ainda chega aos dados — a defesa de verdade é o bloqueio de tela do próprio celular. Cada
+    aparelho tem o seu PIN; ele não sincroniza.
+  </p>
+
 <p class="titulo-bloco">cópia de segurança</p>
 <p class="nota">
   Um arquivo com todos os seus registros, cifrado com uma frase que você escolhe. Guarde fora do GitHub
@@ -627,6 +650,9 @@
   // as rotas — que dizem a todas qual está à vista.
   import { montarPagina } from './js/app/pagina.js';
   import { iniciarRotas } from './js/app/rotas.js';
+  import { iniciarBloqueio } from './js/app/bloqueio.js';
+  // O PIN primeiro: o app abre travado, sem piscar o conteúdo, ou já liberado se este aparelho não tem PIN.
+  await iniciarBloqueio();
   await montarPagina();
   await import('./js/dinheiro.js');
   await import('./js/envelopes.js');
@@ -636,6 +662,7 @@
   await import('./js/gestao.js');
   await import('./js/recorrencias.js');
   await import('./js/ajustes.js');
+  await import('./js/app/pin-ajustes.js');
   iniciarRotas();
 </script>
 </body>
