@@ -1672,9 +1672,10 @@ body.abas-no-topo .nuvem { position: absolute; top: var(--e1); right: 0; padding
 .linha .etiqueta.tirar b { margin-left: var(--e1); font-weight: 400; color: var(--tinta-fraca); }
 .linha .etiqueta.tirar:hover, .linha .etiqueta.tirar:focus-visible { border-color: var(--alerta); color: var(--alerta); }
 .linha .etiqueta.tirar:hover b, .linha .etiqueta.tirar:focus-visible b { color: var(--alerta); }
-/* A sugestão nunca entra sozinha: tracejada e esmaecida, só vira etiqueta com um toque. */
-.linha .etiqueta.sugerida { border-style: dashed; color: var(--tinta-fraca); opacity: 0.8; }
-.linha .etiqueta.sugerida:hover, .linha .etiqueta.sugerida:focus-visible { opacity: 1; border-color: var(--acento); color: var(--acento); }
+/* A sugestão nunca entra sozinha: sem moldura, em itálico e bem apagada (a etiqueta de verdade tem contorno), e só vira
+   etiqueta com um toque. */
+.linha .etiqueta.sugerida { border-color: transparent; background: var(--acento-fundo); font-style: italic; color: var(--tinta-fraca); opacity: 0.55; }
+.linha .etiqueta.sugerida:hover, .linha .etiqueta.sugerida:focus-visible { opacity: 1; font-style: normal; border-color: var(--acento); color: var(--acento); }
 /* O "+" fica discreto até o mouse chegar na linha; no celular (sem mouse) fica sempre à vista. */
 .linha .etiqueta.mais { opacity: 0.45; padding: 0 var(--e2); }
 .linha:hover .etiqueta.mais, .linha .etiqueta.mais:focus-visible { opacity: 1; border-color: var(--acento); color: var(--acento); }
@@ -1700,3 +1701,7 @@ body.abas-no-topo .nuvem { position: absolute; top: var(--e1); right: 0; padding
   /* No celular o menu é uma folha na base da tela: o polegar alcança, e o teclado não o esconde. */
   .menu-etiquetas { left: 0 !important; right: 0; top: auto !important; bottom: 0; width: auto; max-height: 55vh; border-radius: 12px 12px 0 0; }
 }
+
+/* ── filtro de classificação (despesas, receitas, movimentações) e o "mostrar todas" ─────────────────────── */
+.filtros .filtro-classe { flex: 1 1 100%; }
+.filtros #filtro-limpar { align-self: center; }

@@ -45,6 +45,7 @@ import * as icones from '../core/icones-conta.js';
 import * as parcelas from '../core/parcelas.js';
 import * as pin from '../core/pin.js';
 import * as sugestao from '../core/sugestao-etiquetas.js';
+import * as classes from '../core/classes.js';
 
 const BANCO_DE_TESTE = 'appfinancas-teste';
 
@@ -3662,6 +3663,16 @@ caso('etiquetas', 'sugestão de etiquetas pela descrição parecida: só sugere,
   igual(sugerir(e.lancamentos.a).map((x) => x.etiquetaId), [], 'quem já tem a etiqueta não ganha sugestão dela');
   const antes = JSON.stringify(e.lancamentos.nova.etiquetas);
   igual(antes, '[]', 'sugerir nunca grava nada');
+});
+
+caso('lançamento', 'classificação para filtrar: despesas, receitas e movimentações (transferência, fatura, aplicação, resgate, renda recebida)', () => {
+  const c = classes.classeDoLancamento;
+  igual(c({ tipo: 'despesa' }), 'despesas', 'despesa');
+  igual(c({ tipo: 'estorno' }), 'despesas', 'a devolução abate o gasto: fica nas despesas');
+  igual(c({ tipo: 'receita' }), 'receitas', 'receita');
+  igual(['transferencia', 'pagamento_fatura', 'aplicacao', 'resgate', 'provento', 'ajuste_caixa'].map((tipo) => c({ tipo, ativoId: tipo === 'aplicacao' || tipo === 'resgate' || tipo === 'provento' ? 'a' : undefined })),
+    ['movimentacoes', 'movimentacoes', 'movimentacoes', 'movimentacoes', 'movimentacoes', 'movimentacoes'], 'o que só muda o dinheiro de lugar');
+  igual([c({ tipo: 'despesa', fatura: {} }), c({ tipo: 'receita', liquido: {} })], ['movimentacoes', 'movimentacoes'], 'a fatura prevista e a renda que chega (líquido da folha)');
 });
 
 async function limpar() {

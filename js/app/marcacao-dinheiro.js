@@ -43,6 +43,13 @@ export const PRINCIPAL = `
       <select id="filtro-area" aria-label="Área"></select>
       <select id="filtro-conta" aria-label="Conta"></select>
       <select id="filtro-categoria" aria-label="Categoria"></select>
+      <div class="pilulas filtro-classe" id="filtro-classe" role="group" aria-label="Classificação">
+        <button type="button" data-classe="" aria-pressed="true">Todas</button>
+        <button type="button" data-classe="despesas" aria-pressed="false">Despesas</button>
+        <button type="button" data-classe="receitas" aria-pressed="false">Receitas</button>
+        <button type="button" data-classe="movimentacoes" aria-pressed="false" title="Aplicações, resgates, renda recebida e transferências">Movimentações</button>
+      </div>
+      <button type="button" class="elo" id="filtro-limpar" hidden>mostrar todas</button>
     </div>
 
     <div class="subabas" role="group" aria-label="Conta" id="subabas"></div>

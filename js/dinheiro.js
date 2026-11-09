@@ -40,6 +40,7 @@ import { porOrdemDaConta, corDaConta } from './core/ordem.js';
 import { bolinhaDaConta } from './core/icones-conta.js';
 import { csvDosLancamentos } from './core/exportar.js';
 import { criarSugestor } from './core/sugestao-etiquetas.js';
+import { classeDoLancamento } from './core/classes.js';
 import { chaveDoNome } from './core/listas.js';
 import { rendaDaFolha, liquidoPrevisto } from './core/holerite.js';
 import {
@@ -90,7 +91,7 @@ function escapar(s) {
 // é de cada uma, e volta quando se volta a ela.
 const CHAVE_PERIODO = 'dinheiro.periodo';
 const chaveDaTela = (pagina) => `dinheiro.vista.${pagina}`;
-const FOCO_PADRAO = { conta: 'todas', area: 'todas', busca: '', categoria: '' };
+const FOCO_PADRAO = { conta: 'todas', area: 'todas', busca: '', categoria: '', classe: '' };
 
 function lerGuardado(chave) {
   try {
@@ -123,7 +124,7 @@ const focos = {};
 
 function guardarVista() {
   if (!PAGINA) return;
-  focos[PAGINA] = { conta: vista.conta, area: vista.area, busca: vista.busca, categoria: vista.categoria };
+  focos[PAGINA] = { conta: vista.conta, area: vista.area, busca: vista.busca, categoria: vista.categoria, classe: vista.classe };
   try {
     localStorage.setItem(chaveDaTela(PAGINA), JSON.stringify({ ...focos[PAGINA], busca: '' }));
     localStorage.setItem(CHAVE_PERIODO, JSON.stringify({ modo: vista.modo, de: vista.de, ate: vista.ate }));
@@ -479,6 +480,7 @@ function pintarLancamentos() {
 
   const linhas = candidatas
     .filter((l) => !vista.categoria || l.categoriaId === vista.categoria)
+    .filter((l) => !vista.classe || classeDoLancamento(l) === vista.classe)
     .filter((l) => !busca || textoDaLinha(l).includes(busca))
     .sort((a, b) => {
       const da = dataDaCompra(a);
@@ -491,7 +493,7 @@ function pintarLancamentos() {
   const saldoApos = umaConta ? saldosCorridos(umaConta) : null;
   $('lista').innerHTML = linhas.length
     ? linhasPorDia(linhas, (l) => linhaHTML(l, ids, saldoApos)).join('')
-    : `<li class="vazio">Nada ${busca || vista.categoria ? 'com estes filtros' : vista.modo === 'mes' ? `em ${nomeDoMes(vista.mes)}` : 'neste período'}.</li>`;
+    : `<li class="vazio">Nada ${busca || vista.categoria || vista.classe ? 'com estes filtros' : vista.modo === 'mes' ? `em ${nomeDoMes(vista.mes)}` : 'neste período'}.</li>`;
   pintarTotais(linhas, ids);
   guardarVista();
 }
@@ -530,6 +532,9 @@ function pintarFiltros() {
     '<option value="">todas as categorias</option>' +
     categorias.map((c) => `<option value="${escapar(c.id)}"${c.id === vista.categoria ? ' selected' : ''}>${escapar(c.nome)}</option>`).join('');
   if ($('filtro-busca').value !== vista.busca) $('filtro-busca').value = vista.busca;
+  for (const b of $('filtro-classe').querySelectorAll('[data-classe]')) b.setAttribute('aria-pressed', String(b.dataset.classe === (vista.classe ?? '')));
+  // "mostrar todas": só aparece quando algum filtro está escondendo coisa.
+  $('filtro-limpar').hidden = !(vista.busca.trim() || vista.categoria || vista.classe || vista.area !== 'todas' || vista.conta !== 'todas');
 }
 
 /**
@@ -2043,7 +2048,9 @@ const ordenarPelaCompra = (lista) =>
 // ── etiquetar rápido (pedido dele, 09/11/2026) ────────────────────────────
 
 /** Só o que está gravado de verdade e é gasto ou ganho leva etiqueta; previsto, automático e fatura não. */
-const aceitaEtiqueta = (l) => !l.projetado && !l.automatico && !l.fatura && !l.liquido && ['despesa', 'receita', 'estorno'].includes(l.tipo);
+// A ocorrência prevista de uma série também: etiquetar uma conta futura a registra como agendada (não liquidada), igual.
+const aceitaEtiqueta = (l) => !l.fatura && !l.liquido && !l.automatico
+  && (l.projetado ? Boolean(l.recorrenciaId) && ['despesa', 'receita'].includes(l.tipo) : ['despesa', 'receita', 'estorno'].includes(l.tipo));
 
 // O sugestor indexa os lançamentos uma vez por estado: refazer a cada linha seria quadrático.
 let sugestorMemo = { app: null, lc: null, fn: null };
@@ -2075,13 +2082,22 @@ function etiquetasDaLinha(l) {
 
 /** Grava as etiquetas do lançamento (o evento de sempre: a correção guarda só o que mudou). */
 async function mudarEtiquetas(lancId, etiquetaId, tirar) {
-  const l = app.lancamentos[lancId];
+  const l = lancamentoOuPrevisto(lancId);
   if (!l || l.removido) return;
   const atuais = l.etiquetas ?? [];
   const novas = tirar ? atuais.filter((x) => x !== etiquetaId) : atuais.includes(etiquetaId) ? atuais : [...atuais, etiquetaId];
   if (novas.length === atuais.length) return;
+  if (l.projetado) {
+    // A conta futura de uma série ainda não existe como lançamento: etiquetá-la a registra, agendada e não liquidada,
+    // com o mesmo valor e a mesma data — o ✓ de dar baixa continua valendo.
+    await lancarOcorrencia({ ...l, etiquetas: novas }, { confirmado: false, dataCaixa: l.dataCaixa });
+    return;
+  }
   await estado.aplicarEvento('lancamento.alterado', { id: lancId, etiquetas: novas });
 }
+
+/** O lançamento gravado, ou a ocorrência prevista que está na tela com esse id. */
+const lancamentoOuPrevisto = (id) => app.lancamentos[id] ?? previstosNaTela.get(id);
 
 let menuDeEtiquetas = null;
 function fecharMenuDeEtiquetas() {
@@ -2092,7 +2108,7 @@ function fecharMenuDeEtiquetas() {
 /** O menu do "+": as sugeridas, depois as mais usadas; digitar filtra, e um nome novo vira "criar". */
 function abrirMenuDeEtiquetas(chip, lancId) {
   fecharMenuDeEtiquetas();
-  const l = app.lancamentos[lancId];
+  const l = lancamentoOuPrevisto(lancId);
   if (!l || l.removido) return;
   const tem = new Set(l.etiquetas ?? []);
   const uso = new Map();
@@ -2855,6 +2871,18 @@ $('filtro-conta').addEventListener('change', () => {
 });
 $('filtro-categoria').addEventListener('change', () => {
   vista.categoria = $('filtro-categoria').value;
+  pintar();
+});
+$('filtro-classe').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-classe]');
+  if (!b) return;
+  vista.classe = b.dataset.classe;
+  pintar();
+});
+// Tira todos os filtros de uma vez (busca, área, conta, categoria e classificação).
+$('filtro-limpar').addEventListener('click', () => {
+  Object.assign(vista, { busca: '', area: 'todas', conta: 'todas', categoria: '', classe: '' });
+  $('filtro-busca').value = '';
   pintar();
 });
 
