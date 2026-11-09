@@ -323,7 +323,7 @@ function abaGastos() {
       <div class="cabeca-lista-rel">${abasFinas('rel-agrupar', AGRUPAR.map(([k, n]) => [k, n.charAt(0).toUpperCase() + n.slice(1)]), v.agrupar, 'Agrupar a lista')}
         <span class="fino">${r.anterior != null ? `variação contra ${esc(nomeAnterior)} · ` : ''}toque numa linha para ver os lançamentos</span></div>
       ${lista}
-      ${v.agrupar === 'etiqueta' ? '<p class="nota-rel">Um lançamento com duas etiquetas aparece nas duas.</p>' : ''}
+      ${v.agrupar === 'etiqueta' ? '<p class="nota-rel">O valor de um lançamento com mais de uma etiqueta é dividido entre elas: a soma da lista fecha com o total, sem contar duas vezes. Para ver o total inteiro de uma etiqueta, filtre só por ela.</p>' : ''}
     </div>`;
 }
 

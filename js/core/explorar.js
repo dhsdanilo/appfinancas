@@ -134,14 +134,31 @@ function chavesDe(x, agrupar) {
   return [x.categoriaId ?? '—'];
 }
 
+/**
+ * O quanto de um valor cabe a cada chave. Com uma chave só, tudo; com várias (um lançamento de duas etiquetas), o valor
+ * se DIVIDE em partes iguais — e os centavos que sobram vão um a um para as primeiras, em ordem estável —, para a soma
+ * dos grupos fechar com o total e nada contar duas vezes (pedido dele, 09/11/2026).
+ */
+export function repartir(valor, chaves) {
+  const n = chaves.length;
+  const base = Math.trunc(valor / n);
+  const sobra = valor - base * n;
+  const ordem = [...chaves].sort();
+  const parte = new Map(chaves.map((c) => [c, base]));
+  for (let i = 0; i < Math.abs(sobra); i += 1) parte.set(ordem[i], parte.get(ordem[i]) + Math.sign(sobra));
+  return parte;
+}
+
 /** Soma por chave: [{ chave, valor, vezes, lancamentos }], do maior para o menor. */
 function agruparPor(itens, agrupar) {
   const mapa = new Map();
   for (const x of itens) {
-    for (const chave of chavesDe(x, agrupar)) {
+    const chaves = chavesDe(x, agrupar);
+    const partes = repartir(x.valor, chaves);
+    for (const chave of chaves) {
       if (!mapa.has(chave)) mapa.set(chave, { chave, valor: 0, vezes: 0, lancamentos: [] });
       const g = mapa.get(chave);
-      g.valor += x.valor;
+      g.valor += partes.get(chave);
       // Duas partes da mesma compra, no mesmo grupo (descrição, conta, etiqueta), são uma compra só.
       const contaDeNovo = !(x.repetida && agrupar !== 'categoria');
       if (x.valor > 0 && contaDeNovo) g.vezes += 1;

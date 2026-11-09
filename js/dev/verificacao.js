@@ -2916,6 +2916,25 @@ caso('relatório', '★ flexível: soma ou cruza, devolução abate, renda à pa
   igual((await estado.calcular()).selecoes.sel1, undefined, 'e apagada some');
 });
 
+caso('relatório', 'lançamento com mais de uma etiqueta: o valor se divide e a lista fecha com o total, sem contar duas vezes', async () => {
+  const ev = await baseDeRelatorios();
+  await ev('etiqueta.criada', { id: 'casa', nome: 'casa' });
+  await ev('etiqueta.criada', { id: 'sitio', nome: 'sitio' });
+  await lanc1('t1', 'despesa', 10001, 'cc', '2026-10-05', { categoriaId: 'merc', etiquetas: ['casa', 'sitio'] });
+  await lanc1('t2', 'despesa', 5000, 'cc', '2026-10-06', { categoriaId: 'merc', etiquetas: ['casa'] });
+  await lanc1('t3', 'despesa', 3000, 'cc', '2026-10-07', { categoriaId: 'merc', etiquetas: [] });
+  const e = await estado.calcular();
+  const dia = '2026-10-15';
+  const sel = { categorias: [], etiquetas: [], descricoes: [], contas: [] };
+  const r = explorar.relatorio(e, sel, explorar.periodo(e, 'mes', '2026-10', dia), { agrupar: 'etiqueta' }, dia);
+  const por = Object.fromEntries(r.grupos.map((g) => [g.chave, g.valor]));
+  igual(r.total, 18001, 'o total é o gasto de verdade');
+  igual(r.grupos.reduce((t, g) => t + g.valor, 0), r.total, 'a soma das linhas da lista fecha com o total (antes passava)');
+  igual([por.casa, por.sitio, por['—']], [10001, 5000, 3000], 'o lançamento de duas etiquetas se divide (R$ 100,01: 50,01 + 50,00); o centavo vai para a primeira da ordem');
+  igual([...explorar.repartir(100, ['b', 'a', 'c']).entries()].sort().map(([c, v]) => `${c}:${v}`).join(' '), 'a:34 b:33 c:33', 'o centavo que sobra vai para as primeiras, em ordem estável');
+  igual([...explorar.repartir(-100, ['x', 'y', 'z']).values()].reduce((t, v) => t + v, 0), -100, 'valor negativo também fecha');
+});
+
 // ── apoio ─────────────────────────────────────────────────────────────────
 
 caso('exportar', 'a planilha: BOM, ponto e vírgula, vírgula decimal, aspas e texto de banco protegido', async () => {
