@@ -44,6 +44,7 @@ import * as avisos from '../core/avisos.js';
 import * as icones from '../core/icones-conta.js';
 import * as parcelas from '../core/parcelas.js';
 import * as pin from '../core/pin.js';
+import * as sugestao from '../core/sugestao-etiquetas.js';
 
 const BANCO_DE_TESTE = 'appfinancas-teste';
 
@@ -3628,6 +3629,39 @@ caso('segurança', 'PIN: guarda só a impressão, errar faz esperar (nunca apaga
   igual([pin.devePedirDeNovo(1_000_000, 1_000_000 + 2 * 60000, 3), pin.devePedirDeNovo(1_000_000, 1_000_000 + 3 * 60000, 3)], [false, true], 'pede de novo a partir de 3 min fora');
   await limpar();
   igual(await pin.pinAtivo(), false, 'o PIN mora no banco do aparelho (some com ele)');
+});
+
+caso('etiquetas', 'sugestão de etiquetas pela descrição parecida: só sugere, e só quando a maioria dos parecidos concorda', async () => {
+  await limpar();
+  await log.registrarAparelho('meu-pc');
+  const ev = (t, d) => estado.aplicarEvento(t, d);
+  await ev('conta.criada', { id: 'cc', nome: 'Corrente', tipo: 'corrente', saldoInicial: 100000, dataInicial: '2026-01-01' });
+  await ev('categoria.criada', { id: 'cat', nome: 'Mercado', natureza: 'despesa' });
+  await ev('etiqueta.criada', { id: 'casa', nome: 'Casa' });
+  await ev('etiqueta.criada', { id: 'sitio', nome: 'Sítio' });
+  await ev('detalhe.criado', { id: 'd1', nome: 'Mercado Central' });
+  await ev('detalhe.criado', { id: 'd2', nome: 'Mercado Central Filial 2' });
+  await ev('detalhe.criado', { id: 'd3', nome: 'Posto Shell' });
+  const lanc = (id, detalheId, etiquetas, extra = {}) => ev('lancamento.registrado', {
+    id, tipo: 'despesa', valor: 1000, contaId: 'cc', categoriaId: 'cat', detalheId, etiquetas,
+    dataCompetencia: '2026-03-10', dataCaixa: '2026-03-10', confirmado: true, ...extra,
+  });
+  await lanc('a', 'd1', ['casa']);
+  await lanc('b', 'd1', ['casa']);
+  await lanc('c', 'd1', ['sitio']);
+  await lanc('nova', 'd1', []);
+  await lanc('outra', 'd3', []);
+  await lanc('banco', null, [], { textoBanco: 'COMPRA CARTAO MERCADO CENTRAL 123' });
+  const e = await estado.calcular();
+  const sugerir = sugestao.criarSugestor(e, lanc_(e));
+  function lanc_(x) { return Object.values(x.lancamentos); }
+  const nova = sugerir(e.lancamentos.nova);
+  igual(nova.map((x) => [x.etiquetaId, x.vezes, x.de]), [['casa', 2, 3]], 'a Casa (2 de 3 parecidos) é sugerida; o Sítio (1 de 3) não');
+  igual(sugerir(e.lancamentos.outra), [], 'descrição sem parecido etiquetado: nada');
+  igual(sugerir(e.lancamentos.banco).map((x) => x.etiquetaId), ['casa'], 'o texto do banco limpo também é parecido');
+  igual(sugerir(e.lancamentos.a).map((x) => x.etiquetaId), [], 'quem já tem a etiqueta não ganha sugestão dela');
+  const antes = JSON.stringify(e.lancamentos.nova.etiquetas);
+  igual(antes, '[]', 'sugerir nunca grava nada');
 });
 
 async function limpar() {

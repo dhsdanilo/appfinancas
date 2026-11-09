@@ -9,6 +9,7 @@
 // de você.
 
 import * as estado from './core/estado.js';
+import { novoId } from './core/id.js';
 import { dinheiroHTML } from './app/dinheiro-html.js';
 import { formatar, deTexto } from './core/dinheiro.js';
 import { criarFormulario } from './app/formulario.js';
@@ -38,9 +39,11 @@ import { BARRA, PRINCIPAL, DIALOGOS, ICONES } from './app/marcacao-dinheiro.js';
 import { porOrdemDaConta, corDaConta } from './core/ordem.js';
 import { bolinhaDaConta } from './core/icones-conta.js';
 import { csvDosLancamentos } from './core/exportar.js';
+import { criarSugestor } from './core/sugestao-etiquetas.js';
+import { chaveDoNome } from './core/listas.js';
 import { rendaDaFolha, liquidoPrevisto } from './core/holerite.js';
 import {
-  visiveis, porDataDecrescente, estadoDoLancamento, saldoReal, nomeDaCategoria,
+  visiveis, lancados, porDataDecrescente, estadoDoLancamento, saldoReal, nomeDaCategoria,
   sinalDeSaida, ehTransferencia, dataVista, dataDaCompra, estornado, ehDeInvestimento,
 } from './core/lancamentos.js';
 import { temCiclo } from './core/cartao.js';
@@ -2037,6 +2040,151 @@ const ordenarPelaCompra = (lista) =>
  * Uma ação da vida real é UMA linha (08-telas §4): a transferência aparece
  * como origem → destino, nunca como despesa numa conta e receita na outra.
  */
+// ── etiquetar rápido (pedido dele, 09/11/2026) ────────────────────────────
+
+/** Só o que está gravado de verdade e é gasto ou ganho leva etiqueta; previsto, automático e fatura não. */
+const aceitaEtiqueta = (l) => !l.projetado && !l.automatico && !l.fatura && !l.liquido && ['despesa', 'receita', 'estorno'].includes(l.tipo);
+
+// O sugestor indexa os lançamentos uma vez por estado: refazer a cada linha seria quadrático.
+let sugestorMemo = { app: null, lc: null, fn: null };
+function sugestorDeEtiquetas() {
+  if (sugestorMemo.app !== app || sugestorMemo.lc !== app.ateLc) {
+    sugestorMemo = { app, lc: app.ateLc, fn: criarSugestor(app, lancados(app)) };
+  }
+  return sugestorMemo.fn;
+}
+
+/**
+ * As etiquetas da linha: cada uma com um × que a tira num toque, as SUGERIDAS (tracejadas, com um "+" na frente:
+ * nunca entram sozinhas) e o "+" que abre o menu. São <span role="button">: a linha inteira é um botão, e botão
+ * dentro de botão não vale.
+ */
+function etiquetasDaLinha(l) {
+  const nomeDe = (id) => app.etiquetas?.[id]?.nome;
+  const tem = (l.etiquetas ?? []).filter((t) => nomeDe(t));
+  if (!aceitaEtiqueta(l)) return tem.map((t) => `<span class="etiqueta">${escapar(nomeDe(t))}</span>`).join('');
+  const dono = `data-tag-lanc="${escapar(l.id)}"`;
+  const chips = tem.map((t) => `<span class="etiqueta tirar" role="button" tabindex="0" data-tag-tirar="${escapar(t)}" ${dono}
+      title="Tirar a etiqueta ${escapar(nomeDe(t))}" aria-label="Tirar a etiqueta ${escapar(nomeDe(t))}">${escapar(nomeDe(t))}<b aria-hidden="true">×</b></span>`);
+  const sugeridas = sugestorDeEtiquetas()(l).map((s) => `<span class="etiqueta sugerida" role="button" tabindex="0" data-tag-por="${escapar(s.etiquetaId)}" ${dono}
+      title="${s.vezes} de ${s.de} lançamentos parecidos têm ${escapar(nomeDe(s.etiquetaId))}. Toque para aplicar."
+      aria-label="Sugestão: aplicar a etiqueta ${escapar(nomeDe(s.etiquetaId))}">+ ${escapar(nomeDe(s.etiquetaId))}</span>`);
+  const mais = `<span class="etiqueta mais" role="button" tabindex="0" data-tag-add ${dono} title="Adicionar etiqueta" aria-label="Adicionar etiqueta">+</span>`;
+  return [...chips, ...sugeridas, mais].join('');
+}
+
+/** Grava as etiquetas do lançamento (o evento de sempre: a correção guarda só o que mudou). */
+async function mudarEtiquetas(lancId, etiquetaId, tirar) {
+  const l = app.lancamentos[lancId];
+  if (!l || l.removido) return;
+  const atuais = l.etiquetas ?? [];
+  const novas = tirar ? atuais.filter((x) => x !== etiquetaId) : atuais.includes(etiquetaId) ? atuais : [...atuais, etiquetaId];
+  if (novas.length === atuais.length) return;
+  await estado.aplicarEvento('lancamento.alterado', { id: lancId, etiquetas: novas });
+}
+
+let menuDeEtiquetas = null;
+function fecharMenuDeEtiquetas() {
+  menuDeEtiquetas?.remove();
+  menuDeEtiquetas = null;
+}
+
+/** O menu do "+": as sugeridas, depois as mais usadas; digitar filtra, e um nome novo vira "criar". */
+function abrirMenuDeEtiquetas(chip, lancId) {
+  fecharMenuDeEtiquetas();
+  const l = app.lancamentos[lancId];
+  if (!l || l.removido) return;
+  const tem = new Set(l.etiquetas ?? []);
+  const uso = new Map();
+  for (const x of lancados(app)) for (const t of x.etiquetas ?? []) uso.set(t, (uso.get(t) ?? 0) + 1);
+  const sugeridas = new Set(sugestorDeEtiquetas()(l).map((s) => s.etiquetaId));
+  const todas = Object.values(app.etiquetas ?? {})
+    .filter((t) => !t.arquivada && !tem.has(t.id))
+    .sort((a, b) => (sugeridas.has(b.id) - sugeridas.has(a.id)) || ((uso.get(b.id) ?? 0) - (uso.get(a.id) ?? 0)) || a.nome.localeCompare(b.nome, 'pt-BR'));
+
+  const menu = document.createElement('div');
+  menu.className = 'menu-etiquetas';
+  menu.setAttribute('role', 'dialog');
+  menu.setAttribute('aria-label', 'Etiquetar o lançamento');
+  menu.innerHTML = '<input type="text" class="busca-etiqueta" placeholder="buscar ou criar etiqueta" autocomplete="off" aria-label="Buscar ou criar etiqueta"><div class="lista-etiquetas"></div>';
+  document.body.appendChild(menu);
+  menuDeEtiquetas = menu;
+
+  const entrada = menu.querySelector('input');
+  const lista = menu.querySelector('.lista-etiquetas');
+  const pintarLista = () => {
+    const texto = entrada.value.trim();
+    const q = chaveDoNome(texto);
+    const achadas = todas.filter((t) => !q || chaveDoNome(t.nome).includes(q));
+    const existente = Object.values(app.etiquetas ?? {}).find((t) => chaveDoNome(t.nome) === q);
+    lista.innerHTML = achadas.slice(0, 40).map((t) => `<button type="button" data-escolher="${escapar(t.id)}">${sugeridas.has(t.id) ? '<i class="estrela" aria-hidden="true">✦</i>' : ''}${escapar(t.nome)}${uso.get(t.id) ? `<small>${uso.get(t.id)}</small>` : ''}</button>`).join('')
+      + (texto && !existente ? `<button type="button" class="criar" data-criar="${escapar(texto)}">+ criar “${escapar(texto)}”</button>` : '')
+      + (!achadas.length && !texto ? '<p class="vazio-menu">Nenhuma etiqueta ainda: digite um nome para criar.</p>' : '');
+  };
+  pintarLista();
+
+  // Perto da borda de baixo o menu abre para cima; no celular, o CSS o trata como folha de baixo.
+  const r = chip.getBoundingClientRect();
+  const alto = Math.min(320, window.innerHeight * 0.5);
+  menu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 260))}px`;
+  menu.style.top = `${r.bottom + alto + 8 > window.innerHeight ? Math.max(8, r.top - alto - 4) : r.bottom + 4}px`;
+  entrada.focus();
+
+  const escolher = async (id) => { fecharMenuDeEtiquetas(); await mudarEtiquetas(lancId, id, false); };
+  const criar = async (texto) => {
+    fecharMenuDeEtiquetas();
+    const q = chaveDoNome(texto);
+    let existente = Object.values(app.etiquetas ?? {}).find((t) => chaveDoNome(t.nome) === q);
+    if (existente?.arquivada) await estado.aplicarEvento('etiqueta.arquivada', { id: existente.id, arquivada: false });
+    if (!existente) {
+      const id = novoId('etq');
+      await estado.aplicarEvento('etiqueta.criada', { id, nome: texto });
+      existente = { id };
+    }
+    await mudarEtiquetas(lancId, existente.id, false);
+  };
+  entrada.addEventListener('input', pintarLista);
+  entrada.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { fecharMenuDeEtiquetas(); return; }
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const primeira = lista.querySelector('button');
+    if (!primeira) return;
+    if (primeira.dataset.criar) criar(primeira.dataset.criar);
+    else escolher(primeira.dataset.escolher);
+  });
+  lista.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.criar) criar(b.dataset.criar);
+    else escolher(b.dataset.escolher);
+  });
+}
+
+/** O que um toque (ou Enter) numa etiqueta da linha faz; devolve true se o alvo era dela. */
+async function tratarEtiquetaDaLinha(alvo) {
+  const chip = alvo.closest?.('[data-tag-tirar],[data-tag-por],[data-tag-add]');
+  if (!chip) return false;
+  const lancId = chip.dataset.tagLanc;
+  if (chip.dataset.tagTirar) await mudarEtiquetas(lancId, chip.dataset.tagTirar, true);
+  else if (chip.dataset.tagPor) await mudarEtiquetas(lancId, chip.dataset.tagPor, false);
+  else abrirMenuDeEtiquetas(chip, lancId);
+  return true;
+}
+
+document.addEventListener('keydown', async (e) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  if (!e.target.closest?.('[data-tag-tirar],[data-tag-por],[data-tag-add]')) return;
+  e.preventDefault();
+  e.stopPropagation();
+  await tratarEtiquetaDaLinha(e.target);
+}, true);
+
+// Fora do menu (ou Esc), ele fecha.
+document.addEventListener('pointerdown', (e) => {
+  if (menuDeEtiquetas && !e.target.closest('.menu-etiquetas') && !e.target.closest('[data-tag-add]')) fecharMenuDeEtiquetas();
+});
+
 function linhaHTML(l, ids, saldoApos = null) {
   // Compra de mais de uma categoria: a principal, com um "+" (a divisão se vê ao abrir).
   const categoriaDaLinha = (x) => nomeDaCategoria(app, x.categoriaId) + (x.divisao?.length > 1 ? ' +' : '');
@@ -2128,11 +2276,7 @@ function linhaHTML(l, ids, saldoApos = null) {
     (est === 'realizado' ? (l.automatico ? ' · automática' : '') : ` · ${l.projetado ? 'previsto' : l.pendente ? 'pendente de débito' : est}`);
 
   const parcela = l.parcela ? `<span class="parcela">${l.parcela.numero}/${l.parcela.total}</span>` : '';
-  const etiquetas = (l.etiquetas ?? [])
-    .map((t) => app.etiquetas?.[t]?.nome)
-    .filter(Boolean)
-    .map((e) => `<span class="etiqueta">${escapar(e)}</span>`)
-    .join('');
+  const etiquetas = etiquetasDaLinha(l);
   const dia = dataDaCompra(l);
   linhasNaTela.push({
     data: dia,
@@ -2374,6 +2518,8 @@ async function pagarFatura(cartaoId, centavos) {
 }
 
 document.addEventListener('click', async (e) => {
+  // As etiquetas da linha vêm antes de tudo: a linha inteira é clicável, e o × não pode abrir a correção.
+  if (await tratarEtiquetaDaLinha(e.target)) { e.preventDefault(); e.stopPropagation(); return; }
   const irTela = e.target.closest('[data-ir-tela]');
   if (irTela) {
     location.hash = `#/${irTela.dataset.irTela}`;

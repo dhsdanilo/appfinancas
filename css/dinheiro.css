@@ -1666,3 +1666,37 @@ a.dono-ativo:hover { text-decoration: underline; }
 /* O carimbo da sincronização nas telas com abas no cabeçalho: fora do fluxo, na faixa livre acima das abas, à
    direita. Dentro do fluxo ele quebrava para uma linha entre as abas e a caixa e descolava a ficha. */
 body.abas-no-topo .nuvem { position: absolute; top: var(--e1); right: 0; padding-top: 0; z-index: 3; }
+
+/* ── etiquetar rápido: o × que tira, o "+" que abre o menu e a sugestão tracejada ───────────────────────── */
+.linha .etiqueta.tirar, .linha .etiqueta.sugerida, .linha .etiqueta.mais { cursor: pointer; }
+.linha .etiqueta.tirar b { margin-left: var(--e1); font-weight: 400; color: var(--tinta-fraca); }
+.linha .etiqueta.tirar:hover, .linha .etiqueta.tirar:focus-visible { border-color: var(--alerta); color: var(--alerta); }
+.linha .etiqueta.tirar:hover b, .linha .etiqueta.tirar:focus-visible b { color: var(--alerta); }
+/* A sugestão nunca entra sozinha: tracejada e esmaecida, só vira etiqueta com um toque. */
+.linha .etiqueta.sugerida { border-style: dashed; color: var(--tinta-fraca); opacity: 0.8; }
+.linha .etiqueta.sugerida:hover, .linha .etiqueta.sugerida:focus-visible { opacity: 1; border-color: var(--acento); color: var(--acento); }
+/* O "+" fica discreto até o mouse chegar na linha; no celular (sem mouse) fica sempre à vista. */
+.linha .etiqueta.mais { opacity: 0.45; padding: 0 var(--e2); }
+.linha:hover .etiqueta.mais, .linha .etiqueta.mais:focus-visible { opacity: 1; border-color: var(--acento); color: var(--acento); }
+@media (hover: none) { .linha .etiqueta.mais { opacity: 0.8; } }
+
+.menu-etiquetas {
+  position: fixed; z-index: 50; width: 250px; max-height: 320px; display: flex; flex-direction: column; gap: var(--e2);
+  padding: var(--e2); background: var(--superficie); border: 1px solid var(--borda-forte); border-radius: var(--raio-controle, 8px);
+  box-shadow: 0 6px 24px #0003;
+}
+.menu-etiquetas .busca-etiqueta { flex: none; min-width: 0; width: 100%; }
+.menu-etiquetas .lista-etiquetas { overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.menu-etiquetas .lista-etiquetas button {
+  display: flex; align-items: center; gap: var(--e2); text-align: left; padding: var(--e2); border: 0; background: transparent;
+  color: var(--tinta); border-radius: var(--raio-controle, 6px); cursor: pointer;
+}
+.menu-etiquetas .lista-etiquetas button:hover, .menu-etiquetas .lista-etiquetas button:focus-visible { background: var(--acento-fundo); }
+.menu-etiquetas .lista-etiquetas small { margin-left: auto; color: var(--tinta-fraca); }
+.menu-etiquetas .lista-etiquetas .estrela { color: var(--area-cartoes); font-style: normal; }
+.menu-etiquetas .lista-etiquetas .criar { color: var(--acento); font-weight: 600; }
+.menu-etiquetas .vazio-menu { margin: 0; padding: var(--e2); color: var(--tinta-fraca); font-size: var(--t-apoio); }
+@media (max-width: 600px) {
+  /* No celular o menu é uma folha na base da tela: o polegar alcança, e o teclado não o esconde. */
+  .menu-etiquetas { left: 0 !important; right: 0; top: auto !important; bottom: 0; width: auto; max-height: 55vh; border-radius: 12px 12px 0 0; }
+}
