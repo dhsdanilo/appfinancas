@@ -113,6 +113,8 @@ const vista = {
   mes: hoje().slice(0, 7),
   de: inicioDoMes(hoje()),
   ate: hoje(),
+  // "todo o período": do primeiro lançamento ao último (e ao fim deste mês), sempre refeito — o que se lança depois entra.
+  tudo: false,
   ...lerGuardado(CHAVE_PERIODO),
 };
 // O mês volta sempre ao corrente: abrir o app e cair em março passado
@@ -127,7 +129,7 @@ function guardarVista() {
   focos[PAGINA] = { conta: vista.conta, area: vista.area, busca: vista.busca, categoria: vista.categoria, classe: vista.classe };
   try {
     localStorage.setItem(chaveDaTela(PAGINA), JSON.stringify({ ...focos[PAGINA], busca: '' }));
-    localStorage.setItem(CHAVE_PERIODO, JSON.stringify({ modo: vista.modo, de: vista.de, ate: vista.ate }));
+    localStorage.setItem(CHAVE_PERIODO, JSON.stringify({ modo: vista.modo, de: vista.de, ate: vista.ate, tudo: vista.tudo }));
   } catch {
     // sem armazenamento: a vista só não sobrevive ao recarregar
   }
@@ -194,7 +196,21 @@ function irParaConta(contaId, mes = null) {
   }
 }
 
+/** Do primeiro dia com movimento ao último (ou ao fim do mês de hoje, para caber o que está previsto). */
+function periodoInteiro() {
+  let de = null;
+  let ate = fimDoMes(hoje());
+  for (const l of visiveis(app)) {
+    const dia = dataVista(l);
+    if (!dia) continue;
+    if (de === null || dia < de) de = dia;
+    if (dia > ate) ate = dia;
+  }
+  return { de: de ?? inicioDoMes(hoje()), ate };
+}
+
 function intervalo() {
+  if (modoDaTela() === 'intervalo' && vista.tudo && app) return periodoInteiro();
   if (modoDaTela() === 'intervalo' && vista.de && vista.ate) {
     return vista.de <= vista.ate ? { de: vista.de, ate: vista.ate } : { de: vista.ate, ate: vista.de };
   }
@@ -594,8 +610,11 @@ function pintarPeriodo() {
   $('p-intervalo').hidden = porMes;
   $('p-modo').textContent = porMes ? 'período' : 'mês a mês';
   $('p-modo').setAttribute('aria-expanded', String(!porMes));
-  $('p-de').value = vista.de;
-  $('p-ate').value = vista.ate;
+  $('p-tudo').hidden = PAGINA === 'cartoes';
+  $('p-tudo').setAttribute('aria-pressed', String(!porMes && Boolean(vista.tudo)));
+  const mostrado = !porMes && vista.tudo ? periodoInteiro() : { de: vista.de, ate: vista.ate };
+  $('p-de').value = mostrado.de;
+  $('p-ate').value = mostrado.ate;
 }
 
 // ── resumos ───────────────────────────────────────────────────────────────
@@ -2901,7 +2920,20 @@ function andarMes(quantos) {
 $('p-antes').addEventListener('click', () => andarMes(-1));
 $('p-depois').addEventListener('click', () => andarMes(1));
 
+// "Todo o período": liga e desliga. Desligado, volta ao mês em que estava.
+$('p-tudo').addEventListener('click', () => {
+  if (vista.modo === 'intervalo' && vista.tudo) {
+    vista.tudo = false;
+    vista.modo = 'mes';
+  } else {
+    vista.modo = 'intervalo';
+    vista.tudo = true;
+  }
+  pintar();
+});
+
 $('p-modo').addEventListener('click', () => {
+  vista.tudo = false;
   if (vista.modo === 'mes') {
     vista.modo = 'intervalo';
     // O intervalo nasce igual ao mês que estava na tela: trocar de modo não
@@ -2917,6 +2949,13 @@ $('p-modo').addEventListener('click', () => {
 for (const campo of ['p-de', 'p-ate']) {
   $(campo).addEventListener('change', () => {
     if (!$(campo).value) return;
+    // Mexer numa das datas é escolher um período próprio: sai do "todo o período", partindo do que ele mostrava.
+    if (vista.tudo) {
+      const inteiro = periodoInteiro();
+      vista.de = inteiro.de;
+      vista.ate = inteiro.ate;
+      vista.tudo = false;
+    }
     vista[campo === 'p-de' ? 'de' : 'ate'] = $(campo).value;
     pintar();
   });

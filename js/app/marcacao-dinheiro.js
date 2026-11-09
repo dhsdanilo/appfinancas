@@ -61,6 +61,7 @@ export const PRINCIPAL = `
       <strong class="rotulo-periodo" id="p-rotulo"></strong>
       <button type="button" class="passo" id="p-depois" aria-label="Mês seguinte">›</button>
       <button type="button" class="elo" id="p-modo" aria-expanded="false">período</button>
+      <button type="button" class="elo" id="p-tudo" aria-pressed="false" title="Do primeiro lançamento ao último">todo o período</button>
       <span class="intervalo" id="p-intervalo" hidden>
         <input type="date" id="p-de" aria-label="Do dia">
         <span>até</span>
